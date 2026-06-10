@@ -15,10 +15,13 @@ The repository must not contain default API keys. Empty `openai_api_key` disable
 - `DiaryEntry.id` is the stable diary identifier used by lists, filters, delete paths, and chat related-entry references.
 - `DiaryEntry.tags` is stored as `[String]` and used by search/filter paths.
 - `TodoItem.recurringInterval` stores a `TodoItem.RecurringInterval.rawValue` string, currently Chinese display values such as `每天` and `每周`.
+- Recurring todo completion must use the shared recurrence planner. A next todo is created only after a completed recurring item has both a valid stored interval and a deadline.
 - `ChatSession.messages` owns the session message list; `SessionMessage.relatedEntryIds` stores diary UUID strings, not relationships.
 - `EasyNoteApp` creates the app `ModelContainer` with a named local `ModelConfiguration`, `url: URL.documentsDirectory/EasyNote.store`, and `cloudKitDatabase: .none`.
 
 Model changes require a migration or compatibility note before implementation.
+
+Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures.
 
 ## DeepSeek Chat-Completions Boundary
 

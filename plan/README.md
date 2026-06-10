@@ -13,7 +13,9 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 ## Active References
 
-No active implementation plans are currently open.
+| Document | Purpose | Status |
+|---|---|---|
+| [local-core-reliability.plan.md](local-core-reliability.plan.md) | Tighten local ViewModel context binding, save failures, and recurring todo completion | Active |
 
 ## Delivered Or Recent References
 

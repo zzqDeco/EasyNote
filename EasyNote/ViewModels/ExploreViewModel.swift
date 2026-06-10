@@ -288,73 +288,77 @@ class ExploreViewModel: ObservableObject {
     }
     
     /// 标记待办事项为已完成或未完成
-    func toggleTodoCompletion(for id: UUID) {
+    @discardableResult
+    func toggleTodoCompletion(for id: UUID) -> Bool {
         if let index = allTodoItems.firstIndex(where: { $0.id == id }) {
+            let wasCompleted = allTodoItems[index].isCompleted
+
             // 修改内存中的模型
             allTodoItems[index].isCompleted.toggle()
-            
-            // 检查是否需要创建下一个循环任务
+
             let item = allTodoItems[index]
-            
-            if allTodoItems[index].isCompleted && item.isRecurring, 
-               let intervalString = item.recurringInterval,
-               let interval = TodoItem.RecurringInterval(rawValue: intervalString),
-               let deadline = item.deadline {
-                
-                // 创建下一个循环待办
-                let nextDate = interval.nextDate(from: deadline)
-                let newTodo = TodoItem(
-                    id: UUID(),
-                    title: item.title,
-                    isCompleted: false,
-                    priority: item.priority,
-                    deadline: nextDate,
-                    notes: item.notes,
-                    isRecurring: true,
-                    recurringInterval: intervalString
-                )
-                
-                // 添加到待办列表并保存到数据库
+            let newTodo = TodoRecurrencePlanner.nextTodo(afterCompleted: item)
+
+            if let newTodo {
+                modelContext.insert(newTodo)
+            }
+
+            guard saveContext() else {
+                allTodoItems[index].isCompleted = wasCompleted
+                if let newTodo {
+                    modelContext.delete(newTodo)
+                }
+                return false
+            }
+
+            if let newTodo {
                 withAnimation {
                     allTodoItems.append(newTodo)
-                    modelContext.insert(newTodo)
                 }
             }
-            
-            // 保存更改到数据库
-            saveContext()
+
+            return true
         }
+
+        errorMessage = "未找到待办事项"
+        return false
     }
     
     /// 重置所有待办事项
-    func resetAllTodoItems() {
+    @discardableResult
+    func resetAllTodoItems() -> Bool {
         for i in 0..<allTodoItems.count {
             allTodoItems[i].isCompleted = false
         }
         // 保存更改到数据库
-        saveContext()
+        return saveContext()
     }
     
     /// 删除指定ID的待办事项
-    func deleteTodoItem(withID id: UUID, completion: (() -> Void)? = nil) {
+    @discardableResult
+    func deleteTodoItem(withID id: UUID, completion: (() -> Void)? = nil) -> Bool {
         if let index = allTodoItems.firstIndex(where: { $0.id == id }) {
             let item = allTodoItems[index]
             
-            // 使用动画删除
-            withAnimation(.easeInOut(duration: 0.3)) {
-                allTodoItems.remove(at: index)
-                modelContext.delete(item)
-            }
+            modelContext.delete(item)
             
             // 保存更改到数据库
             if saveContext() {
+                // 使用动画删除
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    allTodoItems.remove(at: index)
+                }
                 completion?()
+                return true
             }
         }
+
+        return false
     }
     
     /// 从推荐活动创建待办事项
-    func createTodoFromRecommendation(_ recommendation: Recommendation) {
+    @discardableResult
+    func createTodoFromRecommendation(_ recommendation: Recommendation) -> Bool {
         let newTodo = TodoItem(
             id: UUID(),
             title: recommendation.title,
@@ -365,19 +369,31 @@ class ExploreViewModel: ObservableObject {
             isRecurring: false
         )
         
+        // 保存到数据库
+        modelContext.insert(newTodo)
+        guard saveContext() else {
+            return false
+        }
+
         // 添加到内存中的列表
         withAnimation {
             allTodoItems.append(newTodo)
         }
-        
-        // 保存到数据库
-        modelContext.insert(newTodo)
-        saveContext()
+
+        return true
     }
     
     /// 编辑待办事项
-    func updateTodoItem(id: UUID, title: String, priority: TodoItem.PriorityLevel, deadline: Date?, notes: String?, isRecurring: Bool = false, recurringInterval: String? = nil) {
+    @discardableResult
+    func updateTodoItem(id: UUID, title: String, priority: TodoItem.PriorityLevel, deadline: Date?, notes: String?, isRecurring: Bool = false, recurringInterval: String? = nil) -> Bool {
         if let index = allTodoItems.firstIndex(where: { $0.id == id }) {
+            let oldTitle = allTodoItems[index].title
+            let oldPriority = allTodoItems[index].priority
+            let oldDeadline = allTodoItems[index].deadline
+            let oldNotes = allTodoItems[index].notes
+            let oldIsRecurring = allTodoItems[index].isRecurring
+            let oldRecurringInterval = allTodoItems[index].recurringInterval
+
             withAnimation {
                 allTodoItems[index].title = title
                 allTodoItems[index].priority = priority
@@ -388,20 +404,38 @@ class ExploreViewModel: ObservableObject {
             }
             
             // 保存到数据库
-            saveContext()
+            guard saveContext() else {
+                allTodoItems[index].title = oldTitle
+                allTodoItems[index].priority = oldPriority
+                allTodoItems[index].deadline = oldDeadline
+                allTodoItems[index].notes = oldNotes
+                allTodoItems[index].isRecurring = oldIsRecurring
+                allTodoItems[index].recurringInterval = oldRecurringInterval
+                return false
+            }
+
+            return true
         }
+
+        errorMessage = "未找到待办事项"
+        return false
     }
     
     /// 创建待办事项
-    func addTodoItem(_ todo: TodoItem) {
+    @discardableResult
+    func addTodoItem(_ todo: TodoItem) -> Bool {
+        // 保存到数据库
+        modelContext.insert(todo)
+        guard saveContext() else {
+            return false
+        }
+
         // 添加到内存中的列表
         withAnimation {
             allTodoItems.append(todo)
         }
-        
-        // 保存到数据库
-        modelContext.insert(todo)
-        saveContext()
+
+        return true
     }
     
     @discardableResult

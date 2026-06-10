@@ -87,9 +87,10 @@ struct SessionListView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         // 创建新会话
-                        let newSession = sessionViewModel.createNewSession()
-                        sessionViewModel.switchToSession(newSession)
-                        isPresented = false
+                        if let newSession = sessionViewModel.createNewSession() {
+                            sessionViewModel.switchToSession(newSession)
+                            isPresented = false
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -216,4 +217,4 @@ struct SessionRow: View {
     }
     
     return createPreview()
-} 
+}

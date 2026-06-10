@@ -28,6 +28,8 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - `TodoViewModel` owns focused todo CRUD and recurrence behavior.
 - `ExploreViewModel` owns recommendation cards plus a todo projection for the former Explore screen.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
+- `ContentView` passes the shared SwiftData `ModelContext` into stable app-level ViewModels through its root view instead of relying on production nil-context fallback stores.
+- Recurring todo completion is planned through a shared helper so todo entry points do not duplicate next-occurrence creation rules.
 
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
 
