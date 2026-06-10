@@ -1,0 +1,20 @@
+.DS_Store
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Build products and local caches
+DerivedData/
+build/
+.build/
+*.ipa
+*.dSYM/
+
+# Swift Package Manager
+.swiftpm/
+
+# Local environment files
+.env
+.env.*
