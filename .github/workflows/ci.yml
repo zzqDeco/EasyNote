@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "feature/**"
+      - "fix/**"
+      - "docs/**"
+      - "refactor/**"
+      - "test/**"
+      - "chore/**"
+      - "ci/**"
+  pull_request:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  xcode:
+    name: Xcode build and unit tests
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+
+      - name: Check whitespace
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_REF" ]; then
+            git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}" --depth=1
+            git diff --check "origin/${BASE_REF}...HEAD"
+          else
+            git diff-tree --check --no-commit-id -r HEAD
+          fi
+
+      - name: List Xcode project
+        run: xcodebuild -list -project EasyNote.xcodeproj
+
+      - name: Select iPhone simulator
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          devices = json.loads(
+              subprocess.check_output(
+                  ["xcrun", "simctl", "list", "devices", "available", "-j"],
+                  text=True,
+              )
+          ).get("devices", {})
+
+          selected = None
+          for runtime in sorted(devices):
+              for device in devices[runtime]:
+                  if device.get("isAvailable", True) and device.get("name", "").startswith("iPhone"):
+                      selected = device
+                      break
+              if selected:
+                  break
+
+          if not selected:
+              print("No available iPhone simulator found", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"Selected simulator: {selected['name']} ({selected['udid']})")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"SIMULATOR_UDID={selected['udid']}\n")
+          PY
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project EasyNote.xcodeproj \
+            -scheme EasyNote \
+            -only-testing:EasyNoteTests \
+            -destination "id=${SIMULATOR_UDID}" \
+            CODE_SIGNING_ALLOWED=NO

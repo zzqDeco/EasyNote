@@ -1,0 +1,20 @@
+# EasyNoteTests.swift
+
+## Responsibility
+
+- Hold focused unit tests for core model behavior that does not need UI or live services.
+
+## Boundaries
+
+- Do not add live network, CloudKit, microphone, or simulator-permission tests here.
+- Do not rely on persisted user data or host machine state.
+
+## Behavior Notes
+
+- Current tests cover todo recurrence date calculation.
+- Current tests cover chat-session title summary and basic integrity behavior.
+
+## Tests
+
+- Run through GitHub Actions on a compatible macOS/Xcode/simulator combination.
+- Run locally with `xcodebuild test` when the installed simulator runtime matches the selected SDK.

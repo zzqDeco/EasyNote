@@ -26,15 +26,13 @@ struct EasyNoteApp: App {
         // 创建一个唯一的存储URL，确保数据保存在应用的Documents目录下
         let storeURL = URL.documentsDirectory.appending(path: "EasyNote.store")
         
-        // 配置存储，明确指定URL和是否存储在内存中
+        // 配置本地存储，避免 SwiftData 自动接管 CloudKit 同步
         let modelConfiguration = ModelConfiguration(
+            "EasyNote",
             schema: schema,
             url: storeURL,
-            cloudKitDatabase: nil,
-            isStoredInMemoryOnly: false,
             allowsSave: true,
-            groupContainer: nil,
-            readOnly: false
+            cloudKitDatabase: .none
         )
 
         do {

@@ -24,7 +24,13 @@ class ChatSessionViewModel: ObservableObject {
                 // 确保使用相同的URL路径
                 let storeURL = URL.documentsDirectory.appending(path: "EasyNote.store")
                 let schema = Schema([ChatSession.self, SessionMessage.self])
-                let config = ModelConfiguration(schema: schema, url: storeURL, isStoredInMemoryOnly: false)
+                let config = ModelConfiguration(
+                    "EasyNoteChatSessions",
+                    schema: schema,
+                    url: storeURL,
+                    allowsSave: true,
+                    cloudKitDatabase: .none
+                )
                 
                 let container = try ModelContainer(for: schema, configurations: [config])
                 self.modelContext = ModelContext(container)
