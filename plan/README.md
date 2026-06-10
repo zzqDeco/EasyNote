@@ -13,9 +13,14 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 ## Active References
 
+No active implementation plans are currently open.
+
+## Delivered Or Recent References
+
 | Document | Purpose | Status |
 |---|---|---|
 | [project-structure-bootstrap.plan.md](project-structure-bootstrap.plan.md) | Align EasyNote with the user's branch, doc, plan, and PR workflow conventions | Delivered |
+| [basic-ci.plan.md](basic-ci.plan.md) | Add the first GitHub Actions CI gate for Xcode project listing and tests | Delivered |
 
 ## Maintenance Rules
 

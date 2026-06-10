@@ -1,27 +1,29 @@
 # <Plan Title>
 
-Status: Active
+Use this template for active implementation plans under `plan/`. A plan should be decision-complete enough for another engineer to implement without asking for basic scope or validation choices.
 
-## Goal
+## Summary
 
-Describe the concrete outcome this plan will deliver.
+- State the user-visible or engineering goal.
+- State why the work belongs in this slice.
 
-## Current State
+## Scope
 
-Summarize the relevant repo state, constraints, and known risks.
+- List the behavior, modules, files, scripts, or docs this work changes.
+- Include non-goals when they prevent likely scope creep.
 
 ## Implementation
 
-List the decision-complete changes by subsystem or behavior.
+- Describe the intended approach at subsystem level.
+- Record API, schema, file-format, persistence, workflow, or command changes.
+- Call out compatibility and migration behavior when existing data is involved.
 
-## Interfaces And Data Flow
+## Test Plan
 
-Document public API, model, persistence, configuration, or UI contract changes.
+- List focused unit tests, CI checks, manual acceptance, and docs-only validation.
+- Use `xcodebuild test` for Swift code changes and at least `git diff --check` for documentation-only changes.
 
-## Validation
+## Assumptions
 
-List the exact build, test, smoke, and manual checks required.
-
-## Non-Goals
-
-Name related work that is intentionally out of scope.
+- Record defaults chosen by the plan.
+- Record unresolved follow-up work that is intentionally outside this slice.

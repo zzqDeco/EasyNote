@@ -37,7 +37,7 @@ EasyNote 是一个 SwiftUI iOS 笔记原型，聚合日记、待办、语音转�
 
 - `main` 是稳定分支，`dev` 是集成分支。
 - 日常功能、修复、文档和重构工作从 `dev` 创建 topic branch，并优先合入 `dev`。
-- 当前工程文档入口见 [doc/README.md](doc/README.md)。
+- 当前工程文档入口见 [doc/README.md](doc/README.md)，其中 `doc/` 记录当前事实，`doc/src/` 镜像关键源码边界。
 - 当前实施计划入口见 [plan/README.md](plan/README.md)。
 - Coding agent 约定见 [AGENTS.md](AGENTS.md)。
 

@@ -11,6 +11,7 @@ EasyNote follows the same lightweight branch model used by the user's active pro
 - `docs/*`: documentation-only work.
 - `refactor/*`: internal structure changes without product behavior changes.
 - `test/*`: test coverage and verification harness changes.
+- `ci/*`: GitHub Actions and hosted verification changes.
 - `chore/*`: repository maintenance.
 - `release/*`: release stabilization branches.
 
