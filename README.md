@@ -33,6 +33,14 @@ EasyNote 是一个 SwiftUI iOS 笔记原型，聚合日记、待办、语音转�
 - 命令行构建依赖本机 Xcode/Simulator 插件状态；如遇 `IDESimulatorFoundation` 加载失败，需要先修复 Xcode 安装。
 - ViewModel 与服务层仍保留原型期结构，后续应继续拆分可测试协议和依赖注入。
 
+## 项目协作
+
+- `main` 是稳定分支，`dev` 是集成分支。
+- 日常功能、修复、文档和重构工作从 `dev` 创建 topic branch，并优先合入 `dev`。
+- 当前工程文档入口见 [doc/README.md](doc/README.md)。
+- 当前实施计划入口见 [plan/README.md](plan/README.md)。
+- Coding agent 约定见 [AGENTS.md](AGENTS.md)。
+
 ## 验证命令
 
 ```bash
