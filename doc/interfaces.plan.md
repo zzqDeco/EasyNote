@@ -21,7 +21,7 @@ The repository must not contain default API keys. Empty `openai_api_key` disable
 
 Model changes require a migration or compatibility note before implementation.
 
-Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures.
+Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
 
 ## DeepSeek Chat-Completions Boundary
 

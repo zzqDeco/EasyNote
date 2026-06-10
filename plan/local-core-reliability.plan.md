@@ -16,6 +16,7 @@ Tighten EasyNote's local-first persistence behavior before adding larger product
 - Keep `ContentView.bindModelContext()` as the production context handoff, and make the ViewModels safe to rebind without retaining a hidden production fallback store.
 - Replace `DiaryViewModel.saveContext()` with a synchronous `Bool` result on the owning context and update diary mutations to set `errorMessage` when saving fails.
 - Change `ChatSessionViewModel.saveContext()` to return `Bool`; only update session lists, current session, and message return values after a save succeeds.
+- Roll back the SwiftData `ModelContext` on save failures so failed inserts, deletes, and relationship edits are not persisted by a later successful save.
 - Add a shared `TodoRecurrencePlanner` that returns the next recurring `TodoItem` only when a completed item has a valid interval and deadline.
 - Route `TodoViewModel` and `ExploreViewModel` recurring completion through that helper.
 

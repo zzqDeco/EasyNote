@@ -305,9 +305,6 @@ class ExploreViewModel: ObservableObject {
 
             guard saveContext() else {
                 allTodoItems[index].isCompleted = wasCompleted
-                if let newTodo {
-                    modelContext.delete(newTodo)
-                }
                 return false
             }
 
@@ -445,6 +442,7 @@ class ExploreViewModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
+            modelContext.rollback()
             errorMessage = "保存待办事项失败: \(error.localizedDescription)"
             print("保存待办事项失败: \(error)")
             return false

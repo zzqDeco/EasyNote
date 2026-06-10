@@ -136,8 +136,6 @@ class ChatSessionViewModel: ObservableObject {
         
         // 立即保存更改
         guard saveContext() else {
-            session.messages.removeAll { $0.id == message.id }
-            modelContext.delete(message)
             return nil
         }
         
@@ -247,6 +245,7 @@ class ChatSessionViewModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
+            modelContext.rollback()
             errorMessage = "保存会话失败: \(error.localizedDescription)"
             print("保存会话失败: \(error.localizedDescription)")
             return false

@@ -352,6 +352,7 @@ class DiaryViewModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
+            modelContext.rollback()
             errorMessage = "保存日记失败: \(error.localizedDescription)"
             return false
         }
