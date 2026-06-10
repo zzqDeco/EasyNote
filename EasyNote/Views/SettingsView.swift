@@ -26,7 +26,7 @@ struct SettingsView: View {
                     .pickerStyle(MenuPickerStyle())
                 }
                 
-                Section(header: Text("AI")) {
+                Section {
                     SecureField("DeepSeek API密钥", text: $apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -36,6 +36,8 @@ struct SettingsView: View {
                             apiKey = ""
                         }
                     }
+                } header: {
+                    Text("AI")
                 } footer: {
                     Text("API密钥仅保存在本机UserDefaults中，仓库不包含默认密钥。")
                 }
