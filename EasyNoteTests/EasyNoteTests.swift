@@ -298,6 +298,14 @@ struct EasyNoteTests {
         #expect(result == "已有正文")
     }
 
+    @Test func recordingStateAllowsTranscriptionActionsOnlyWhenStable() async throws {
+        #expect(!RecordingState.recording.allowsTranscriptionActions)
+        #expect(!RecordingState.processing.allowsTranscriptionActions)
+        #expect(RecordingState.idle.allowsTranscriptionActions)
+        #expect(RecordingState.finished.allowsTranscriptionActions)
+        #expect(RecordingState.error(NSError(domain: "test", code: 1)).allowsTranscriptionActions)
+    }
+
     @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
         let entries = [
             makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),

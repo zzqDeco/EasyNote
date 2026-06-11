@@ -16,6 +16,15 @@ enum RecordingState {
     case processing
     case finished
     case error(Error)
+
+    var allowsTranscriptionActions: Bool {
+        switch self {
+        case .recording, .processing:
+            return false
+        case .idle, .finished, .error:
+            return true
+        }
+    }
 }
 
 enum SpeechPermissionStatus: Equatable {
@@ -97,7 +106,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
     
-    private var audioRecorder: AVAudioRecorder?
+    private var recordingAudioFile: AVAudioFile?
     private var recordingURL: URL?
     
     @Published var recordingState: RecordingState = .idle {
@@ -189,6 +198,8 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     func startRecording() throws {
         // 重置状态
         transcribedText = ""
+        recordingAudioFile = nil
+        recordingURL = nil
         refreshPermissionStatus()
 
         if case .denied = speechPermissionStatus, let message = speechPermissionStatus.failureMessage {
@@ -220,10 +231,6 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         let audioSession = AVAudioSession.sharedInstance()
         try audioSession.setCategory(.record, mode: .default)
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-        
-        // 创建录音文件URL
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        recordingURL = documentsDirectory.appendingPathComponent("recording_\(Date().timeIntervalSince1970).m4a")
         
         // 创建识别请求
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
@@ -257,6 +264,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
                 
                 self.recognitionRequest = nil
                 self.recognitionTask = nil
+                self.recordingAudioFile = nil
                 
                 self.recordingState = .finished
                 self.isRecording = false
@@ -265,10 +273,31 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         
         // 配置音频格式
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+        // 创建本地音频文件，和语音识别共用同一个输入 tap。
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let recordingFileURL = documentsDirectory.appendingPathComponent("recording_\(Date().timeIntervalSince1970).caf")
+        do {
+            recordingAudioFile = try AVAudioFile(forWriting: recordingFileURL, settings: recordingFormat.settings)
+            recordingURL = recordingFileURL
+        } catch {
+            recordingState = .error(error)
+            throw error
+        }
         
         // 安装音频输入节点的tap
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            guard let self else { return }
             self.recognitionRequest?.append(buffer)
+
+            do {
+                try self.recordingAudioFile?.write(from: buffer)
+            } catch {
+                DispatchQueue.main.async {
+                    self.recordingState = .error(error)
+                    self.isRecording = false
+                }
+            }
         }
         
         // 启动音频引擎

@@ -63,8 +63,8 @@ struct TranscriptionDisplayView: View {
                 processingView
             }
             
-            // 操作按钮 - 仅当有内容且不在处理中时显示
-            if !viewModel.transcribedText.isEmpty && !viewModel.isProcessingAI && showOptions {
+            // 操作按钮 - 仅当转写内容稳定且不在处理中时显示
+            if canUseTranscriptionActions && showOptions {
                 actionButtonsView
             }
         }
@@ -276,6 +276,12 @@ struct TranscriptionDisplayView: View {
         case .granted:
             return nil
         }
+    }
+
+    private var canUseTranscriptionActions: Bool {
+        !viewModel.transcribedText.isEmpty
+            && !viewModel.isProcessingAI
+            && viewModel.recordingState.allowsTranscriptionActions
     }
 
     private func statusView(message: String) -> some View {

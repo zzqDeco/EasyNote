@@ -27,13 +27,15 @@ Non-goals:
 - `DiaryViewModel` mirrors permission state, owns recording actions, captures pending recording output for unsaved draft entries, and saves audio/transcription to the current entry only when one exists.
 - Add `DiaryTranscriptionApplyMode` and `DiaryDraftComposer` for pure insert/replace text composition.
 - `CreateDiaryView`, `DiaryEditView`, and the still-compiled `NewDiaryView` use explicit `onApplyTranscription` closures instead of `NotificationCenter` content application.
-- `TranscriptionDisplayView` displays recording, processing, finished, error, and permission failure states.
+- `TranscriptionDisplayView` displays recording, processing, finished, error, and permission failure states, and only exposes insert/replace actions after speech recognition is no longer recording or processing.
+- `SpeechRecognitionService` writes audio buffers to a local file during recording so saved diary entries only receive existing recording URLs.
 
 ## Test Plan
 
 - Unit tests cover inserting transcription into existing content.
 - Unit tests cover replacing content with transcription.
 - Unit tests cover empty transcription preserving existing draft content.
+- Unit tests cover recording-state gating for transcription apply actions.
 - Local checks: `git diff --check`, `xcodebuild -list -project EasyNote.xcodeproj`, docs link sanity, and secret scan.
 - Full unit tests rely on GitHub CI if the local simulator runtime remains unavailable.
 - Real recording and permission behavior remains a manual real-device or compatible-simulator smoke check.

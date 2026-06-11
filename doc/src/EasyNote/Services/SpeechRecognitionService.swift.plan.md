@@ -3,7 +3,7 @@
 ## Responsibility
 
 - Own speech-recognition and microphone permission requests.
-- Manage `AVAudioEngine`, recognition requests, recording state, and transcribed text publication.
+- Manage `AVAudioEngine`, recognition requests, local recording file writing, recording state, and transcribed text publication.
 - Publish speech and microphone permission state for UI display.
 - Provide a single save hook returning the current audio URL and transcription.
 
@@ -16,7 +16,8 @@
 
 - Speech recognition locale is currently `zh-CN`.
 - Recording state and transcription changes are also broadcast through `NotificationCenter`.
-- `startRecording()` should fail before audio-engine setup when speech or microphone permission is unavailable.
+- `startRecording()` should request first-run permissions without auto-starting recording from the permission callback.
+- Audio buffers are written to a local recording file while they are also streamed to speech recognition.
 - `saveRecordingWithTranscription()` validates that the recording URL exists before returning it.
 
 ## Tests
