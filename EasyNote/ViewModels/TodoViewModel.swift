@@ -113,7 +113,6 @@ class TodoViewModel: ObservableObject {
     /// 创建待办事项
     @discardableResult
     func addTodoItem(title: String, priority: TodoItem.PriorityLevel = .medium, deadline: Date? = nil, notes: String? = nil, isRecurring: Bool = false, recurringInterval: String? = nil) -> Bool {
-        // 创建新的待办事项
         let newTodo = TodoItem(
             id: UUID(),
             title: title,
@@ -124,16 +123,20 @@ class TodoViewModel: ObservableObject {
             isRecurring: isRecurring,
             recurringInterval: recurringInterval
         )
-        
-        // 保存到数据库
-        modelContext.insert(newTodo)
+
+        return addTodoItem(newTodo)
+    }
+
+    /// 插入已构造的待办事项，供创建后立即编辑的入口复用同一个模型对象。
+    @discardableResult
+    func addTodoItem(_ todo: TodoItem) -> Bool {
+        modelContext.insert(todo)
         guard saveContext() else {
             return false
         }
 
-        // 添加到内存中的列表
         withAnimation {
-            todoItems.append(newTodo)
+            todoItems.append(todo)
         }
 
         return true

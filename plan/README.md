@@ -15,12 +15,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [diary-search-filter.plan.md](diary-search-filter.plan.md) | Add stable diary search, filtering, and sort behavior without mutating source entries | Active |
+| [todo-focus-view.plan.md](todo-focus-view.plan.md) | Add focused todo category views and remove duplicated todo CRUD from ExploreViewModel | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [diary-search-filter.plan.md](diary-search-filter.plan.md) | Add stable diary search, filtering, and sort behavior without mutating source entries | Delivered |
 | [local-core-reliability.plan.md](local-core-reliability.plan.md) | Tighten local ViewModel context binding, save failures, and recurring todo completion | Delivered |
 | [project-structure-bootstrap.plan.md](project-structure-bootstrap.plan.md) | Align EasyNote with the user's branch, doc, plan, and PR workflow conventions | Delivered |
 | [basic-ci.plan.md](basic-ci.plan.md) | Add the first GitHub Actions CI gate for Xcode project listing and tests | Delivered |

@@ -74,6 +74,69 @@ struct EasyNoteTests {
 
         #expect(TodoRecurrencePlanner.nextTodo(afterCompleted: item) == nil)
     }
+
+    @Test func todoFilterProjectsFocusedCategories() async throws {
+        let calendar = Calendar.current
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let yesterday = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10, hour: 18)))
+        let today = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 9)))
+        let tomorrow = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 9)))
+        let items = [
+            makeTodo(title: "今天", deadline: today),
+            makeTodo(title: "逾期", deadline: yesterday),
+            makeTodo(title: "即将到来", deadline: tomorrow),
+            makeTodo(title: "无日期"),
+            makeTodo(title: "已完成今天", isCompleted: true, deadline: today),
+            makeTodo(title: "已完成无日期", isCompleted: true),
+            makeTodo(title: "重复", deadline: tomorrow, isRecurring: true, recurringInterval: TodoItem.RecurringInterval.weekly.rawValue)
+        ]
+
+        #expect(TodoFilter.today.apply(to: items, calendar: calendar, now: now).map(\.title) == ["今天"])
+        #expect(TodoFilter.overdue.apply(to: items, calendar: calendar, now: now).map(\.title) == ["逾期"])
+        #expect(TodoFilter.upcoming.apply(to: items, calendar: calendar, now: now).map(\.title) == ["即将到来", "重复"])
+        #expect(TodoFilter.noDate.apply(to: items, calendar: calendar, now: now).map(\.title) == ["无日期"])
+        #expect(TodoFilter.recurring.apply(to: items, calendar: calendar, now: now).map(\.title) == ["重复"])
+        #expect(TodoFilter.completed.apply(to: items, calendar: calendar, now: now).map(\.title) == ["已完成今天", "已完成无日期"])
+    }
+
+    @Test func todoFilterExcludesCompletedItemsFromOpenDateGroups() async throws {
+        let calendar = Calendar.current
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let yesterday = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10, hour: 18)))
+        let today = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 9)))
+        let tomorrow = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 9)))
+        let completedItems = [
+            makeTodo(title: "完成逾期", isCompleted: true, deadline: yesterday),
+            makeTodo(title: "完成今天", isCompleted: true, deadline: today),
+            makeTodo(title: "完成即将到来", isCompleted: true, deadline: tomorrow),
+            makeTodo(title: "完成无日期", isCompleted: true)
+        ]
+
+        #expect(TodoFilter.today.apply(to: completedItems, calendar: calendar, now: now).isEmpty)
+        #expect(TodoFilter.overdue.apply(to: completedItems, calendar: calendar, now: now).isEmpty)
+        #expect(TodoFilter.upcoming.apply(to: completedItems, calendar: calendar, now: now).isEmpty)
+        #expect(TodoFilter.noDate.apply(to: completedItems, calendar: calendar, now: now).isEmpty)
+        #expect(TodoFilter.completed.apply(to: completedItems, calendar: calendar, now: now).count == completedItems.count)
+    }
+
+    @Test func todoFilterIncludesNextRecurringTodoFromPlanner() async throws {
+        let calendar = Calendar.current
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 9)))
+        let completedRecurring = makeTodo(
+            title: "循环任务",
+            isCompleted: true,
+            deadline: deadline,
+            isRecurring: true,
+            recurringInterval: TodoItem.RecurringInterval.daily.rawValue
+        )
+
+        let nextTodo = try #require(TodoRecurrencePlanner.nextTodo(afterCompleted: completedRecurring))
+
+        #expect(nextTodo.isCompleted == false)
+        #expect(TodoFilter.recurring.apply(to: [nextTodo], calendar: calendar, now: now).map(\.title) == ["循环任务"])
+        #expect(TodoFilter.completed.apply(to: [nextTodo], calendar: calendar, now: now).isEmpty)
+    }
     
     @Test func chatSessionSummaryUsesLatestUserMessage() async throws {
         let session = ChatSession(title: "新会话")
@@ -193,6 +256,26 @@ struct EasyNoteTests {
         entry.creationDate = creationDate
         entry.lastModified = creationDate
         return entry
+    }
+
+    private func makeTodo(
+        title: String,
+        isCompleted: Bool = false,
+        priority: TodoItem.PriorityLevel = .medium,
+        deadline: Date? = nil,
+        notes: String? = nil,
+        isRecurring: Bool = false,
+        recurringInterval: String? = nil
+    ) -> TodoItem {
+        TodoItem(
+            title: title,
+            isCompleted: isCompleted,
+            priority: priority,
+            deadline: deadline,
+            notes: notes,
+            isRecurring: isRecurring,
+            recurringInterval: recurringInterval
+        )
     }
 
 }
