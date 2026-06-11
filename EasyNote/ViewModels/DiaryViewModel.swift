@@ -27,6 +27,7 @@ class DiaryViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var toastMessage: String?
     @Published var showToast = false
+    @Published var diaryQuery = DiaryEntryQuery()
     
     // 取消令牌
     private var cancellables = Set<AnyCancellable>()
@@ -473,7 +474,7 @@ class DiaryViewModel: ObservableObject {
     
     // 为DiaryListView添加所需属性和方法
     var entries: [DiaryEntry] {
-        return diaryEntries
+        return diaryQuery.apply(to: diaryEntries)
     }
     
     var allEntries: [DiaryEntry] {
@@ -482,33 +483,41 @@ class DiaryViewModel: ObservableObject {
     
     // 搜索日记条目
     func searchEntries(_ query: String) {
-        if query.isEmpty {
-            loadEntries()
-            return
-        }
-        
-        // 筛选包含搜索词的条目
-        let filteredEntries = diaryEntries.filter { entry in
-            return entry.title.localizedCaseInsensitiveContains(query) ||
-                   entry.content.localizedCaseInsensitiveContains(query) ||
-                   entry.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
-        }
-        
-        diaryEntries = filteredEntries
+        updateDiaryQuery { $0.searchText = query }
     }
     
     // 按标签筛选
-    func filterByTag(_ tag: String) {
-        let filteredEntries = diaryEntries.filter { entry in
-            return entry.tags.contains(tag)
-        }
-        
-        diaryEntries = filteredEntries
+    func filterByTag(_ tag: String?) {
+        updateDiaryQuery { $0.selectedTag = tag }
     }
     
-    // 排序日记条目
-    func sortEntries(by comparator: (DiaryEntry, DiaryEntry) -> Bool) {
-        diaryEntries.sort(by: comparator)
+    func filterByMood(_ mood: String?) {
+        updateDiaryQuery { $0.selectedMood = mood }
+    }
+
+    func setFavoriteOnly(_ favoriteOnly: Bool) {
+        updateDiaryQuery { $0.favoriteOnly = favoriteOnly }
+    }
+
+    func setDateRange(start: Date?, end: Date?) {
+        updateDiaryQuery {
+            $0.startDate = start
+            $0.endDate = end
+        }
+    }
+
+    func sortEntries(by option: DiaryEntryQuery.SortOption) {
+        updateDiaryQuery { $0.sortOption = option }
+    }
+
+    func resetDiaryQuery() {
+        diaryQuery = DiaryEntryQuery()
+    }
+
+    private func updateDiaryQuery(_ update: (inout DiaryEntryQuery) -> Void) {
+        var nextQuery = diaryQuery
+        update(&nextQuery)
+        diaryQuery = nextQuery
     }
     
     // 收藏/取消收藏日记

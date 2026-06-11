@@ -101,4 +101,98 @@ struct EasyNoteTests {
         #expect(session.validateIntegrity())
     }
 
+    @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
+        let entries = [
+            makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),
+            makeDiary(title: "周末", content: "去了公园散步", tags: ["生活", "户外"])
+        ]
+
+        #expect(DiaryEntryQuery(searchText: "工作").apply(to: entries).map(\.title) == ["工作复盘"])
+        #expect(DiaryEntryQuery(searchText: "公园").apply(to: entries).map(\.title) == ["周末"])
+        #expect(DiaryEntryQuery(searchText: "户外").apply(to: entries).map(\.title) == ["周末"])
+    }
+
+    @Test func diaryEntryQueryFiltersTagMoodFavoriteAndDateRange() async throws {
+        let calendar = Calendar.current
+        let june10 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10, hour: 9)))
+        let june11 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let june12 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 18)))
+        let entries = [
+            makeDiary(title: "工作", tags: ["工作"], mood: "4", creationDate: june10, isFavorite: true),
+            makeDiary(title: "生活", tags: ["生活"], mood: "3", creationDate: june11),
+            makeDiary(title: "旅行", tags: ["生活", "旅行"], mood: "4", creationDate: june12, isFavorite: true)
+        ]
+
+        #expect(DiaryEntryQuery(selectedTag: "旅行").apply(to: entries).map(\.title) == ["旅行"])
+        #expect(DiaryEntryQuery(selectedMood: "4").apply(to: entries).map(\.title) == ["旅行", "工作"])
+        #expect(DiaryEntryQuery(favoriteOnly: true).apply(to: entries).map(\.title) == ["旅行", "工作"])
+        #expect(DiaryEntryQuery(startDate: june11, endDate: june11).apply(to: entries).map(\.title) == ["生活"])
+    }
+
+    @Test func diaryEntryQueryIncludesSubsecondEntriesOnEndDate() async throws {
+        let calendar = Calendar.current
+        let selectedDay = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let lastFractionalSecond = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 6,
+            day: 11,
+            hour: 23,
+            minute: 59,
+            second: 59,
+            nanosecond: 500_000_000
+        )))
+        let nextMidnight = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
+        let entries = [
+            makeDiary(title: "次日", creationDate: nextMidnight),
+            makeDiary(title: "当天最后一秒", creationDate: lastFractionalSecond)
+        ]
+
+        #expect(DiaryEntryQuery(startDate: selectedDay, endDate: selectedDay).apply(to: entries).map(\.title) == ["当天最后一秒"])
+    }
+
+    @Test func diaryEntryQueryCombinesSearchAndFilters() async throws {
+        let entries = [
+            makeDiary(title: "项目推进", content: "完成接口设计", tags: ["工作"], mood: "4", isFavorite: true),
+            makeDiary(title: "项目阻塞", content: "等待反馈", tags: ["工作"], mood: "2"),
+            makeDiary(title: "生活记录", content: "整理房间", tags: ["生活"], mood: "4", isFavorite: true)
+        ]
+        let query = DiaryEntryQuery(
+            searchText: "项目",
+            selectedTag: "工作",
+            selectedMood: "4",
+            favoriteOnly: true
+        )
+
+        #expect(query.apply(to: entries).map(\.title) == ["项目推进"])
+    }
+
+    @Test func diaryEntryQuerySortsAndEmptyQueryReturnsAllEntries() async throws {
+        let calendar = Calendar.current
+        let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let later = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
+        let entries = [
+            makeDiary(title: "Beta", creationDate: earlier),
+            makeDiary(title: "alpha", creationDate: later)
+        ]
+
+        #expect(DiaryEntryQuery().apply(to: entries).map(\.title) == ["alpha", "Beta"])
+        #expect(DiaryEntryQuery(sortOption: .dateAsc).apply(to: entries).map(\.title) == ["Beta", "alpha"])
+        #expect(DiaryEntryQuery(sortOption: .titleAsc).apply(to: entries).map(\.title) == ["alpha", "Beta"])
+        #expect(DiaryEntryQuery(sortOption: .titleDesc).apply(to: entries).map(\.title) == ["Beta", "alpha"])
+    }
+
+    private func makeDiary(
+        title: String,
+        content: String = "",
+        tags: [String] = [],
+        mood: String? = nil,
+        creationDate: Date = Date(),
+        isFavorite: Bool = false
+    ) -> DiaryEntry {
+        let entry = DiaryEntry(title: title, content: content, mood: mood, tags: tags, isFavorite: isFavorite)
+        entry.creationDate = creationDate
+        entry.lastModified = creationDate
+        return entry
+    }
+
 }
