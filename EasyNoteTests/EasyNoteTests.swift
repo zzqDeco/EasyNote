@@ -341,6 +341,16 @@ struct EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: recordingURL.path))
     }
 
+    @Test func diaryRecordingDraftCaptureIncludesActiveAndFinishedStates() async throws {
+        let error = NSError(domain: "test", code: 1)
+
+        #expect(DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: true, recordingState: .recording))
+        #expect(DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .finished))
+        #expect(!DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .idle))
+        #expect(!DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .processing))
+        #expect(!DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .error(error)))
+    }
+
     @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
         let entries = [
             makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),

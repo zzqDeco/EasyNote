@@ -67,7 +67,7 @@ Views and ViewModels should not manage `AVAudioEngine` or `SFSpeechAudioBufferRe
 
 Transcription content is not written into diary body text automatically. Views must apply transcribed or AI-refined text through an explicit insert or replace action, using the shared diary draft composition helper. Insert/replace actions should stay unavailable while speech recognition is still recording or processing partial results.
 
-Draft recording files are owned by diary save flows after capture. Unsaved new-entry drafts should delete their pending local `.caf` file on dismissal, superseded draft recordings should be deleted before their URL is overwritten, deleting a diary entry should remove its saved local `.caf` after the model delete saves, and replacing an existing diary recording should remove the previously referenced local `.caf` only after the new reference is saved successfully.
+Draft recording files are owned by diary save flows after capture. Unsaved new-entry drafts should delete their pending local `.caf` file on dismissal, superseded draft recordings should be deleted before their URL is overwritten, deleting a diary entry should remove its saved local `.caf` after the model delete saves, and replacing an existing diary recording should remove the previously referenced local `.caf` only after the new reference is saved successfully. New-entry save and dismiss paths should capture both active recordings and recordings that have already reached `finished`.
 
 ## CloudKit Boundary
 

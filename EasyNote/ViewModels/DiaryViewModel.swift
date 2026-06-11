@@ -203,6 +203,18 @@ class DiaryViewModel: ObservableObject {
         Self.removeRecordingFile(at: url)
     }
 
+    static func shouldCaptureVoiceRecordingDraft(isRecording: Bool, recordingState: RecordingState) -> Bool {
+        if isRecording {
+            return true
+        }
+
+        if case .finished = recordingState {
+            return true
+        }
+
+        return false
+    }
+
     func applyTranscription(to content: String, mode: DiaryTranscriptionApplyMode) -> String {
         let nextContent = DiaryDraftComposer.apply(
             transcription: transcribedText,

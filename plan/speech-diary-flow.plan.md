@@ -29,7 +29,7 @@ Non-goals:
 - `CreateDiaryView`, `DiaryEditView`, and the still-compiled `NewDiaryView` use explicit `onApplyTranscription` closures instead of `NotificationCenter` content application.
 - `TranscriptionDisplayView` displays recording, processing, finished, error, and permission failure states, and only exposes insert/replace actions after speech recognition is no longer recording or processing.
 - `SpeechRecognitionService` writes audio buffers to a local file during recording so saved diary entries only receive existing recording URLs, and tears down the audio pipeline on file setup/write/start failures.
-- New-entry views delete abandoned or superseded captured `.caf` files on cancel/dismiss or re-record, existing diary entries delete replaced recording files only after the new recording reference saves successfully, and diary deletion removes its saved local recording file after the model delete saves.
+- New-entry views capture active or finished recordings, delete abandoned or superseded captured `.caf` files on cancel/dismiss or re-record, existing diary entries delete replaced recording files only after the new recording reference saves successfully, and diary deletion removes its saved local recording file after the model delete saves.
 
 ## Test Plan
 
@@ -38,6 +38,7 @@ Non-goals:
 - Unit tests cover empty transcription preserving existing draft content.
 - Unit tests cover recording-state gating for transcription apply actions.
 - Unit tests cover deleting a replaced local recording while preserving the replacement file and avoiding deletion when the replacement is the same file.
+- Unit tests cover draft recording capture eligibility for active and finished recording states.
 - Local checks: `git diff --check`, `xcodebuild -list -project EasyNote.xcodeproj`, docs link sanity, and secret scan.
 - Full unit tests rely on GitHub CI if the local simulator runtime remains unavailable.
 - Real recording and permission behavior remains a manual real-device or compatible-simulator smoke check.

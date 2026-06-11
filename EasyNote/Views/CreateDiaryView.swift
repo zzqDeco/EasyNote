@@ -702,11 +702,17 @@ struct CreateDiaryView: View {
     }
 
     private func captureActiveVoiceRecordingIfNeeded() {
-        guard viewModel.isRecording else {
+        guard DiaryViewModel.shouldCaptureVoiceRecordingDraft(
+            isRecording: viewModel.isRecording,
+            recordingState: viewModel.recordingState
+        ) else {
             return
         }
 
-        viewModel.stopRecording()
+        if viewModel.isRecording {
+            viewModel.stopRecording()
+        }
+
         let recording = viewModel.captureVoiceRecordingDraft()
         replacePendingVoiceRecording(with: recording.audioURL)
     }
