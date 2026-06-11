@@ -383,10 +383,6 @@ struct EasyNoteTests {
     }
 
     private func publisherFailure<Output>(_ publisher: AnyPublisher<Output, OpenAIError>) async -> OpenAIError? {
-        final class CancellableBox {
-            var cancellable: AnyCancellable?
-        }
-
         let box = CancellableBox()
 
         return await withCheckedContinuation { continuation in
@@ -403,6 +399,10 @@ struct EasyNoteTests {
                 receiveValue: { _ in }
             )
         }
+    }
+
+    private final class CancellableBox {
+        var cancellable: AnyCancellable?
     }
 
 }
