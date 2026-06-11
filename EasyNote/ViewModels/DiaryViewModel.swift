@@ -123,7 +123,9 @@ class DiaryViewModel: ObservableObject {
             speechService.requestPermissions { [weak self] isGranted in
                 guard let self else { return }
                 if isGranted {
-                    _ = self.startRecording()
+                    self.recordingState = .idle
+                    self.errorMessage = nil
+                    self.showToast(message: "语音和麦克风权限已开启，请再次点击语音输入开始录音")
                 } else {
                     let message = self.speechPermissionStatus.failureMessage
                         ?? self.microphonePermissionStatus.failureMessage
