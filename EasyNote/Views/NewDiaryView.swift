@@ -231,9 +231,7 @@ struct NewDiaryView: View {
     private var recordingButton: some View {
         Button {
             if viewModel.isRecording {
-                viewModel.stopRecording()
-                let recording = viewModel.captureVoiceRecordingDraft()
-                pendingVoiceRecordingAudioURL = recording.audioURL
+                captureActiveVoiceRecordingIfNeeded()
                 isShowingTranscription = true
             } else {
                 if !viewModel.startRecording() {
@@ -407,6 +405,8 @@ struct NewDiaryView: View {
     
     // 保存日记条目
     private func saveEntry() {
+        captureActiveVoiceRecordingIfNeeded()
+
         _ = viewModel.createNewEntry(
             title: title,
             content: content,
@@ -443,6 +443,16 @@ struct NewDiaryView: View {
             // 默认行为，直接添加格式
             content += format
         }
+    }
+
+    private func captureActiveVoiceRecordingIfNeeded() {
+        guard viewModel.isRecording else {
+            return
+        }
+
+        viewModel.stopRecording()
+        let recording = viewModel.captureVoiceRecordingDraft()
+        pendingVoiceRecordingAudioURL = recording.audioURL
     }
 }
 

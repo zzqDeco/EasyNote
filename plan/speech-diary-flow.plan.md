@@ -23,7 +23,7 @@ Non-goals:
 ## Implementation
 
 - Add `SpeechPermissionStatus` and `MicrophonePermissionStatus` enums and publish them from `SpeechRecognitionService`.
-- `SpeechRecognitionService.startRecording()` refreshes permission state and fails with a user-visible error before touching the audio engine when permissions are unavailable.
+- `SpeechRecognitionService.startRecording()` refreshes permission state, lets first-run `.notDetermined` prompts complete, and fails with a user-visible error before touching the audio engine when permissions are denied or restricted.
 - `DiaryViewModel` mirrors permission state, owns recording actions, captures pending recording output for unsaved draft entries, and saves audio/transcription to the current entry only when one exists.
 - Add `DiaryTranscriptionApplyMode` and `DiaryDraftComposer` for pure insert/replace text composition.
 - `CreateDiaryView`, `DiaryEditView`, and the still-compiled `NewDiaryView` use explicit `onApplyTranscription` closures instead of `NotificationCenter` content application.
@@ -40,6 +40,6 @@ Non-goals:
 
 ## Assumptions
 
-- A new diary draft can capture an audio URL before the entry exists and attach that URL at save time.
+- A new diary draft can capture an audio URL before the entry exists and attach that URL at save time, including when the user taps Save while recording is still active.
 - Insert mode appends transcription after a blank line when the draft already has content.
 - Existing `transcribedText` remains the handoff surface for raw transcription and AI-refined text until a later ViewModel/DI cleanup.

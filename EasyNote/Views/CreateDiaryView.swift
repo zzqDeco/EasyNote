@@ -602,6 +602,8 @@ struct CreateDiaryView: View {
     }
     
     private func saveEntry() {
+        captureActiveVoiceRecordingIfNeeded()
+
         // 创建新的日记条目，使用选定的日期
         _ = viewModel.createNewEntry(
             title: title,
@@ -690,15 +692,23 @@ struct CreateDiaryView: View {
     // 提取功能逻辑到单独的方法中
     private func handleRecordingAction() {
         if viewModel.isRecording {
-            viewModel.stopRecording()
-            let recording = viewModel.captureVoiceRecordingDraft()
-            pendingVoiceRecordingAudioURL = recording.audioURL
+            captureActiveVoiceRecordingIfNeeded()
             isShowingTranscription = true
         } else {
             if !viewModel.startRecording() {
                 isShowingTranscription = true
             }
         }
+    }
+
+    private func captureActiveVoiceRecordingIfNeeded() {
+        guard viewModel.isRecording else {
+            return
+        }
+
+        viewModel.stopRecording()
+        let recording = viewModel.captureVoiceRecordingDraft()
+        pendingVoiceRecordingAudioURL = recording.audioURL
     }
     
     // 辅助方法显示提示信息
