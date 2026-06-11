@@ -302,7 +302,16 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         // 启动音频引擎
         audioEngine.prepare()
         
-        try audioEngine.start()
+        do {
+            try audioEngine.start()
+        } catch {
+            tearDownRecordingPipeline(cancelRecognition: true)
+            discardRecordingFile()
+            recordingState = .error(error)
+            isRecording = false
+            throw error
+        }
+
         recordingState = .recording
         isRecording = true
     }

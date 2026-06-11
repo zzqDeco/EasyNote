@@ -437,10 +437,13 @@ class DiaryViewModel: ObservableObject {
     
     @discardableResult
     func deleteEntry(_ entry: DiaryEntry) -> Bool {
+        let audioURL = entry.audioURL
         modelContext.delete(entry)
         guard saveContext() else {
             return false
         }
+
+        Self.removeRecordingFile(at: audioURL)
 
         if let index = diaryEntries.firstIndex(where: { $0.id == entry.id }) {
             diaryEntries.remove(at: index)

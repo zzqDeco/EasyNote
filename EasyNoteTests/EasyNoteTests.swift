@@ -325,6 +325,22 @@ struct EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: replacementURL.path))
     }
 
+    @Test func diaryRecordingCleanupKeepsFileWhenReplacementMatchesPrevious() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let recordingURL = directory.appendingPathComponent("recording.caf")
+        try Data([0x03]).write(to: recordingURL)
+
+        DiaryViewModel.removeReplacedRecordingFile(previous: recordingURL, replacement: recordingURL)
+
+        #expect(FileManager.default.fileExists(atPath: recordingURL.path))
+    }
+
     @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
         let entries = [
             makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),

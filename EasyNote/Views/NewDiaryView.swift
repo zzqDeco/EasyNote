@@ -463,7 +463,7 @@ struct NewDiaryView: View {
 
         viewModel.stopRecording()
         let recording = viewModel.captureVoiceRecordingDraft()
-        pendingVoiceRecordingAudioURL = recording.audioURL
+        replacePendingVoiceRecording(with: recording.audioURL)
     }
 
     private func cleanupDraftRecordingIfNeeded() {
@@ -474,6 +474,15 @@ struct NewDiaryView: View {
         }
 
         pendingVoiceRecordingAudioURL = nil
+    }
+
+    private func replacePendingVoiceRecording(with audioURL: URL?) {
+        guard let audioURL else {
+            return
+        }
+
+        DiaryViewModel.removeReplacedRecordingFile(previous: pendingVoiceRecordingAudioURL, replacement: audioURL)
+        pendingVoiceRecordingAudioURL = audioURL
     }
 }
 

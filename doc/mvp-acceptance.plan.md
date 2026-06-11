@@ -62,6 +62,7 @@ Before treating a branch as a usable app build, manually verify:
 - record speech on a real device or compatible simulator, stop recording, confirm transcription appears before it is applied
 - save a new diary while recording is active and confirm the entry keeps the captured audio URL
 - cancel a new diary after stopping a recording and confirm the unsaved local recording is not retained by any diary entry
+- delete a saved voice diary and confirm its local recording is not retained by any diary entry
 - deny speech or microphone permission and confirm the editor shows a user-visible reason without losing typed content
 - insert transcription into existing diary content and confirm it appends after the existing text
 - replace diary content with transcription and confirm the replace is explicit
