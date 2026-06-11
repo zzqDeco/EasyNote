@@ -67,6 +67,8 @@ Views and ViewModels should not manage `AVAudioEngine` or `SFSpeechAudioBufferRe
 
 Transcription content is not written into diary body text automatically. Views must apply transcribed or AI-refined text through an explicit insert or replace action, using the shared diary draft composition helper. Insert/replace actions should stay unavailable while speech recognition is still recording or processing partial results.
 
+Draft recording files are owned by diary save flows after capture. Unsaved new-entry drafts should delete their pending local `.caf` file on dismissal, and replacing an existing diary recording should remove the previously referenced local `.caf` only after the new reference is saved successfully.
+
 ## CloudKit Boundary
 
 `CloudKitService` owns CloudKit account checks, audio file sync, diary sync, and quota/user-id helpers. Debug mode currently sets simulation mode and reports iCloud unavailable for free-developer-account workflows.

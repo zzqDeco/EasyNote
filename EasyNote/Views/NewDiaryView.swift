@@ -33,6 +33,7 @@ struct NewDiaryView: View {
     @State private var isPreviewMode = false
     @State private var isShowingTranscription = false
     @State private var pendingVoiceRecordingAudioURL: URL?
+    @State private var didSaveEntry = false
     
     // 录音相关状态
     @State private var contentSaveWorkItem: DispatchWorkItem?
@@ -119,6 +120,10 @@ struct NewDiaryView: View {
                     }
                 }
             }
+        }
+        .onDisappear {
+            cleanupDraftRecordingIfNeeded()
+            viewModel.transcribedText = ""
         }
     }
     
@@ -407,7 +412,7 @@ struct NewDiaryView: View {
     private func saveEntry() {
         captureActiveVoiceRecordingIfNeeded()
 
-        _ = viewModel.createNewEntry(
+        let newEntry = viewModel.createNewEntry(
             title: title,
             content: content,
             mood: moodStringValue(for: selectedMood),
@@ -415,6 +420,12 @@ struct NewDiaryView: View {
             creationDate: selectedDate,
             audioURL: pendingVoiceRecordingAudioURL
         )
+
+        guard newEntry != nil else {
+            return
+        }
+
+        didSaveEntry = true
         
         dismiss()
     }
@@ -453,6 +464,16 @@ struct NewDiaryView: View {
         viewModel.stopRecording()
         let recording = viewModel.captureVoiceRecordingDraft()
         pendingVoiceRecordingAudioURL = recording.audioURL
+    }
+
+    private func cleanupDraftRecordingIfNeeded() {
+        captureActiveVoiceRecordingIfNeeded()
+
+        if !didSaveEntry {
+            viewModel.discardRecordingFile(at: pendingVoiceRecordingAudioURL)
+        }
+
+        pendingVoiceRecordingAudioURL = nil
     }
 }
 

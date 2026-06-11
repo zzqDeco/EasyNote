@@ -172,6 +172,37 @@ class DiaryViewModel: ObservableObject {
         return VoiceRecordingDraft(audioURL: audioURL, transcription: transcription)
     }
 
+    static func removeRecordingFile(at url: URL?) {
+        guard let url, url.isFileURL, url.pathExtension.lowercased() == "caf" else {
+            return
+        }
+
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+        } catch {
+            print("无法删除录音文件: \(error.localizedDescription)")
+        }
+    }
+
+    static func removeReplacedRecordingFile(previous: URL?, replacement: URL?) {
+        guard let previous else {
+            return
+        }
+
+        if let replacement,
+           previous.standardizedFileURL == replacement.standardizedFileURL {
+            return
+        }
+
+        removeRecordingFile(at: previous)
+    }
+
+    func discardRecordingFile(at url: URL?) {
+        Self.removeRecordingFile(at: url)
+    }
+
     func applyTranscription(to content: String, mode: DiaryTranscriptionApplyMode) -> String {
         let nextContent = DiaryDraftComposer.apply(
             transcription: transcribedText,
@@ -247,10 +278,13 @@ class DiaryViewModel: ObservableObject {
             return false
         }
         
+        let previousAudioURL = entry.audioURL
         let recording = captureVoiceRecordingDraft()
+        var replacementAudioURL: URL?
         
         if let url = recording.audioURL, FileManager.default.fileExists(atPath: url.path) {
             entry.audioURL = url
+            replacementAudioURL = url
             print("成功保存录音到: \(url.path)")
         } else if recording.audioURL != nil {
             print("音频文件URL无效或文件不存在")
@@ -267,8 +301,16 @@ class DiaryViewModel: ObservableObject {
             // }
         }
         
-        // 保存上下文
-        return saveContext()
+        let didSave = saveContext()
+        if didSave, replacementAudioURL != nil {
+            Self.removeReplacedRecordingFile(previous: previousAudioURL, replacement: replacementAudioURL)
+        } else if !didSave,
+                  let replacementAudioURL,
+                  previousAudioURL?.standardizedFileURL != replacementAudioURL.standardizedFileURL {
+            Self.removeRecordingFile(at: replacementAudioURL)
+        }
+
+        return didSave
     }
     
     // MARK: - AI功能

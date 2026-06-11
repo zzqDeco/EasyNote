@@ -27,6 +27,7 @@ struct CreateDiaryView: View {
     @State private var isRecording = false
     @State private var isShowingTranscription = false
     @State private var pendingVoiceRecordingAudioURL: URL?
+    @State private var didSaveEntry = false
     @State private var titleHeightChanged = false
     @State private var selectedDate = Date()
     @State private var isShowingDatePicker = false
@@ -106,15 +107,7 @@ struct CreateDiaryView: View {
         }
         .onDisappear {
             removeKeyboardObservers()
-            
-            // 停止录音（如果正在录音）
-            if viewModel.isRecording {
-                viewModel.stopRecording()
-                let recording = viewModel.captureVoiceRecordingDraft()
-                pendingVoiceRecordingAudioURL = recording.audioURL
-            }
-            
-            // 清空转写内容，避免在下次打开时显示
+            cleanupDraftRecordingIfNeeded()
             viewModel.transcribedText = ""
         }
         // 监听主题色变化，强制视图刷新
@@ -131,6 +124,7 @@ struct CreateDiaryView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("取消") {
+                    isPresented = false
                     dismiss()
                 }
                 .foregroundColor(.red)
@@ -605,7 +599,7 @@ struct CreateDiaryView: View {
         captureActiveVoiceRecordingIfNeeded()
 
         // 创建新的日记条目，使用选定的日期
-        _ = viewModel.createNewEntry(
+        let newEntry = viewModel.createNewEntry(
             title: title,
             content: content,
             mood: moodStringValue(for: mood),
@@ -613,6 +607,12 @@ struct CreateDiaryView: View {
             creationDate: selectedDate,
             audioURL: pendingVoiceRecordingAudioURL
         )
+
+        guard newEntry != nil else {
+            return
+        }
+
+        didSaveEntry = true
         
         // 清空转写文本
         viewModel.transcribedText = ""
@@ -709,6 +709,16 @@ struct CreateDiaryView: View {
         viewModel.stopRecording()
         let recording = viewModel.captureVoiceRecordingDraft()
         pendingVoiceRecordingAudioURL = recording.audioURL
+    }
+
+    private func cleanupDraftRecordingIfNeeded() {
+        captureActiveVoiceRecordingIfNeeded()
+
+        if !didSaveEntry {
+            viewModel.discardRecordingFile(at: pendingVoiceRecordingAudioURL)
+        }
+
+        pendingVoiceRecordingAudioURL = nil
     }
     
     // 辅助方法显示提示信息
