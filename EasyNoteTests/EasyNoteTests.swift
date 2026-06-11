@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import Combine
 @testable import EasyNote
 
 struct EasyNoteTests {
@@ -164,6 +165,109 @@ struct EasyNoteTests {
         #expect(session.validateIntegrity())
     }
 
+    @Test func aiResponseParserParsesDiaryAnalysisJSON() async throws {
+        let result = AIResponseParser.parseDiaryAnalysis("""
+        {"moods":["开心","期待"],"tags":["工作","成长"]}
+        """)
+
+        #expect(result.moods == ["开心", "期待"])
+        #expect(result.tags == ["工作", "成长"])
+    }
+
+    @Test func aiResponseParserParsesDiaryAnalysisFencedJSON() async throws {
+        let result = AIResponseParser.parseDiaryAnalysis("""
+        下面是分析结果：
+        ```json
+        {
+          "moods": ["平静", "满足"],
+          "tags": ["生活", "复盘"]
+        }
+        ```
+        """)
+
+        #expect(result.moods == ["平静", "满足"])
+        #expect(result.tags == ["生活", "复盘"])
+    }
+
+    @Test func aiResponseParserFallsBackForBrokenDiaryAnalysis() async throws {
+        let result = AIResponseParser.parseDiaryAnalysis("今天整体不错，但这里没有结构化 JSON")
+        let defaults = AIResponseParser.defaultDiaryAnalysis()
+
+        #expect(result.moods == defaults.moods)
+        #expect(result.tags == defaults.tags)
+    }
+
+    @Test func aiResponseParserParsesRecommendationsJSONInsideText() async throws {
+        let result = AIResponseParser.parseRecommendations("""
+        可以参考下面的结构化结果：
+        {
+          "recommendations": ["散步20分钟", "读一章书"],
+          "todos": ["整理书桌", "记录今日复盘"]
+        }
+        祝你今天顺利。
+        """)
+
+        #expect(result.recommendations == ["散步20分钟", "读一章书"])
+        #expect(result.todos == ["整理书桌", "记录今日复盘"])
+    }
+
+    @Test func aiResponseParserParsesRecommendationsFencedJSON() async throws {
+        let result = AIResponseParser.parseRecommendations("""
+        ```json
+        {
+          "recommendations": ["做一次拉伸", "联系朋友"],
+          "todos": ["补充饮水", "规划明天"]
+        }
+        ```
+        """)
+
+        #expect(result.recommendations == ["做一次拉伸", "联系朋友"])
+        #expect(result.todos == ["补充饮水", "规划明天"])
+    }
+
+    @Test func aiResponseParserParsesChineseRecommendationLists() async throws {
+        let result = AIResponseParser.parseRecommendations("""
+        推荐活动：
+        1. 散步20分钟
+        2. 阅读一章书
+        待办事项：
+        - 整理书桌
+        - 记录今日复盘
+        """)
+
+        #expect(result.recommendations == ["散步20分钟", "阅读一章书"])
+        #expect(result.todos == ["整理书桌", "记录今日复盘"])
+    }
+
+    @Test func aiResponseParserFallsBackForBrokenRecommendations() async throws {
+        let result = AIResponseParser.parseRecommendations("完全损坏的模型输出")
+        let defaults = AIResponseParser.defaultRecommendations()
+
+        #expect(result.recommendations == defaults.recommendations)
+        #expect(result.todos == defaults.todos)
+    }
+
+    @Test func openAIServiceFailsClosedWhenAPIKeyIsEmpty() async throws {
+        let defaults = UserDefaults.standard
+        let previousKey = defaults.string(forKey: "openai_api_key")
+        defaults.removeObject(forKey: "openai_api_key")
+        defer {
+            if let previousKey {
+                defaults.set(previousKey, forKey: "openai_api_key")
+            } else {
+                defaults.removeObject(forKey: "openai_api_key")
+            }
+        }
+
+        let error = await publisherFailure(OpenAIService().generateSummary(from: "测试内容"))
+
+        guard case let .apiError(message) = try #require(error) else {
+            Issue.record("Expected empty API key to produce OpenAIError.apiError")
+            return
+        }
+        #expect(message == "请在设置中添加DeepSeek API密钥后再使用AI功能")
+    }
+
     @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
         let entries = [
             makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),
@@ -276,6 +380,29 @@ struct EasyNoteTests {
             isRecurring: isRecurring,
             recurringInterval: recurringInterval
         )
+    }
+
+    private func publisherFailure<Output>(_ publisher: AnyPublisher<Output, OpenAIError>) async -> OpenAIError? {
+        let box = CancellableBox()
+
+        return await withCheckedContinuation { continuation in
+            box.cancellable = publisher.sink(
+                receiveCompletion: { completion in
+                    defer { box.cancellable = nil }
+                    switch completion {
+                    case .failure(let error):
+                        continuation.resume(returning: error)
+                    case .finished:
+                        continuation.resume(returning: nil)
+                    }
+                },
+                receiveValue: { _ in }
+            )
+        }
+    }
+
+    private final class CancellableBox {
+        var cancellable: AnyCancellable?
     }
 
 }

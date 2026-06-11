@@ -30,6 +30,16 @@ struct SettingsView: View {
                     SecureField("DeepSeek API密钥", text: $apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+
+                    if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("未配置 API 密钥")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("API 密钥已配置")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                     
                     if !apiKey.isEmpty {
                         Button("清除API密钥", role: .destructive) {
@@ -64,4 +74,4 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView(themeManager: ThemeManager())
-} 
+}

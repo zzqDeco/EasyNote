@@ -42,6 +42,15 @@ Current request contract:
 
 Current response contract expects `choices[0].message.content`. Malformed or failed responses are mapped to `OpenAIError` and should become user-visible errors or controlled fallbacks.
 
+`AIResponseParser` owns the model-content parsing contract:
+
+- Diary analysis accepts pure JSON, Markdown fenced JSON, or surrounding prose containing a JSON object with non-empty `moods` and `tags` arrays.
+- Recommendations accept pure JSON, Markdown fenced JSON, surrounding prose containing a JSON object, or Chinese section/list output with recommendation and todo sections.
+- Completely malformed diary analysis returns the stable default moods/tags.
+- Completely malformed recommendations return the stable default recommendations/todos.
+
+The parser is pure and must not read API keys, send network requests, or inspect provider transport metadata.
+
 ## Speech Boundary
 
 `SpeechRecognitionService` owns:

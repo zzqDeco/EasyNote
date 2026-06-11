@@ -23,7 +23,7 @@ EasyNote 是一个 SwiftUI iOS 笔记原型，聚合日记、待办、语音转�
 
 1. 使用 Xcode 打开 `EasyNote.xcodeproj`。
 2. 选择 `EasyNote` scheme 和 iOS Simulator。
-3. 在应用的“设置”页填写 DeepSeek API 密钥后再使用 AI 功能。
+3. 在应用的“设置”页填写 DeepSeek API 密钥后再使用 AI 功能；未配置时 AI 调用会在本地失败并提示配置密钥。
 
 仓库不包含默认 API 密钥。此前本地原型中出现过硬编码密钥，该密钥应视为已泄露并轮换。
 

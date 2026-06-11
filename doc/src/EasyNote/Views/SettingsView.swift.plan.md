@@ -14,6 +14,7 @@
 
 - The API key is stored only in local `UserDefaults`.
 - The clear action removes the local key by assigning an empty string.
+- The key input uses `SecureField` and shows only configured/unconfigured status, never the full key.
 - The AI section uses explicit `Section { } header: { } footer: { }` syntax for Xcode 16.4 compatibility.
 
 ## Tests
