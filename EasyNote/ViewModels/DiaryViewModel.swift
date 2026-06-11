@@ -173,10 +173,11 @@ class DiaryViewModel: ObservableObject {
     }
 
     static func removeRecordingFile(at url: URL?) {
-        guard let url, url.isFileURL, url.pathExtension.lowercased() == "caf" else {
+        guard isRemovableLocalRecordingFile(url) else {
             return
         }
 
+        guard let url else { return }
         do {
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
@@ -184,6 +185,14 @@ class DiaryViewModel: ObservableObject {
         } catch {
             print("无法删除录音文件: \(error.localizedDescription)")
         }
+    }
+
+    static func isRemovableLocalRecordingFile(_ url: URL?) -> Bool {
+        guard let url, url.isFileURL else {
+            return false
+        }
+
+        return ["caf", "m4a"].contains(url.pathExtension.lowercased())
     }
 
     static func removeReplacedRecordingFile(previous: URL?, replacement: URL?) {

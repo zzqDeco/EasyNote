@@ -322,6 +322,15 @@ struct EasyNoteTests {
         }
     }
 
+    @Test func speechRecognitionSessionRejectsStaleCallbacks() async throws {
+        let activeSessionID = UUID()
+        let staleSessionID = UUID()
+
+        #expect(SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: activeSessionID))
+        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: staleSessionID))
+        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: nil, callback: activeSessionID))
+    }
+
     @Test func diaryRecordingCleanupRemovesPreviousFileWithoutDeletingReplacement() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -355,6 +364,22 @@ struct EasyNoteTests {
         DiaryViewModel.removeReplacedRecordingFile(previous: recordingURL, replacement: recordingURL)
 
         #expect(FileManager.default.fileExists(atPath: recordingURL.path))
+    }
+
+    @Test func diaryRecordingCleanupRemovesLegacyM4AFile() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let legacyRecordingURL = directory.appendingPathComponent("recording_legacy.m4a")
+        try Data([0x04]).write(to: legacyRecordingURL)
+
+        DiaryViewModel.removeRecordingFile(at: legacyRecordingURL)
+
+        #expect(!FileManager.default.fileExists(atPath: legacyRecordingURL.path))
     }
 
     @Test func diaryRecordingDraftCaptureIncludesActiveAndFinishedStates() async throws {

@@ -118,6 +118,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     private var recordingAudioFile: AVAudioFile?
     private var recordingURL: URL?
     private var isInputTapInstalled = false
+    private var activeRecognitionSessionID: UUID?
     
     @Published var recordingState: RecordingState = .idle {
         didSet {
@@ -243,6 +244,8 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         
         // 创建识别请求
+        let recognitionSessionID = UUID()
+        activeRecognitionSessionID = recognitionSessionID
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         
         // 配置音频引擎和输入节点
@@ -260,6 +263,9 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         // 开始识别任务
         recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self = self else { return }
+            guard Self.isCurrentRecognitionSession(active: self.activeRecognitionSessionID, callback: recognitionSessionID) else {
+                return
+            }
             
             var isFinal = false
             
@@ -374,6 +380,11 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         recognitionRequest = nil
         recognitionTask = nil
         recordingAudioFile = nil
+        activeRecognitionSessionID = nil
+    }
+
+    static func isCurrentRecognitionSession(active: UUID?, callback: UUID) -> Bool {
+        active == callback
     }
 
     private func discardRecordingFile() {
