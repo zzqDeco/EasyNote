@@ -18,6 +18,7 @@
 - Recording state and transcription changes are also broadcast through `NotificationCenter`.
 - `startRecording()` should request first-run permissions without auto-starting recording from the permission callback.
 - Audio buffers are written to a local recording file while they are also streamed to speech recognition.
+- File creation and buffer-write failures tear down the audio engine, input tap, recognition request, and recognition task before reporting the error.
 - `saveRecordingWithTranscription()` validates that the recording URL exists before returning it.
 
 ## Tests

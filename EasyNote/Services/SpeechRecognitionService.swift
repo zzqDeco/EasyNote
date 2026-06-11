@@ -108,6 +108,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     
     private var recordingAudioFile: AVAudioFile?
     private var recordingURL: URL?
+    private var isInputTapInstalled = false
     
     @Published var recordingState: RecordingState = .idle {
         didSet {
@@ -198,7 +199,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     func startRecording() throws {
         // 重置状态
         transcribedText = ""
-        recordingAudioFile = nil
+        tearDownRecordingPipeline(cancelRecognition: true)
         recordingURL = nil
         refreshPermissionStatus()
 
@@ -259,13 +260,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             }
             
             if error != nil || isFinal {
-                self.audioEngine.stop()
-                inputNode.removeTap(onBus: 0)
-                
-                self.recognitionRequest = nil
-                self.recognitionTask = nil
-                self.recordingAudioFile = nil
-                
+                self.tearDownRecordingPipeline(cancelRecognition: false)
                 self.recordingState = .finished
                 self.isRecording = false
             }
@@ -281,6 +276,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             recordingAudioFile = try AVAudioFile(forWriting: recordingFileURL, settings: recordingFormat.settings)
             recordingURL = recordingFileURL
         } catch {
+            tearDownRecordingPipeline(cancelRecognition: true)
             recordingState = .error(error)
             throw error
         }
@@ -294,11 +290,14 @@ class SpeechRecognitionService: NSObject, ObservableObject {
                 try self.recordingAudioFile?.write(from: buffer)
             } catch {
                 DispatchQueue.main.async {
+                    self.discardRecordingFile()
+                    self.tearDownRecordingPipeline(cancelRecognition: true)
                     self.recordingState = .error(error)
                     self.isRecording = false
                 }
             }
         }
+        isInputTapInstalled = true
         
         // 启动音频引擎
         audioEngine.prepare()
@@ -311,6 +310,11 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     func stopRecording() throws {
         audioEngine.stop()
         recognitionRequest?.endAudio()
+        if isInputTapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            isInputTapInstalled = false
+        }
+        recordingAudioFile = nil
         recordingState = .processing
         isRecording = false
     }
@@ -334,5 +338,31 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             code: code,
             userInfo: [NSLocalizedDescriptionKey: message]
         )
+    }
+
+    private func tearDownRecordingPipeline(cancelRecognition: Bool) {
+        audioEngine.stop()
+
+        if isInputTapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            isInputTapInstalled = false
+        }
+
+        if cancelRecognition {
+            recognitionTask?.cancel()
+        }
+
+        recognitionRequest = nil
+        recognitionTask = nil
+        recordingAudioFile = nil
+    }
+
+    private func discardRecordingFile() {
+        guard let recordingURL else {
+            return
+        }
+
+        try? FileManager.default.removeItem(at: recordingURL)
+        self.recordingURL = nil
     }
 }

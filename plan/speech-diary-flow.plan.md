@@ -28,7 +28,7 @@ Non-goals:
 - Add `DiaryTranscriptionApplyMode` and `DiaryDraftComposer` for pure insert/replace text composition.
 - `CreateDiaryView`, `DiaryEditView`, and the still-compiled `NewDiaryView` use explicit `onApplyTranscription` closures instead of `NotificationCenter` content application.
 - `TranscriptionDisplayView` displays recording, processing, finished, error, and permission failure states, and only exposes insert/replace actions after speech recognition is no longer recording or processing.
-- `SpeechRecognitionService` writes audio buffers to a local file during recording so saved diary entries only receive existing recording URLs.
+- `SpeechRecognitionService` writes audio buffers to a local file during recording so saved diary entries only receive existing recording URLs, and tears down the audio pipeline on file setup/write failures.
 
 ## Test Plan
 
