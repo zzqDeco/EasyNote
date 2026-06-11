@@ -15,12 +15,13 @@
 
 - `DiaryViewModel` owns diary CRUD, current entry state, speech save integration, AI diary actions, and CloudKit entry points.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
-- `TodoViewModel` owns focused todo CRUD and recurrence.
-- `ExploreViewModel` owns recommendation state and todo projection for the former Explore screen.
+- `TodoViewModel` owns focused todo CRUD, recurrence, and todo list state.
+- `ExploreViewModel` owns recommendation generation and cached recommendation state.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
 - `ChatSessionViewModel` uses an in-memory fallback context only when no context is injected.
 - `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
-- `TodoViewModel` and `ExploreViewModel` share the same recurrence planning helper for completed recurring todos.
+- Todo filtering belongs to the pure `TodoFilter` helper, not to `ExploreViewModel`.
+- Todo recurrence planning belongs to `TodoRecurrencePlanner` and is invoked from `TodoViewModel`.
 
 ## Tests
 

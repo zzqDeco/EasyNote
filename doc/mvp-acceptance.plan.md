@@ -55,6 +55,8 @@ Before treating a branch as a usable app build, manually verify:
 - filter diaries by tag, mood, favorite state, and date range, then clear filters
 - create and complete a todo
 - create a recurring todo and complete it once
+- switch todo segments for today, overdue, upcoming, no-date, recurring, and completed groups
+- create a todo from a recommendation and confirm it appears in the expected todo group
 - configure and clear the DeepSeek API key in Settings
 - start AI actions with an empty key and confirm the failure is user-visible
 - record or simulate speech transcription permissions on a real device or compatible simulator
