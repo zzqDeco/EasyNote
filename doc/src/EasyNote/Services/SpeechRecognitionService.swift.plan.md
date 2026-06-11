@@ -20,7 +20,8 @@
 - Audio buffers are written to a local recording file while they are also streamed to speech recognition.
 - File creation, buffer-write, and audio-engine startup failures tear down the audio engine, input tap, recognition request, and recognition task before reporting the error.
 - Audio-engine startup failure should discard the just-created local recording file before returning the error.
-- `saveRecordingWithTranscription()` validates that the recording URL exists before returning it.
+- `saveRecordingWithTranscription()` validates that the recording URL exists before returning it, then clears service ownership of that URL so the diary flow owns later cleanup.
+- `startRecording()` should discard any stale unclaimed local recording file before creating a new recording.
 
 ## Tests
 

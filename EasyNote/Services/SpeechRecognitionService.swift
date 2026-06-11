@@ -200,7 +200,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         // 重置状态
         transcribedText = ""
         tearDownRecordingPipeline(cancelRecognition: true)
-        recordingURL = nil
+        discardRecordingFile()
         refreshPermissionStatus()
 
         if case .denied = speechPermissionStatus, let message = speechPermissionStatus.failureMessage {
@@ -338,6 +338,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             }
         }
         
+        recordingURL = nil
         return (validURL, transcribedText)
     }
 
