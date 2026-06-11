@@ -306,6 +306,22 @@ struct EasyNoteTests {
         #expect(RecordingState.error(NSError(domain: "test", code: 1)).allowsTranscriptionActions)
     }
 
+    @Test func recordingStateCompletionPreservesExistingError() async throws {
+        let error = NSError(domain: "test", code: 1)
+
+        if case .error = RecordingState.error(error).afterRecognitionCompletion {
+            #expect(true)
+        } else {
+            Issue.record("Expected recognition completion to preserve an existing recording error")
+        }
+
+        if case .finished = RecordingState.processing.afterRecognitionCompletion {
+            #expect(true)
+        } else {
+            Issue.record("Expected non-error recognition completion to resolve as finished")
+        }
+    }
+
     @Test func diaryRecordingCleanupRemovesPreviousFileWithoutDeletingReplacement() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)

@@ -25,6 +25,15 @@ enum RecordingState {
             return true
         }
     }
+
+    var afterRecognitionCompletion: RecordingState {
+        switch self {
+        case .error:
+            return self
+        case .idle, .recording, .processing, .finished:
+            return .finished
+        }
+    }
 }
 
 enum SpeechPermissionStatus: Equatable {
@@ -261,7 +270,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             
             if error != nil || isFinal {
                 self.tearDownRecordingPipeline(cancelRecognition: false)
-                self.recordingState = .finished
+                self.recordingState = self.recordingState.afterRecognitionCompletion
                 self.isRecording = false
             }
         }

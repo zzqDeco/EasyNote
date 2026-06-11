@@ -22,6 +22,7 @@
 - Audio-engine startup failure should discard the just-created local recording file before returning the error.
 - `saveRecordingWithTranscription()` validates that the recording URL exists before returning it, then clears service ownership of that URL so the diary flow owns later cleanup.
 - `startRecording()` should discard any stale unclaimed local recording file before creating a new recording.
+- Recognition completion callbacks should not overwrite an existing recording error with a finished state after teardown/cancellation.
 
 ## Tests
 

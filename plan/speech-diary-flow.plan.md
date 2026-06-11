@@ -28,7 +28,7 @@ Non-goals:
 - Add `DiaryTranscriptionApplyMode` and `DiaryDraftComposer` for pure insert/replace text composition.
 - `CreateDiaryView`, `DiaryEditView`, and the still-compiled `NewDiaryView` use explicit `onApplyTranscription` closures instead of `NotificationCenter` content application.
 - `TranscriptionDisplayView` displays recording, processing, finished, error, and permission failure states, and only exposes insert/replace actions after speech recognition is no longer recording or processing.
-- `SpeechRecognitionService` writes audio buffers to a local file during recording so saved diary entries only receive existing recording URLs, tears down the audio pipeline on file setup/write/start failures, and deletes stale unclaimed recording files before starting a replacement recording.
+- `SpeechRecognitionService` writes audio buffers to a local file during recording so saved diary entries only receive existing recording URLs, tears down the audio pipeline on file setup/write/start failures, preserves recording errors after recognition cancellation callbacks, and deletes stale unclaimed recording files before starting a replacement recording.
 - New-entry views capture active or finished recordings, delete abandoned or superseded captured `.caf` files on cancel/dismiss or re-record, existing diary entries delete replaced recording files only after the new recording reference saves successfully, and diary deletion removes its saved local recording file after the model delete saves.
 
 ## Test Plan
@@ -39,6 +39,7 @@ Non-goals:
 - Unit tests cover recording-state gating for transcription apply actions.
 - Unit tests cover deleting a replaced local recording while preserving the replacement file and avoiding deletion when the replacement is the same file.
 - Unit tests cover draft recording capture eligibility for active and finished recording states.
+- Unit tests cover preserving an existing recording error when recognition completion callbacks arrive after teardown.
 - Local checks: `git diff --check`, `xcodebuild -list -project EasyNote.xcodeproj`, docs link sanity, and secret scan.
 - Full unit tests rely on GitHub CI if the local simulator runtime remains unavailable.
 - Real recording and permission behavior remains a manual real-device or compatible-simulator smoke check.
