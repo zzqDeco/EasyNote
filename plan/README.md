@@ -15,12 +15,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [ai-parser-and-settings-hardening.plan.md](ai-parser-and-settings-hardening.plan.md) | Extract AI parsing into tested helpers and harden empty-key settings behavior | Active |
+| [speech-diary-flow.plan.md](speech-diary-flow.plan.md) | Make speech transcription a permission-aware explicit diary draft input flow | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [ai-parser-and-settings-hardening.plan.md](ai-parser-and-settings-hardening.plan.md) | Extract AI parsing into tested helpers and harden empty-key settings behavior | Delivered |
 | [todo-focus-view.plan.md](todo-focus-view.plan.md) | Add focused todo category views and remove duplicated todo CRUD from ExploreViewModel | Delivered |
 | [diary-search-filter.plan.md](diary-search-filter.plan.md) | Add stable diary search, filtering, and sort behavior without mutating source entries | Delivered |
 | [local-core-reliability.plan.md](local-core-reliability.plan.md) | Tighten local ViewModel context binding, save failures, and recurring todo completion | Delivered |

@@ -4,6 +4,7 @@
 
 - Own speech-recognition and microphone permission requests.
 - Manage `AVAudioEngine`, recognition requests, recording state, and transcribed text publication.
+- Publish speech and microphone permission state for UI display.
 - Provide a single save hook returning the current audio URL and transcription.
 
 ## Boundaries
@@ -15,9 +16,10 @@
 
 - Speech recognition locale is currently `zh-CN`.
 - Recording state and transcription changes are also broadcast through `NotificationCenter`.
+- `startRecording()` should fail before audio-engine setup when speech or microphone permission is unavailable.
 - `saveRecordingWithTranscription()` validates that the recording URL exists before returning it.
 
 ## Tests
 
 - Permission and recording behavior requires manual device/simulator verification.
-- ViewModel tests should mock this service after dependency injection is introduced.
+- Pure draft-composition tests cover applying transcription text without requiring microphone access.

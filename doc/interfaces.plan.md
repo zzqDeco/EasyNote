@@ -58,10 +58,14 @@ The parser is pure and must not read API keys, send network requests, or inspect
 - `SFSpeechRecognizer` configured for `zh-CN`
 - microphone/speech permission requests
 - `RecordingState`
+- observable speech permission state: authorized, denied, restricted, or not determined
+- observable microphone permission state: granted, denied, or not determined
 - published transcription text
 - recording file URL validation
 
 Views and ViewModels should not manage `AVAudioEngine` or `SFSpeechAudioBufferRecognitionRequest` directly.
+
+Transcription content is not written into diary body text automatically. Views must apply transcribed or AI-refined text through an explicit insert or replace action, using the shared diary draft composition helper.
 
 ## CloudKit Boundary
 

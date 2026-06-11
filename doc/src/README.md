@@ -20,9 +20,11 @@ Source notes are required for public contracts, cross-module boundaries, persist
 
 ## ViewModels And Views
 
+- [DiaryDraftComposer](EasyNote/ViewModels/DiaryDraftComposer.swift.plan.md)
 - [ViewModels Overview](EasyNote/ViewModels/README.plan.md)
 - [Views Overview](EasyNote/Views/README.plan.md)
 - [SettingsView](EasyNote/Views/SettingsView.swift.plan.md)
+- [TranscriptionDisplayView](EasyNote/Views/TranscriptionDisplayView.swift.plan.md)
 
 ## Tests And CI
 

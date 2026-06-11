@@ -268,6 +268,36 @@ struct EasyNoteTests {
         #expect(message == "请在设置中添加DeepSeek API密钥后再使用AI功能")
     }
 
+    @Test func diaryDraftComposerInsertsTranscriptionAfterExistingContent() async throws {
+        let result = DiaryDraftComposer.apply(
+            transcription: "今天完成了语音记录",
+            to: "已有正文",
+            mode: .insert
+        )
+
+        #expect(result == "已有正文\n\n今天完成了语音记录")
+    }
+
+    @Test func diaryDraftComposerReplacesContentWithTranscription() async throws {
+        let result = DiaryDraftComposer.apply(
+            transcription: "替换后的正文",
+            to: "已有正文",
+            mode: .replace
+        )
+
+        #expect(result == "替换后的正文")
+    }
+
+    @Test func diaryDraftComposerKeepsContentForEmptyTranscription() async throws {
+        let result = DiaryDraftComposer.apply(
+            transcription: "   \n ",
+            to: "已有正文",
+            mode: .replace
+        )
+
+        #expect(result == "已有正文")
+    }
+
     @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
         let entries = [
             makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),

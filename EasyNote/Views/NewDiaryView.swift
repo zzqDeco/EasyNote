@@ -32,6 +32,7 @@ struct NewDiaryView: View {
     @State private var selectedDate = Date()
     @State private var isPreviewMode = false
     @State private var isShowingTranscription = false
+    @State private var pendingVoiceRecordingAudioURL: URL?
     
     // 录音相关状态
     @State private var contentSaveWorkItem: DispatchWorkItem?
@@ -231,9 +232,13 @@ struct NewDiaryView: View {
         Button {
             if viewModel.isRecording {
                 viewModel.stopRecording()
+                let recording = viewModel.captureVoiceRecordingDraft()
+                pendingVoiceRecordingAudioURL = recording.audioURL
                 isShowingTranscription = true
             } else {
-                viewModel.startRecording()
+                if !viewModel.startRecording() {
+                    isShowingTranscription = true
+                }
             }
         } label: {
             HStack {
@@ -299,7 +304,10 @@ struct NewDiaryView: View {
                 TranscriptionDisplayView(
                     viewModel: viewModel,
                     isShowingTranscription: isShowingTranscription,
-                    content: content
+                    content: content,
+                    onApplyTranscription: { mode in
+                        content = viewModel.applyTranscription(to: content, mode: mode)
+                    }
                 )
             }
         }
@@ -404,7 +412,8 @@ struct NewDiaryView: View {
             content: content,
             mood: moodStringValue(for: selectedMood),
             tags: tags,
-            creationDate: selectedDate
+            creationDate: selectedDate,
+            audioURL: pendingVoiceRecordingAudioURL
         )
         
         dismiss()
@@ -490,4 +499,4 @@ extension DiaryEntry {
 private struct DiaryEntryKeys {
     static var suggestedMoods: UnsafeRawPointer = UnsafeRawPointer(bitPattern: "DiaryEntry.suggestedMoods".hashValue)!
     static var suggestedTags: UnsafeRawPointer = UnsafeRawPointer(bitPattern: "DiaryEntry.suggestedTags".hashValue)!
-} 
+}

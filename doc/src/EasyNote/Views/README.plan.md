@@ -14,6 +14,7 @@
 
 - `ContentView` is the tab composition root.
 - Diary views cover list, create, edit, detail, markdown, mood, and tag flows.
+- Diary transcription UI should present insert/replace actions explicitly; it should not mutate diary body text through implicit notifications.
 - Todo views cover recommendations, detail/edit, and unified add.
 - Chat views cover AI exploration and persisted session selection.
 - Settings owns local theme and DeepSeek API key entry.

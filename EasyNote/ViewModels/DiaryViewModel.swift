@@ -22,6 +22,8 @@ class DiaryViewModel: ObservableObject {
     @Published var isRecording = false
     @Published var transcribedText = ""
     @Published var recordingState: RecordingState = .idle
+    @Published var speechPermissionStatus: SpeechPermissionStatus = .notDetermined
+    @Published var microphonePermissionStatus: MicrophonePermissionStatus = .notDetermined
     @Published var isProcessingAI = false
     @Published var isSyncing = false
     @Published var errorMessage: String?
@@ -76,6 +78,12 @@ class DiaryViewModel: ObservableObject {
             
             speechService.$isRecording
                 .assign(to: &$isRecording)
+
+            speechService.$speechPermissionStatus
+                .assign(to: &$speechPermissionStatus)
+
+            speechService.$microphonePermissionStatus
+                .assign(to: &$microphonePermissionStatus)
             
             // 绑定AI处理状态
             openAIService.$isProcessing
@@ -109,13 +117,16 @@ class DiaryViewModel: ObservableObject {
     
     // MARK: - 语音录制功能
     
-    func startRecording() {
+    @discardableResult
+    func startRecording() -> Bool {
         do {
             try speechService.startRecording()
+            return true
         } catch {
             // 处理任何可能从语音服务抛出的错误
             self.errorMessage = "录音启动失败: \(error.localizedDescription)"
-            self.showToast(message: "录音启动失败，请检查权限设置")
+            self.showToast(message: error.localizedDescription)
+            return false
         }
     }
     
@@ -125,6 +136,46 @@ class DiaryViewModel: ObservableObject {
         } catch {
             self.errorMessage = "停止录音失败: \(error.localizedDescription)"
         }
+    }
+
+    @discardableResult
+    func captureVoiceRecordingDraft() -> VoiceRecordingDraft {
+        let (audioURL, transcription) = speechService.saveRecordingWithTranscription()
+
+        if !transcription.isEmpty {
+            transcribedText = transcription
+        }
+
+        return VoiceRecordingDraft(audioURL: audioURL, transcription: transcription)
+    }
+
+    func applyTranscription(to content: String, mode: DiaryTranscriptionApplyMode) -> String {
+        let nextContent = DiaryDraftComposer.apply(
+            transcription: transcribedText,
+            to: content,
+            mode: mode
+        )
+
+        if nextContent != content {
+            transcribedText = ""
+        }
+
+        return nextContent
+    }
+
+    @discardableResult
+    func applyTranscriptionToCurrentEntry(mode: DiaryTranscriptionApplyMode) -> Bool {
+        guard let entry = currentEntry else {
+            errorMessage = "没有正在编辑的日记"
+            return false
+        }
+
+        let nextContent = applyTranscription(to: entry.content, mode: mode)
+        guard nextContent != entry.content else {
+            return true
+        }
+
+        return updateCurrentEntry(content: nextContent)
     }
     
     // MARK: - 日记管理
@@ -173,19 +224,19 @@ class DiaryViewModel: ObservableObject {
             return false
         }
         
-        let (audioURL, transcription) = speechService.saveRecordingWithTranscription()
+        let recording = captureVoiceRecordingDraft()
         
-        if let url = audioURL, FileManager.default.fileExists(atPath: url.path) {
+        if let url = recording.audioURL, FileManager.default.fileExists(atPath: url.path) {
             entry.audioURL = url
             print("成功保存录音到: \(url.path)")
-        } else if audioURL != nil {
+        } else if recording.audioURL != nil {
             print("音频文件URL无效或文件不存在")
         }
         
         // 保存原始识别文本到transcribedText，而不是直接修改entry.content
-        if !transcription.isEmpty {
+        if !recording.transcription.isEmpty {
             // 将识别文本保存到transcribedText供用户预览
-            self.transcribedText = transcription
+            self.transcribedText = recording.transcription
             
             // 不再自动润色文本，由用户手动触发
             // if !transcription.isEmpty && !openAIService.apiKey.isEmpty {
@@ -593,13 +644,21 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 创建新日记条目的完整方法
-    func createNewEntry(title: String, content: String, mood: String?, tags: [String], creationDate: Date = Date()) -> DiaryEntry? {
+    func createNewEntry(
+        title: String,
+        content: String,
+        mood: String?,
+        tags: [String],
+        creationDate: Date = Date(),
+        audioURL: URL? = nil
+    ) -> DiaryEntry? {
         let newEntry = DiaryEntry(title: title)
         newEntry.content = content
         newEntry.mood = mood
         newEntry.tags = tags
         newEntry.creationDate = creationDate
         newEntry.lastModified = creationDate
+        newEntry.audioURL = audioURL
         
         modelContext.insert(newEntry)
         guard saveContext() else {

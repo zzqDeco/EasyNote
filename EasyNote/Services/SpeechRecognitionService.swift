@@ -18,6 +18,79 @@ enum RecordingState {
     case error(Error)
 }
 
+enum SpeechPermissionStatus: Equatable {
+    case authorized
+    case denied
+    case restricted
+    case notDetermined
+
+    init(_ status: SFSpeechRecognizerAuthorizationStatus) {
+        switch status {
+        case .authorized:
+            self = .authorized
+        case .denied:
+            self = .denied
+        case .restricted:
+            self = .restricted
+        case .notDetermined:
+            self = .notDetermined
+        @unknown default:
+            self = .restricted
+        }
+    }
+
+    var isAvailable: Bool {
+        self == .authorized
+    }
+
+    var failureMessage: String? {
+        switch self {
+        case .authorized:
+            return nil
+        case .denied:
+            return "语音识别权限已关闭，请在系统设置中允许语音识别"
+        case .restricted:
+            return "当前设备限制了语音识别功能"
+        case .notDetermined:
+            return "语音识别权限尚未授权"
+        }
+    }
+}
+
+enum MicrophonePermissionStatus: Equatable {
+    case granted
+    case denied
+    case notDetermined
+
+    init(_ permission: AVAudioSession.RecordPermission) {
+        switch permission {
+        case .granted:
+            self = .granted
+        case .denied:
+            self = .denied
+        case .undetermined:
+            self = .notDetermined
+        @unknown default:
+            self = .denied
+        }
+    }
+
+    var isAvailable: Bool {
+        self == .granted
+    }
+
+    var failureMessage: String? {
+        switch self {
+        case .granted:
+            return nil
+        case .denied:
+            return "麦克风权限已关闭，请在系统设置中允许麦克风访问"
+        case .notDetermined:
+            return "麦克风权限尚未授权"
+        }
+    }
+}
+
 class SpeechRecognitionService: NSObject, ObservableObject {
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -42,15 +115,25 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             NotificationCenter.default.post(name: Notification.Name("SpeechRecordingStatusChanged"), object: isRecording)
         }
     }
+    @Published var speechPermissionStatus: SpeechPermissionStatus = .notDetermined
+    @Published var microphonePermissionStatus: MicrophonePermissionStatus = .notDetermined
     
     override init() {
         super.init()
         requestPermissions()
     }
     
+    func refreshPermissionStatus() {
+        speechPermissionStatus = SpeechPermissionStatus(SFSpeechRecognizer.authorizationStatus())
+        microphonePermissionStatus = MicrophonePermissionStatus(AVAudioSession.sharedInstance().recordPermission)
+    }
+
     private func requestPermissions() {
+        refreshPermissionStatus()
+
         SFSpeechRecognizer.requestAuthorization { status in
             DispatchQueue.main.async {
+                self.speechPermissionStatus = SpeechPermissionStatus(status)
                 switch status {
                 case .authorized:
                     print("语音识别权限已授权")
@@ -64,6 +147,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         if #available(iOS 17.0, *) {
             AVAudioApplication.requestRecordPermission { granted in
                 DispatchQueue.main.async {
+                    self.microphonePermissionStatus = granted ? .granted : .denied
                     if granted {
                         print("录音权限已授权")
                     } else {
@@ -75,6 +159,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             // 旧版本 iOS 继续使用旧 API
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 DispatchQueue.main.async {
+                    self.microphonePermissionStatus = granted ? .granted : .denied
                     if granted {
                         print("录音权限已授权")
                     } else {
@@ -88,6 +173,19 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     func startRecording() throws {
         // 重置状态
         transcribedText = ""
+        refreshPermissionStatus()
+
+        if let message = speechPermissionStatus.failureMessage {
+            let error = permissionError(message: message, code: 10)
+            recordingState = .error(error)
+            throw error
+        }
+
+        if let message = microphonePermissionStatus.failureMessage {
+            let error = permissionError(message: message, code: 11)
+            recordingState = .error(error)
+            throw error
+        }
         
         // 检查语音识别器是否可用
         guard let speechRecognizer = speechRecognizer, speechRecognizer.isAvailable else {
@@ -178,4 +276,12 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         
         return (validURL, transcribedText)
     }
-} 
+
+    private func permissionError(message: String, code: Int) -> NSError {
+        NSError(
+            domain: "SpeechRecognitionService",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    }
+}

@@ -14,6 +14,7 @@
 ## Behavior Notes
 
 - `DiaryViewModel` owns diary CRUD, current entry state, speech save integration, AI diary actions, and CloudKit entry points.
+- `DiaryViewModel` mirrors speech permission state and keeps transcription/AI-refined text separate from diary body content until the user explicitly inserts or replaces it.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
 - `TodoViewModel` owns focused todo CRUD, recurrence, and todo list state.
 - `ExploreViewModel` owns recommendation generation and cached recommendation state.

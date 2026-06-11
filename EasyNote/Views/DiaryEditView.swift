@@ -70,7 +70,14 @@ struct DiaryEditView: View {
                         TranscriptionDisplayView(
                             viewModel: viewModel,
                             isShowingTranscription: isShowingTranscription,
-                            content: editedContent
+                            content: editedContent,
+                            onApplyTranscription: { mode in
+                                let nextContent = viewModel.applyTranscription(to: editedContent, mode: mode)
+                                guard nextContent != editedContent else { return }
+                                editedContent = nextContent
+                                viewModel.updateCurrentEntry(content: nextContent)
+                                hasChanges = true
+                            }
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .animation(.easeInOut, value: isShowingTranscription)
@@ -152,9 +159,6 @@ struct DiaryEditView: View {
         .onAppear {
             setupOnAppear()
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("UseTranscribedContent"))) { notification in
-            handleTranscribedContent(notification)
-        }
         .onDisappear {
             cleanupOnDisappear()
         }
@@ -170,7 +174,9 @@ struct DiaryEditView: View {
                     viewModel.saveVoiceRecordingToCurrentEntry()
                     isShowingTranscription = true
                 } else {
-                    viewModel.startRecording()
+                    if !viewModel.startRecording() {
+                        isShowingTranscription = true
+                    }
                 }
             } label: {
                 Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
@@ -543,26 +549,6 @@ struct DiaryEditView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
     
-    private func handleTranscribedContent(_ notification: Notification) {
-        if let transcribedText = notification.object as? String,
-           let isReplacing = notification.userInfo?["replace"] as? Bool {
-            if isReplacing {
-                // 替换当前内容
-                editedContent = transcribedText
-            } else {
-                // 追加到当前内容
-                if !editedContent.isEmpty {
-                    editedContent += "\n\n" + transcribedText
-                } else {
-                    editedContent = transcribedText
-                }
-            }
-            // 更新条目内容
-            viewModel.updateCurrentEntry(content: editedContent)
-            hasChanges = true
-        }
-    }
-    
     private func setupOnAppear() {
         // 确保编辑内容始终与条目内容同步
         editedContent = entry.content
@@ -610,4 +596,4 @@ struct DiaryEditView: View {
     )
     .environmentObject(PreviewHelpers.tabManager)
     .modelContainer(PreviewHelpers.previewContainer)
-} 
+}
