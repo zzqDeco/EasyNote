@@ -128,48 +128,49 @@ class DiaryViewModel: ObservableObject {
     
     // MARK: - 日记管理
     
-    func createNewEntry(title: String, creationDate: Date = Date()) {
+    @discardableResult
+    func createNewEntry(title: String, creationDate: Date = Date()) -> Bool {
         let newEntry = DiaryEntry(title: title)
         newEntry.creationDate = creationDate
         newEntry.lastModified = creationDate
-        currentEntry = newEntry
         modelContext.insert(newEntry)
-        saveContext()
-    }
-    
-    func updateCurrentEntry(content: String? = nil, mood: String? = nil, tags: [String]? = nil) {
-        guard currentEntry != nil else { return }
-        
-        // 创建一个后台任务处理数据更新
-        Task {
-            // 复制需要更新的数据
-            let contentCopy = content
-            let moodCopy = mood 
-            let tagsCopy = tags?.map { $0 } // 创建标签的深拷贝
-            
-            // 在主线程更新UI和数据
-            await MainActor.run { [weak self] in
-                guard let self = self, let entry = self.currentEntry else { return }
-                
-                if let contentCopy = contentCopy {
-                    entry.content = contentCopy
-                }
-                
-                if let moodCopy = moodCopy {
-                    entry.mood = moodCopy
-                }
-                
-                if let tagsCopy = tagsCopy {
-                    entry.tags = tagsCopy
-                }
-                
-                self.saveContext()
-            }
+        guard saveContext() else {
+            return false
         }
+
+        currentEntry = newEntry
+        return true
     }
     
-    func saveVoiceRecordingToCurrentEntry() {
-        guard let entry = currentEntry else { return }
+    @discardableResult
+    func updateCurrentEntry(content: String? = nil, mood: String? = nil, tags: [String]? = nil) -> Bool {
+        guard let entry = currentEntry else {
+            errorMessage = "没有正在编辑的日记"
+            return false
+        }
+
+        if let content {
+            entry.content = content
+        }
+
+        if let mood {
+            entry.mood = mood
+        }
+
+        if let tags {
+            entry.tags = tags
+        }
+
+        entry.lastModified = Date()
+        return saveContext()
+    }
+    
+    @discardableResult
+    func saveVoiceRecordingToCurrentEntry() -> Bool {
+        guard let entry = currentEntry else {
+            errorMessage = "没有正在编辑的日记"
+            return false
+        }
         
         let (audioURL, transcription) = speechService.saveRecordingWithTranscription()
         
@@ -192,7 +193,7 @@ class DiaryViewModel: ObservableObject {
         }
         
         // 保存上下文
-        saveContext()
+        return saveContext()
     }
     
     // MARK: - AI功能
@@ -228,7 +229,8 @@ class DiaryViewModel: ObservableObject {
                 receiveValue: { [weak self] summary in
                     guard let self = self, let entry = self.currentEntry else { return }
                     entry.aiSummary = summary
-                    self.saveContext()
+                    entry.lastModified = Date()
+                    _ = self.saveContext()
                 }
             )
             .store(in: &cancellables)
@@ -316,17 +318,22 @@ class DiaryViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    func deleteEntry(_ entry: DiaryEntry) {
+    @discardableResult
+    func deleteEntry(_ entry: DiaryEntry) -> Bool {
+        modelContext.delete(entry)
+        guard saveContext() else {
+            return false
+        }
+
         if let index = diaryEntries.firstIndex(where: { $0.id == entry.id }) {
             diaryEntries.remove(at: index)
         }
         
-        modelContext.delete(entry)
-        saveContext()
-        
         if currentEntry?.id == entry.id {
             currentEntry = nil
         }
+
+        return true
     }
     
     private func loadDiaryEntries() {
@@ -338,25 +345,16 @@ class DiaryViewModel: ObservableObject {
         }
     }
     
-    private func saveContext() {
-        // 创建一个后台任务来处理保存操作
-        Task {
-            do {
-                // 在后台线程准备数据
-                // 此处可以进行一些数据验证或预处理
-                
-                // 切换到主线程进行实际的保存操作
-                // 因为SwiftData/CoreData要求在创建对象的同一线程上保存
-                try await MainActor.run { [weak self] in
-                    guard let self = self else { return }
-                    try self.modelContext.save()
-                }
-            } catch {
-                // 错误处理也在主线程上进行
-                await MainActor.run { [weak self] in
-                    self?.errorMessage = "保存日记失败: \(error.localizedDescription)"
-                }
-            }
+    @discardableResult
+    private func saveContext() -> Bool {
+        do {
+            try modelContext.save()
+            errorMessage = nil
+            return true
+        } catch {
+            modelContext.rollback()
+            errorMessage = "保存日记失败: \(error.localizedDescription)"
+            return false
         }
     }
     
@@ -436,7 +434,7 @@ class DiaryViewModel: ObservableObject {
                     }
                     
                     // 保存更改
-                    self.saveContext()
+                    _ = self.saveContext()
                 }
             )
             .store(in: &cancellables)
@@ -514,9 +512,11 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 收藏/取消收藏日记
-    func toggleFavorite(_ entry: DiaryEntry) {
+    @discardableResult
+    func toggleFavorite(_ entry: DiaryEntry) -> Bool {
         entry.isFavorite.toggle()
-        saveContext()
+        entry.lastModified = Date()
+        return saveContext()
     }
     
     // 刷新数据
@@ -584,7 +584,7 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 创建新日记条目的完整方法
-    func createNewEntry(title: String, content: String, mood: String?, tags: [String], creationDate: Date = Date()) -> DiaryEntry {
+    func createNewEntry(title: String, content: String, mood: String?, tags: [String], creationDate: Date = Date()) -> DiaryEntry? {
         let newEntry = DiaryEntry(title: title)
         newEntry.content = content
         newEntry.mood = mood
@@ -593,8 +593,11 @@ class DiaryViewModel: ObservableObject {
         newEntry.lastModified = creationDate
         
         modelContext.insert(newEntry)
+        guard saveContext() else {
+            return nil
+        }
+
         diaryEntries.insert(newEntry, at: 0)
-        saveContext()
         
         return newEntry
     }
@@ -607,4 +610,4 @@ class DiaryViewModel: ObservableObject {
             self.showToast = false
         }
     }
-} 
+}
