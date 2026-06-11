@@ -483,33 +483,41 @@ class DiaryViewModel: ObservableObject {
     
     // 搜索日记条目
     func searchEntries(_ query: String) {
-        diaryQuery.searchText = query
+        updateDiaryQuery { $0.searchText = query }
     }
     
     // 按标签筛选
     func filterByTag(_ tag: String?) {
-        diaryQuery.selectedTag = tag
+        updateDiaryQuery { $0.selectedTag = tag }
     }
     
     func filterByMood(_ mood: String?) {
-        diaryQuery.selectedMood = mood
+        updateDiaryQuery { $0.selectedMood = mood }
     }
 
     func setFavoriteOnly(_ favoriteOnly: Bool) {
-        diaryQuery.favoriteOnly = favoriteOnly
+        updateDiaryQuery { $0.favoriteOnly = favoriteOnly }
     }
 
     func setDateRange(start: Date?, end: Date?) {
-        diaryQuery.startDate = start
-        diaryQuery.endDate = end
+        updateDiaryQuery {
+            $0.startDate = start
+            $0.endDate = end
+        }
     }
 
     func sortEntries(by option: DiaryEntryQuery.SortOption) {
-        diaryQuery.sortOption = option
+        updateDiaryQuery { $0.sortOption = option }
     }
 
     func resetDiaryQuery() {
         diaryQuery = DiaryEntryQuery()
+    }
+
+    private func updateDiaryQuery(_ update: (inout DiaryEntryQuery) -> Void) {
+        var nextQuery = diaryQuery
+        update(&nextQuery)
+        diaryQuery = nextQuery
     }
     
     // 收藏/取消收藏日记

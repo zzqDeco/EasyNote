@@ -11,21 +11,11 @@ import SwiftData
 struct DiaryListView: View {
     @ObservedObject var viewModel: DiaryViewModel
     @EnvironmentObject private var tabManager: TabSelectionManager
-    @State private var searchText = ""
     @State private var isAddingEntry = false
     @State private var showingDeleteConfirmation = false
     @State private var entryToDelete: DiaryEntry?
     @State private var scrollToTop = false
-    @State private var selectedFilterTag: String?
-    @State private var selectedFilterMood: String?
-    @State private var favoriteOnly = false
-    @State private var useStartDate = false
-    @State private var useEndDate = false
-    @State private var startDate = Date()
-    @State private var endDate = Date()
-    @State private var selectedSortOption = DiaryEntryQuery.SortOption.dateDesc
     @State private var showingFilterSheet = false
-    @State private var showingSearchResults = false
     
     // 用于动画的状态
     @State private var listOpacity = 0.0
@@ -50,10 +40,7 @@ struct DiaryListView: View {
                     }
                 }
                 .animation(.easeInOut(duration: 0.3), value: viewModel.entries.count)
-                .animation(.easeInOut(duration: 0.3), value: selectedFilterTag)
-                .animation(.easeInOut(duration: 0.3), value: selectedFilterMood)
-                .animation(.easeInOut(duration: 0.3), value: favoriteOnly)
-                .animation(.easeInOut(duration: 0.3), value: selectedSortOption)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.diaryQuery)
             }
             .navigationTitle("日记")
             .navigationBarTitleDisplayMode(.large)
@@ -94,20 +81,17 @@ struct DiaryListView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary)
             
-            TextField("搜索日记...", text: $searchText)
+            TextField("搜索日记...", text: searchTextBinding)
                 .textFieldStyle(.plain)
                 .submitLabel(.search)
                 .onSubmit {
-                    applySearch()
-                }
-                .onChange(of: searchText) { _, _ in
-                    applySearch()
+                    refreshTrigger.toggle()
                 }
             
-            if !searchText.isEmpty {
+            if !viewModel.diaryQuery.searchText.isEmpty {
                 Button {
-                    searchText = ""
-                    applySearch()
+                    viewModel.searchEntries("")
+                    refreshTrigger.toggle()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
@@ -141,7 +125,7 @@ struct DiaryListView: View {
                 // 排序显示
                 HStack {
                     Image(systemName: "arrow.up.arrow.down")
-                    Text(selectedSortOption.rawValue)
+                    Text(viewModel.diaryQuery.sortOption.rawValue)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -149,12 +133,12 @@ struct DiaryListView: View {
                 .cornerRadius(12)
                 
                 // 标签筛选显示
-                if let tag = selectedFilterTag {
+                if let tag = viewModel.diaryQuery.selectedTag {
                     HStack {
                         Text("标签: \(tag)")
                         Button {
-                            selectedFilterTag = nil
-                            applyFilters()
+                            viewModel.filterByTag(nil)
+                            refreshTrigger.toggle()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.caption)
@@ -166,12 +150,12 @@ struct DiaryListView: View {
                     .cornerRadius(12)
                 }
 
-                if let mood = selectedFilterMood {
+                if let mood = viewModel.diaryQuery.selectedMood {
                     HStack {
                         Text("心情: \(moodDisplayText(mood))")
                         Button {
-                            selectedFilterMood = nil
-                            applyFilters()
+                            viewModel.filterByMood(nil)
+                            refreshTrigger.toggle()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.caption)
@@ -183,12 +167,12 @@ struct DiaryListView: View {
                     .cornerRadius(12)
                 }
 
-                if favoriteOnly {
+                if viewModel.diaryQuery.favoriteOnly {
                     HStack {
                         Text("仅收藏")
                         Button {
-                            favoriteOnly = false
-                            applyFilters()
+                            viewModel.setFavoriteOnly(false)
+                            refreshTrigger.toggle()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.caption)
@@ -200,13 +184,12 @@ struct DiaryListView: View {
                     .cornerRadius(12)
                 }
 
-                if useStartDate || useEndDate {
+                if viewModel.diaryQuery.startDate != nil || viewModel.diaryQuery.endDate != nil {
                     HStack {
                         Text(dateRangeLabel)
                         Button {
-                            useStartDate = false
-                            useEndDate = false
-                            applyFilters()
+                            viewModel.setDateRange(start: nil, end: nil)
+                            refreshTrigger.toggle()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.caption)
@@ -218,12 +201,12 @@ struct DiaryListView: View {
                     .cornerRadius(12)
                 }
                 
-                if showingSearchResults {
+                if hasSearchText {
                     HStack {
-                        Text("搜索: \(searchText)")
+                        Text("搜索: \(viewModel.diaryQuery.searchText)")
                         Button {
-                            searchText = ""
-                            applySearch()
+                            viewModel.searchEntries("")
+                            refreshTrigger.toggle()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.caption)
@@ -242,7 +225,7 @@ struct DiaryListView: View {
     
     private var diaryList: some View {
         List {
-            if selectedSortOption == .dateDesc || selectedSortOption == .dateAsc {
+            if viewModel.diaryQuery.sortOption == .dateDesc || viewModel.diaryQuery.sortOption == .dateAsc {
                 ForEach(sortedGroupedDateKeys, id: \.self) { dateString in
                     Section(header: Text(dateString)) {
                         ForEach(groupedEntries[dateString] ?? []) { entry in
@@ -323,8 +306,8 @@ struct DiaryListView: View {
                     Section(header: Text("按日期排序")) {
                         ForEach(DiaryEntryQuery.SortOption.allCases) { option in
                             Button {
-                                selectedSortOption = option
-                                applyFilters()
+                                viewModel.sortEntries(by: option)
+                                refreshTrigger.toggle()
                                 showingFilterSheet = false
                             } label: {
                                 HStack {
@@ -333,7 +316,7 @@ struct DiaryListView: View {
                                     
                                     Spacer()
                                     
-                                    if selectedSortOption == option {
+                                    if viewModel.diaryQuery.sortOption == option {
                                         Image(systemName: "checkmark")
                                             .foregroundColor(.blue)
                                     }
@@ -345,8 +328,8 @@ struct DiaryListView: View {
                     if !allTags.isEmpty {
                         Section(header: Text("按标签筛选")) {
                             Button {
-                                selectedFilterTag = nil
-                                applyFilters()
+                                viewModel.filterByTag(nil)
+                                refreshTrigger.toggle()
                                 showingFilterSheet = false
                             } label: {
                                 HStack {
@@ -355,7 +338,7 @@ struct DiaryListView: View {
                                     
                                     Spacer()
                                     
-                                    if selectedFilterTag == nil {
+                                    if viewModel.diaryQuery.selectedTag == nil {
                                         Image(systemName: "checkmark")
                                             .foregroundColor(.blue)
                                     }
@@ -364,8 +347,8 @@ struct DiaryListView: View {
                             
                             ForEach(allTags, id: \.self) { tag in
                                 Button {
-                                    selectedFilterTag = tag
-                                    applyFilters()
+                                    viewModel.filterByTag(tag)
+                                    refreshTrigger.toggle()
                                     showingFilterSheet = false
                                 } label: {
                                     HStack {
@@ -374,7 +357,7 @@ struct DiaryListView: View {
                                         
                                         Spacer()
                                         
-                                        if selectedFilterTag == tag {
+                                        if viewModel.diaryQuery.selectedTag == tag {
                                             Image(systemName: "checkmark")
                                                 .foregroundColor(.blue)
                                         }
@@ -387,8 +370,8 @@ struct DiaryListView: View {
                     if !allMoods.isEmpty {
                         Section(header: Text("按心情筛选")) {
                             Button {
-                                selectedFilterMood = nil
-                                applyFilters()
+                                viewModel.filterByMood(nil)
+                                refreshTrigger.toggle()
                                 showingFilterSheet = false
                             } label: {
                                 HStack {
@@ -397,7 +380,7 @@ struct DiaryListView: View {
 
                                     Spacer()
 
-                                    if selectedFilterMood == nil {
+                                    if viewModel.diaryQuery.selectedMood == nil {
                                         Image(systemName: "checkmark")
                                             .foregroundColor(.blue)
                                     }
@@ -406,8 +389,8 @@ struct DiaryListView: View {
 
                             ForEach(allMoods, id: \.self) { mood in
                                 Button {
-                                    selectedFilterMood = mood
-                                    applyFilters()
+                                    viewModel.filterByMood(mood)
+                                    refreshTrigger.toggle()
                                     showingFilterSheet = false
                                 } label: {
                                     HStack {
@@ -416,7 +399,7 @@ struct DiaryListView: View {
 
                                         Spacer()
 
-                                        if selectedFilterMood == mood {
+                                        if viewModel.diaryQuery.selectedMood == mood {
                                             Image(systemName: "checkmark")
                                                 .foregroundColor(.blue)
                                         }
@@ -427,35 +410,20 @@ struct DiaryListView: View {
                     }
 
                     Section(header: Text("收藏")) {
-                        Toggle("仅显示收藏", isOn: $favoriteOnly)
-                            .onChange(of: favoriteOnly) { _, _ in
-                                applyFilters()
-                            }
+                        Toggle("仅显示收藏", isOn: favoriteOnlyBinding)
                     }
 
                     Section(header: Text("日期范围")) {
-                        Toggle("开始日期", isOn: $useStartDate)
-                            .onChange(of: useStartDate) { _, _ in
-                                applyFilters()
-                            }
+                        Toggle("开始日期", isOn: startDateEnabledBinding)
 
-                        if useStartDate {
-                            DatePicker("从", selection: $startDate, displayedComponents: .date)
-                                .onChange(of: startDate) { _, _ in
-                                    applyFilters()
-                                }
+                        if viewModel.diaryQuery.startDate != nil {
+                            DatePicker("从", selection: startDateBinding, displayedComponents: .date)
                         }
 
-                        Toggle("结束日期", isOn: $useEndDate)
-                            .onChange(of: useEndDate) { _, _ in
-                                applyFilters()
-                            }
+                        Toggle("结束日期", isOn: endDateEnabledBinding)
 
-                        if useEndDate {
-                            DatePicker("到", selection: $endDate, displayedComponents: .date)
-                                .onChange(of: endDate) { _, _ in
-                                    applyFilters()
-                                }
+                        if viewModel.diaryQuery.endDate != nil {
+                            DatePicker("到", selection: endDateBinding, displayedComponents: .date)
                         }
                     }
                     
@@ -512,7 +480,7 @@ struct DiaryListView: View {
             .swipeActions(edge: .leading) {
                 Button {
                     if viewModel.toggleFavorite(entry) {
-                        applyFilters()
+                        refreshTrigger.toggle()
                     }
                 } label: {
                     Label(
@@ -591,7 +559,7 @@ struct DiaryListView: View {
 
     private var sortedGroupedDateKeys: [String] {
         groupedEntries.keys.sorted { lhs, rhs in
-            selectedSortOption == .dateDesc ? lhs > rhs : lhs < rhs
+            viewModel.diaryQuery.sortOption == .dateDesc ? lhs > rhs : lhs < rhs
         }
     }
     
@@ -613,17 +581,83 @@ struct DiaryListView: View {
         viewModel.diaryQuery.hasActiveFilters
     }
 
+    private var hasSearchText: Bool {
+        !viewModel.diaryQuery.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var dateRangeLabel: String {
-        switch (useStartDate, useEndDate) {
-        case (true, true):
-            return "\(shortDate(startDate)) - \(shortDate(endDate))"
-        case (true, false):
-            return "从 \(shortDate(startDate))"
-        case (false, true):
-            return "到 \(shortDate(endDate))"
-        case (false, false):
+        switch (viewModel.diaryQuery.startDate, viewModel.diaryQuery.endDate) {
+        case let (start?, end?):
+            return "\(shortDate(start)) - \(shortDate(end))"
+        case let (start?, nil):
+            return "从 \(shortDate(start))"
+        case let (nil, end?):
+            return "到 \(shortDate(end))"
+        case (nil, nil):
             return ""
         }
+    }
+
+    private var searchTextBinding: Binding<String> {
+        Binding(
+            get: { viewModel.diaryQuery.searchText },
+            set: { newValue in
+                viewModel.searchEntries(newValue)
+                refreshTrigger.toggle()
+            }
+        )
+    }
+
+    private var favoriteOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.diaryQuery.favoriteOnly },
+            set: { newValue in
+                viewModel.setFavoriteOnly(newValue)
+                refreshTrigger.toggle()
+            }
+        )
+    }
+
+    private var startDateEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.diaryQuery.startDate != nil },
+            set: { enabled in
+                let start = enabled ? (viewModel.diaryQuery.startDate ?? Date()) : nil
+                viewModel.setDateRange(start: start, end: viewModel.diaryQuery.endDate)
+                refreshTrigger.toggle()
+            }
+        )
+    }
+
+    private var endDateEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.diaryQuery.endDate != nil },
+            set: { enabled in
+                let end = enabled ? (viewModel.diaryQuery.endDate ?? Date()) : nil
+                viewModel.setDateRange(start: viewModel.diaryQuery.startDate, end: end)
+                refreshTrigger.toggle()
+            }
+        )
+    }
+
+    private var startDateBinding: Binding<Date> {
+        Binding(
+            get: { viewModel.diaryQuery.startDate ?? Date() },
+            set: { newValue in
+                viewModel.setDateRange(start: newValue, end: viewModel.diaryQuery.endDate)
+                refreshTrigger.toggle()
+            }
+        )
+    }
+
+    private var endDateBinding: Binding<Date> {
+        Binding(
+            get: { viewModel.diaryQuery.endDate ?? Date() },
+            set: { newValue in
+                viewModel.setDateRange(start: viewModel.diaryQuery.startDate, end: newValue)
+                refreshTrigger.toggle()
+            }
+        )
     }
 
     private func shortDate(_ date: Date) -> String {
@@ -639,35 +673,7 @@ struct DiaryListView: View {
         return mood
     }
 
-    private func applySearch() {
-        viewModel.searchEntries(searchText)
-        showingSearchResults = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        refreshTrigger.toggle()
-    }
-
-    private func applyFilters() {
-        viewModel.filterByTag(selectedFilterTag)
-        viewModel.filterByMood(selectedFilterMood)
-        viewModel.setFavoriteOnly(favoriteOnly)
-        viewModel.setDateRange(
-            start: useStartDate ? startDate : nil,
-            end: useEndDate ? endDate : nil
-        )
-        viewModel.sortEntries(by: selectedSortOption)
-
-        // 触发列表更新动画
-        refreshTrigger.toggle()
-    }
-
     private func resetAllFilters() {
-        searchText = ""
-        selectedFilterTag = nil
-        selectedFilterMood = nil
-        favoriteOnly = false
-        useStartDate = false
-        useEndDate = false
-        selectedSortOption = .dateDesc
-        showingSearchResults = false
         viewModel.resetDiaryQuery()
         refreshTrigger.toggle()
     }
