@@ -27,6 +27,7 @@ class DiaryViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var toastMessage: String?
     @Published var showToast = false
+    @Published var diaryQuery = DiaryEntryQuery()
     
     // 取消令牌
     private var cancellables = Set<AnyCancellable>()
@@ -473,7 +474,7 @@ class DiaryViewModel: ObservableObject {
     
     // 为DiaryListView添加所需属性和方法
     var entries: [DiaryEntry] {
-        return diaryEntries
+        return diaryQuery.apply(to: diaryEntries)
     }
     
     var allEntries: [DiaryEntry] {
@@ -482,33 +483,33 @@ class DiaryViewModel: ObservableObject {
     
     // 搜索日记条目
     func searchEntries(_ query: String) {
-        if query.isEmpty {
-            loadEntries()
-            return
-        }
-        
-        // 筛选包含搜索词的条目
-        let filteredEntries = diaryEntries.filter { entry in
-            return entry.title.localizedCaseInsensitiveContains(query) ||
-                   entry.content.localizedCaseInsensitiveContains(query) ||
-                   entry.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
-        }
-        
-        diaryEntries = filteredEntries
+        diaryQuery.searchText = query
     }
     
     // 按标签筛选
-    func filterByTag(_ tag: String) {
-        let filteredEntries = diaryEntries.filter { entry in
-            return entry.tags.contains(tag)
-        }
-        
-        diaryEntries = filteredEntries
+    func filterByTag(_ tag: String?) {
+        diaryQuery.selectedTag = tag
     }
     
-    // 排序日记条目
-    func sortEntries(by comparator: (DiaryEntry, DiaryEntry) -> Bool) {
-        diaryEntries.sort(by: comparator)
+    func filterByMood(_ mood: String?) {
+        diaryQuery.selectedMood = mood
+    }
+
+    func setFavoriteOnly(_ favoriteOnly: Bool) {
+        diaryQuery.favoriteOnly = favoriteOnly
+    }
+
+    func setDateRange(start: Date?, end: Date?) {
+        diaryQuery.startDate = start
+        diaryQuery.endDate = end
+    }
+
+    func sortEntries(by option: DiaryEntryQuery.SortOption) {
+        diaryQuery.sortOption = option
+    }
+
+    func resetDiaryQuery() {
+        diaryQuery = DiaryEntryQuery()
     }
     
     // 收藏/取消收藏日记

@@ -51,6 +51,8 @@ Before treating a branch as a usable app build, manually verify:
 
 - create a diary entry
 - edit diary content, mood, and tags
+- search diary title, content, and tags
+- filter diaries by tag, mood, favorite state, and date range, then clear filters
 - create and complete a todo
 - create a recurring todo and complete it once
 - configure and clear the DeepSeek API key in Settings
