@@ -119,6 +119,27 @@ class DiaryViewModel: ObservableObject {
     
     @discardableResult
     func startRecording() -> Bool {
+        if speechPermissionStatus == .notDetermined || microphonePermissionStatus == .notDetermined {
+            speechService.requestPermissions { [weak self] isGranted in
+                guard let self else { return }
+                if isGranted {
+                    _ = self.startRecording()
+                } else {
+                    let message = self.speechPermissionStatus.failureMessage
+                        ?? self.microphonePermissionStatus.failureMessage
+                        ?? "语音录制权限未授权"
+                    self.recordingState = .error(NSError(
+                        domain: "SpeechRecognitionService",
+                        code: 12,
+                        userInfo: [NSLocalizedDescriptionKey: message]
+                    ))
+                    self.errorMessage = message
+                    self.showToast(message: message)
+                }
+            }
+            return false
+        }
+
         do {
             try speechService.startRecording()
             return true

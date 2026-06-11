@@ -262,14 +262,18 @@ struct TranscriptionDisplayView: View {
         switch viewModel.speechPermissionStatus {
         case .denied, .restricted:
             return viewModel.speechPermissionStatus.failureMessage
-        case .authorized, .notDetermined:
+        case .notDetermined:
+            return "等待系统语音识别权限授权"
+        case .authorized:
             break
         }
 
         switch viewModel.microphonePermissionStatus {
         case .denied:
             return viewModel.microphonePermissionStatus.failureMessage
-        case .granted, .notDetermined:
+        case .notDetermined:
+            return "等待系统麦克风权限授权"
+        case .granted:
             return nil
         }
     }

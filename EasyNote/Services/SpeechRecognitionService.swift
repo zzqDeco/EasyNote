@@ -128,45 +128,61 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         microphonePermissionStatus = MicrophonePermissionStatus(AVAudioSession.sharedInstance().recordPermission)
     }
 
-    private func requestPermissions() {
+    func requestPermissions(completion: ((Bool) -> Void)? = nil) {
         refreshPermissionStatus()
 
+        let group = DispatchGroup()
+        var latestSpeechStatus = speechPermissionStatus
+        var latestMicrophoneStatus = microphonePermissionStatus
+
+        group.enter()
         SFSpeechRecognizer.requestAuthorization { status in
             DispatchQueue.main.async {
-                self.speechPermissionStatus = SpeechPermissionStatus(status)
+                latestSpeechStatus = SpeechPermissionStatus(status)
+                self.speechPermissionStatus = latestSpeechStatus
                 switch status {
                 case .authorized:
                     print("语音识别权限已授权")
                 default:
                     print("语音识别权限未授权")
                 }
+                group.leave()
             }
         }
         
         // 请求麦克风权限 - 使用新的 API
+        group.enter()
         if #available(iOS 17.0, *) {
             AVAudioApplication.requestRecordPermission { granted in
                 DispatchQueue.main.async {
-                    self.microphonePermissionStatus = granted ? .granted : .denied
+                    latestMicrophoneStatus = granted ? .granted : .denied
+                    self.microphonePermissionStatus = latestMicrophoneStatus
                     if granted {
                         print("录音权限已授权")
                     } else {
                         print("录音权限未授权")
                     }
+                    group.leave()
                 }
             }
         } else {
             // 旧版本 iOS 继续使用旧 API
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 DispatchQueue.main.async {
-                    self.microphonePermissionStatus = granted ? .granted : .denied
+                    latestMicrophoneStatus = granted ? .granted : .denied
+                    self.microphonePermissionStatus = latestMicrophoneStatus
                     if granted {
                         print("录音权限已授权")
                     } else {
                         print("录音权限未授权")
                     }
+                    group.leave()
                 }
             }
+        }
+
+        group.notify(queue: .main) {
+            completion?(latestSpeechStatus.isAvailable && latestMicrophoneStatus.isAvailable)
         }
     }
     
@@ -175,13 +191,19 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         transcribedText = ""
         refreshPermissionStatus()
 
-        if let message = speechPermissionStatus.failureMessage {
+        if case .denied = speechPermissionStatus, let message = speechPermissionStatus.failureMessage {
             let error = permissionError(message: message, code: 10)
             recordingState = .error(error)
             throw error
         }
 
-        if let message = microphonePermissionStatus.failureMessage {
+        if case .restricted = speechPermissionStatus, let message = speechPermissionStatus.failureMessage {
+            let error = permissionError(message: message, code: 10)
+            recordingState = .error(error)
+            throw error
+        }
+
+        if case .denied = microphonePermissionStatus, let message = microphonePermissionStatus.failureMessage {
             let error = permissionError(message: message, code: 11)
             recordingState = .error(error)
             throw error
