@@ -129,6 +129,27 @@ struct EasyNoteTests {
         #expect(DiaryEntryQuery(startDate: june11, endDate: june11).apply(to: entries).map(\.title) == ["生活"])
     }
 
+    @Test func diaryEntryQueryIncludesSubsecondEntriesOnEndDate() async throws {
+        let calendar = Calendar.current
+        let selectedDay = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let lastFractionalSecond = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 6,
+            day: 11,
+            hour: 23,
+            minute: 59,
+            second: 59,
+            nanosecond: 500_000_000
+        )))
+        let nextMidnight = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
+        let entries = [
+            makeDiary(title: "次日", creationDate: nextMidnight),
+            makeDiary(title: "当天最后一秒", creationDate: lastFractionalSecond)
+        ]
+
+        #expect(DiaryEntryQuery(startDate: selectedDay, endDate: selectedDay).apply(to: entries).map(\.title) == ["当天最后一秒"])
+    }
+
     @Test func diaryEntryQueryCombinesSearchAndFilters() async throws {
         let entries = [
             makeDiary(title: "项目推进", content: "完成接口设计", tags: ["工作"], mood: "4", isFavorite: true),

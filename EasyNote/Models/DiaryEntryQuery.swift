@@ -55,8 +55,8 @@ struct DiaryEntryQuery: Equatable {
         }
 
         if let endDate,
-           let endOfDay = calendar.date(byAdding: DateComponents(day: 1, second: -1), to: calendar.startOfDay(for: endDate)),
-           entry.creationDate > endOfDay {
+           let startOfNextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)),
+           entry.creationDate >= startOfNextDay {
             return false
         }
 
