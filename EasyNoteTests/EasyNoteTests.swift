@@ -268,6 +268,130 @@ struct EasyNoteTests {
         #expect(message == "请在设置中添加DeepSeek API密钥后再使用AI功能")
     }
 
+    @Test func diaryDraftComposerInsertsTranscriptionAfterExistingContent() async throws {
+        let result = DiaryDraftComposer.apply(
+            transcription: "今天完成了语音记录",
+            to: "已有正文",
+            mode: .insert
+        )
+
+        #expect(result == "已有正文\n\n今天完成了语音记录")
+    }
+
+    @Test func diaryDraftComposerReplacesContentWithTranscription() async throws {
+        let result = DiaryDraftComposer.apply(
+            transcription: "替换后的正文",
+            to: "已有正文",
+            mode: .replace
+        )
+
+        #expect(result == "替换后的正文")
+    }
+
+    @Test func diaryDraftComposerKeepsContentForEmptyTranscription() async throws {
+        let result = DiaryDraftComposer.apply(
+            transcription: "   \n ",
+            to: "已有正文",
+            mode: .replace
+        )
+
+        #expect(result == "已有正文")
+    }
+
+    @Test func recordingStateAllowsTranscriptionActionsOnlyWhenStable() async throws {
+        #expect(!RecordingState.recording.allowsTranscriptionActions)
+        #expect(!RecordingState.processing.allowsTranscriptionActions)
+        #expect(RecordingState.idle.allowsTranscriptionActions)
+        #expect(RecordingState.finished.allowsTranscriptionActions)
+        #expect(RecordingState.error(NSError(domain: "test", code: 1)).allowsTranscriptionActions)
+    }
+
+    @Test func recordingStateCompletionPreservesExistingError() async throws {
+        let error = NSError(domain: "test", code: 1)
+
+        if case .error = RecordingState.error(error).afterRecognitionCompletion {
+            #expect(true)
+        } else {
+            Issue.record("Expected recognition completion to preserve an existing recording error")
+        }
+
+        if case .finished = RecordingState.processing.afterRecognitionCompletion {
+            #expect(true)
+        } else {
+            Issue.record("Expected non-error recognition completion to resolve as finished")
+        }
+    }
+
+    @Test func speechRecognitionSessionRejectsStaleCallbacks() async throws {
+        let activeSessionID = UUID()
+        let staleSessionID = UUID()
+
+        #expect(SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: activeSessionID))
+        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: staleSessionID))
+        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: nil, callback: activeSessionID))
+    }
+
+    @Test func diaryRecordingCleanupRemovesPreviousFileWithoutDeletingReplacement() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let previousURL = directory.appendingPathComponent("previous.caf")
+        let replacementURL = directory.appendingPathComponent("replacement.caf")
+        try Data([0x01]).write(to: previousURL)
+        try Data([0x02]).write(to: replacementURL)
+
+        DiaryViewModel.removeReplacedRecordingFile(previous: previousURL, replacement: replacementURL)
+
+        #expect(!FileManager.default.fileExists(atPath: previousURL.path))
+        #expect(FileManager.default.fileExists(atPath: replacementURL.path))
+    }
+
+    @Test func diaryRecordingCleanupKeepsFileWhenReplacementMatchesPrevious() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let recordingURL = directory.appendingPathComponent("recording.caf")
+        try Data([0x03]).write(to: recordingURL)
+
+        DiaryViewModel.removeReplacedRecordingFile(previous: recordingURL, replacement: recordingURL)
+
+        #expect(FileManager.default.fileExists(atPath: recordingURL.path))
+    }
+
+    @Test func diaryRecordingCleanupRemovesLegacyM4AFile() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let legacyRecordingURL = directory.appendingPathComponent("recording_legacy.m4a")
+        try Data([0x04]).write(to: legacyRecordingURL)
+
+        DiaryViewModel.removeRecordingFile(at: legacyRecordingURL)
+
+        #expect(!FileManager.default.fileExists(atPath: legacyRecordingURL.path))
+    }
+
+    @Test func diaryRecordingDraftCaptureIncludesActiveAndFinishedStates() async throws {
+        let error = NSError(domain: "test", code: 1)
+
+        #expect(DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: true, recordingState: .recording))
+        #expect(DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .finished))
+        #expect(!DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .idle))
+        #expect(!DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .processing))
+        #expect(!DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .error(error)))
+    }
+
     @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
         let entries = [
             makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),

@@ -32,6 +32,8 @@ struct NewDiaryView: View {
     @State private var selectedDate = Date()
     @State private var isPreviewMode = false
     @State private var isShowingTranscription = false
+    @State private var pendingVoiceRecordingAudioURL: URL?
+    @State private var didSaveEntry = false
     
     // 录音相关状态
     @State private var contentSaveWorkItem: DispatchWorkItem?
@@ -118,6 +120,10 @@ struct NewDiaryView: View {
                     }
                 }
             }
+        }
+        .onDisappear {
+            cleanupDraftRecordingIfNeeded()
+            viewModel.transcribedText = ""
         }
     }
     
@@ -230,10 +236,12 @@ struct NewDiaryView: View {
     private var recordingButton: some View {
         Button {
             if viewModel.isRecording {
-                viewModel.stopRecording()
+                captureActiveVoiceRecordingIfNeeded()
                 isShowingTranscription = true
             } else {
-                viewModel.startRecording()
+                if !viewModel.startRecording() {
+                    isShowingTranscription = true
+                }
             }
         } label: {
             HStack {
@@ -299,7 +307,10 @@ struct NewDiaryView: View {
                 TranscriptionDisplayView(
                     viewModel: viewModel,
                     isShowingTranscription: isShowingTranscription,
-                    content: content
+                    content: content,
+                    onApplyTranscription: { mode in
+                        content = viewModel.applyTranscription(to: content, mode: mode)
+                    }
                 )
             }
         }
@@ -399,13 +410,22 @@ struct NewDiaryView: View {
     
     // 保存日记条目
     private func saveEntry() {
-        _ = viewModel.createNewEntry(
+        captureActiveVoiceRecordingIfNeeded()
+
+        let newEntry = viewModel.createNewEntry(
             title: title,
             content: content,
             mood: moodStringValue(for: selectedMood),
             tags: tags,
-            creationDate: selectedDate
+            creationDate: selectedDate,
+            audioURL: pendingVoiceRecordingAudioURL
         )
+
+        guard newEntry != nil else {
+            return
+        }
+
+        didSaveEntry = true
         
         dismiss()
     }
@@ -434,6 +454,41 @@ struct NewDiaryView: View {
             // 默认行为，直接添加格式
             content += format
         }
+    }
+
+    private func captureActiveVoiceRecordingIfNeeded() {
+        guard DiaryViewModel.shouldCaptureVoiceRecordingDraft(
+            isRecording: viewModel.isRecording,
+            recordingState: viewModel.recordingState
+        ) else {
+            return
+        }
+
+        if viewModel.isRecording {
+            viewModel.stopRecording()
+        }
+
+        let recording = viewModel.captureVoiceRecordingDraft()
+        replacePendingVoiceRecording(with: recording.audioURL)
+    }
+
+    private func cleanupDraftRecordingIfNeeded() {
+        captureActiveVoiceRecordingIfNeeded()
+
+        if !didSaveEntry {
+            viewModel.discardRecordingFile(at: pendingVoiceRecordingAudioURL)
+        }
+
+        pendingVoiceRecordingAudioURL = nil
+    }
+
+    private func replacePendingVoiceRecording(with audioURL: URL?) {
+        guard let audioURL else {
+            return
+        }
+
+        DiaryViewModel.removeReplacedRecordingFile(previous: pendingVoiceRecordingAudioURL, replacement: audioURL)
+        pendingVoiceRecordingAudioURL = audioURL
     }
 }
 
@@ -490,4 +545,4 @@ extension DiaryEntry {
 private struct DiaryEntryKeys {
     static var suggestedMoods: UnsafeRawPointer = UnsafeRawPointer(bitPattern: "DiaryEntry.suggestedMoods".hashValue)!
     static var suggestedTags: UnsafeRawPointer = UnsafeRawPointer(bitPattern: "DiaryEntry.suggestedTags".hashValue)!
-} 
+}

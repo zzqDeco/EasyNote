@@ -5,15 +5,16 @@ struct TranscriptionDisplayView: View {
     @ObservedObject var viewModel: DiaryViewModel
     var isShowingTranscription: Bool
     var content: String
+    var onApplyTranscription: (DiaryTranscriptionApplyMode) -> Void
     
     @State private var processingDotsCount = 0
     @State private var processingTimer: Timer? = nil
-    @State private var showOptions = false
+    @State private var showOptions = true
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
-                Text(viewModel.isProcessingAI ? "AI处理中" : viewModel.transcribedText.isEmpty ? "内容润色" : "润色结果")
+                Text(viewModel.isProcessingAI ? "AI处理中" : viewModel.transcribedText.isEmpty ? "语音转写" : "转写结果")
                     .font(.headline)
                     .fontWeight(.medium)
                 
@@ -50,6 +51,10 @@ struct TranscriptionDisplayView: View {
                     }
                 }
             }
+
+            if let statusMessage {
+                statusView(message: statusMessage)
+            }
             
             // 转写内容区域
             if !viewModel.isProcessingAI && !viewModel.transcribedText.isEmpty {
@@ -58,8 +63,8 @@ struct TranscriptionDisplayView: View {
                 processingView
             }
             
-            // 操作按钮 - 仅当有内容且不在处理中时显示
-            if !viewModel.transcribedText.isEmpty && !viewModel.isProcessingAI && showOptions {
+            // 操作按钮 - 仅当转写内容稳定且不在处理中时显示
+            if canUseTranscriptionActions && showOptions {
                 actionButtonsView
             }
         }
@@ -173,20 +178,11 @@ struct TranscriptionDisplayView: View {
             HStack(spacing: 16) {
                 // 替换按钮
                 Button {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("UseTranscribedContent"),
-                        object: viewModel.transcribedText,
-                        userInfo: ["replace": true]
-                    )
-                    
-                    // 立即清空转写内容，避免重复使用
-                    DispatchQueue.main.async {
-                        viewModel.transcribedText = ""
-                    }
+                    onApplyTranscription(.replace)
                 } label: {
                     HStack {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                        Text("替换内容")
+                        Text("替换正文")
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)
@@ -202,20 +198,11 @@ struct TranscriptionDisplayView: View {
                 
                 // 追加按钮
                 Button {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("UseTranscribedContent"),
-                        object: viewModel.transcribedText,
-                        userInfo: ["replace": false]
-                    )
-                    
-                    // 立即清空转写内容，避免重复使用
-                    DispatchQueue.main.async {
-                        viewModel.transcribedText = ""
-                    }
+                    onApplyTranscription(.insert)
                 } label: {
                     HStack {
                         Image(systemName: "plus.circle.fill")
-                        Text("追加到内容")
+                        Text("插入正文")
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)
@@ -250,6 +237,100 @@ struct TranscriptionDisplayView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(color.opacity(0.2), lineWidth: 1)
         )
+    }
+
+    private var statusMessage: String? {
+        if let permissionFailureMessage {
+            return permissionFailureMessage
+        }
+
+        switch viewModel.recordingState {
+        case .idle:
+            return nil
+        case .recording:
+            return "正在录音..."
+        case .processing:
+            return "正在识别语音..."
+        case .finished:
+            return viewModel.transcribedText.isEmpty ? nil : "转写完成"
+        case .error(let error):
+            return error.localizedDescription
+        }
+    }
+
+    private var permissionFailureMessage: String? {
+        switch viewModel.speechPermissionStatus {
+        case .denied, .restricted:
+            return viewModel.speechPermissionStatus.failureMessage
+        case .notDetermined:
+            return "等待系统语音识别权限授权"
+        case .authorized:
+            break
+        }
+
+        switch viewModel.microphonePermissionStatus {
+        case .denied:
+            return viewModel.microphonePermissionStatus.failureMessage
+        case .notDetermined:
+            return "等待系统麦克风权限授权"
+        case .granted:
+            return nil
+        }
+    }
+
+    private var canUseTranscriptionActions: Bool {
+        !viewModel.transcribedText.isEmpty
+            && !viewModel.isProcessingAI
+            && viewModel.recordingState.allowsTranscriptionActions
+    }
+
+    private func statusView(message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: statusIconName)
+                .font(.caption)
+                .padding(.top, 2)
+
+            Text(message)
+                .font(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(statusColor.opacity(0.12))
+        .foregroundColor(statusColor)
+        .cornerRadius(10)
+    }
+
+    private var statusIconName: String {
+        switch viewModel.recordingState {
+        case .recording:
+            return "mic.fill"
+        case .processing:
+            return "waveform"
+        case .error(_):
+            return "exclamationmark.triangle.fill"
+        case .idle, .finished:
+            return permissionFailureMessage == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        if permissionFailureMessage != nil {
+            return .orange
+        }
+
+        switch viewModel.recordingState {
+        case .recording:
+            return .red
+        case .processing:
+            return .blue
+        case .error(_):
+            return .orange
+        case .idle, .finished:
+            return .secondary
+        }
     }
     
     // MARK: - 辅助方法
@@ -288,8 +369,9 @@ struct LottieView: View {
     return TranscriptionDisplayView(
         viewModel: viewModel,
         isShowingTranscription: true,
-        content: "日记内容"
+        content: "日记内容",
+        onApplyTranscription: { _ in }
     )
     .padding()
     .modelContainer(PreviewHelpers.previewContainer)
-} 
+}

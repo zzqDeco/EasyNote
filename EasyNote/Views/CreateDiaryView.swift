@@ -26,6 +26,8 @@ struct CreateDiaryView: View {
     @State private var isShowingTagEditor = false
     @State private var isRecording = false
     @State private var isShowingTranscription = false
+    @State private var pendingVoiceRecordingAudioURL: URL?
+    @State private var didSaveEntry = false
     @State private var titleHeightChanged = false
     @State private var selectedDate = Date()
     @State private var isShowingDatePicker = false
@@ -105,14 +107,7 @@ struct CreateDiaryView: View {
         }
         .onDisappear {
             removeKeyboardObservers()
-            
-            // 停止录音（如果正在录音）
-            if viewModel.isRecording {
-                viewModel.stopRecording()
-                viewModel.saveVoiceRecordingToCurrentEntry()
-            }
-            
-            // 清空转写内容，避免在下次打开时显示
+            cleanupDraftRecordingIfNeeded()
             viewModel.transcribedText = ""
         }
         // 监听主题色变化，强制视图刷新
@@ -126,12 +121,10 @@ struct CreateDiaryView: View {
         .sheet(isPresented: $isShowingDatePicker) {
             datePickerSheet
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("UseTranscribedContent"))) { notification in
-            handleTranscribedContent(notification)
-        }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("取消") {
+                    isPresented = false
                     dismiss()
                 }
                 .foregroundColor(.red)
@@ -232,7 +225,10 @@ struct CreateDiaryView: View {
                 TranscriptionDisplayView(
                     viewModel: viewModel,
                     isShowingTranscription: isShowingTranscription,
-                    content: content
+                    content: content,
+                    onApplyTranscription: { mode in
+                        content = viewModel.applyTranscription(to: content, mode: mode)
+                    }
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .animation(.easeInOut, value: isShowingTranscription)
@@ -599,35 +595,24 @@ struct CreateDiaryView: View {
         }
     }
     
-    private func handleTranscribedContent(_ notification: Notification) {
-        if let transcribedText = notification.object as? String,
-           let isReplacing = notification.userInfo?["replace"] as? Bool {
-            if isReplacing {
-                // 替换当前内容
-                content = transcribedText
-            } else {
-                // 追加到当前内容
-                if !content.isEmpty {
-                    content += "\n\n" + transcribedText
-                } else {
-                    content = transcribedText
-                }
-            }
-            
-            // 已经使用了转写内容，清空transcribedText避免重复显示
-            viewModel.transcribedText = ""
-        }
-    }
-    
     private func saveEntry() {
+        captureActiveVoiceRecordingIfNeeded()
+
         // 创建新的日记条目，使用选定的日期
-        _ = viewModel.createNewEntry(
+        let newEntry = viewModel.createNewEntry(
             title: title,
             content: content,
             mood: moodStringValue(for: mood),
             tags: tags,
-            creationDate: selectedDate  // 使用选定的日期
+            creationDate: selectedDate,
+            audioURL: pendingVoiceRecordingAudioURL
         )
+
+        guard newEntry != nil else {
+            return
+        }
+
+        didSaveEntry = true
         
         // 清空转写文本
         viewModel.transcribedText = ""
@@ -706,60 +691,49 @@ struct CreateDiaryView: View {
     
     // 提取功能逻辑到单独的方法中
     private func handleRecordingAction() {
-        // 添加权限检查和错误处理
-        let audioSession = AVAudioSession.sharedInstance()
-        
-        // 检查麦克风权限状态
-        var permissionGranted = false
-        let semaphore = DispatchSemaphore(value: 0)
-        
-        if #available(iOS 17.0, *) {
-            AVAudioApplication.requestRecordPermission { granted in
-                permissionGranted = granted
-                semaphore.signal()
-            }
+        if viewModel.isRecording {
+            captureActiveVoiceRecordingIfNeeded()
+            isShowingTranscription = true
         } else {
-            audioSession.requestRecordPermission { granted in
-                permissionGranted = granted
-                semaphore.signal()
+            if !viewModel.startRecording() {
+                isShowingTranscription = true
             }
         }
-        
-        // 使用异步方式来避免阻塞主线程
-        Task {
-            // 在后台线程等待权限结果
-            let result = await withCheckedContinuation { continuation in
-                DispatchQueue.global().async {
-                    // 设置一个3秒超时
-                    let timeoutResult = semaphore.wait(timeout: .now() + 3)
-                    continuation.resume(returning: timeoutResult == .success && permissionGranted)
-                }
-            }
-            
-            // 在主线程处理结果
-            await MainActor.run {
-                if !result {
-                    // 显示权限错误提示
-                    showToast(message: "需要麦克风权限才能录音")
-                    return
-                }
-                
-                // 继续执行录音逻辑
-                if viewModel.isRecording {
-                    viewModel.stopRecording()
-                    viewModel.saveVoiceRecordingToCurrentEntry()
-                    isShowingTranscription = true
-                } else {
-                    do {
-                        try audioSession.setCategory(.record, mode: .default)
-                        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-                        viewModel.startRecording()
-                    } catch {
-                        showToast(message: "启动录音失败: \(error.localizedDescription)")
-                    }
-                }
-            }
+    }
+
+    private func captureActiveVoiceRecordingIfNeeded() {
+        guard DiaryViewModel.shouldCaptureVoiceRecordingDraft(
+            isRecording: viewModel.isRecording,
+            recordingState: viewModel.recordingState
+        ) else {
+            return
         }
+
+        if viewModel.isRecording {
+            viewModel.stopRecording()
+        }
+
+        let recording = viewModel.captureVoiceRecordingDraft()
+        replacePendingVoiceRecording(with: recording.audioURL)
+    }
+
+    private func cleanupDraftRecordingIfNeeded() {
+        captureActiveVoiceRecordingIfNeeded()
+
+        if !didSaveEntry {
+            viewModel.discardRecordingFile(at: pendingVoiceRecordingAudioURL)
+        }
+
+        pendingVoiceRecordingAudioURL = nil
+    }
+
+    private func replacePendingVoiceRecording(with audioURL: URL?) {
+        guard let audioURL else {
+            return
+        }
+
+        DiaryViewModel.removeReplacedRecordingFile(previous: pendingVoiceRecordingAudioURL, replacement: audioURL)
+        pendingVoiceRecordingAudioURL = audioURL
     }
     
     // 辅助方法显示提示信息
@@ -815,4 +789,4 @@ struct CreateDiaryView: View {
             .environmentObject(ThemeManager())
     }
     .modelContainer(PreviewHelpers.previewContainer)
-} 
+}
