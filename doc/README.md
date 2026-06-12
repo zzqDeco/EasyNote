@@ -6,7 +6,8 @@ This directory keeps current project documentation. It should describe how EasyN
 
 - [Architecture](architecture.plan.md): SwiftUI, SwiftData, service, ViewModel, and sync/AI boundaries.
 - [Interfaces](interfaces.plan.md): persistence models, local settings keys, AI request contract, and CloudKit boundary.
-- [MVP Acceptance](mvp-acceptance.plan.md): local and CI validation matrix for the current prototype.
+- [MVP Acceptance](mvp-acceptance.plan.md): local and CI validation matrix for the current public local-first MVP.
+- [MVP Runbook](mvp-runbook.md): branch, PR, CI, Codex review loop, smoke, and promotion workflow.
 - [Branching And Workflow](branching.md): branch roles, topic branch naming, PR expectations, and release flow.
 - [Source Notes](src/README.md): short source-boundary notes organized to mirror repository paths.
 - [Documentation Template](templates/documentation.template.md): template for new current-state docs under `doc/`.

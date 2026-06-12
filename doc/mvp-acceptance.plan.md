@@ -1,6 +1,6 @@
 # EasyNote MVP Acceptance
 
-This document describes what the current validation checks prove for the private EasyNote prototype.
+This document describes what the current validation checks prove for the public, local-first EasyNote MVP.
 
 ## Local Checks
 
