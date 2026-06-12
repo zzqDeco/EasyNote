@@ -81,7 +81,9 @@ Every PR must run the same review loop before merge readiness.
    ```bash
    gh pr view <pr-number> --json number,url,headRefName,headRefOid,baseRefName,mergeStateStatus,reviewDecision,statusCheckRollup
    gh pr view <pr-number> --json reviews,comments
-   python3 /Users/zhaoziqian/.codex/plugins/cache/openai-curated/github/c6ea566d/skills/gh-address-comments/scripts/fetch_comments.py --repo zzqDeco/EasyNote --pr <pr-number>
+   GH_ADDRESS_COMMENTS_SCRIPT="$(find "$HOME/.codex/plugins/cache/openai-curated/github" -path '*/skills/gh-address-comments/scripts/fetch_comments.py' -print -quit)"
+   test -n "$GH_ADDRESS_COMMENTS_SCRIPT"
+   python3 "$GH_ADDRESS_COMMENTS_SCRIPT" --repo zzqDeco/EasyNote --pr <pr-number>
    ```
 
 4. If the latest head has no completed Codex review and no very recent pending request, comment `@codex review` again.
