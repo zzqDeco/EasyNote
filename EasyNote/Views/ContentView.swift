@@ -52,7 +52,9 @@ private struct ContentRootView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("探索", systemImage: "magnifyingglass.circle")
+                                .accessibilityIdentifier("tab.explore")
                         }
+                        .accessibilityIdentifier("tab.explore.content")
                         .tag(Tab.explore)
                     
                     // 待办页面（原探索页面更名）
@@ -63,7 +65,9 @@ private struct ContentRootView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("待办", systemImage: "checkmark.circle")
+                                .accessibilityIdentifier("tab.todo")
                         }
+                        .accessibilityIdentifier("tab.todo.content")
                         .tag(Tab.todo)
                     
                     // 日记页
@@ -71,7 +75,9 @@ private struct ContentRootView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("日记", systemImage: "book.closed")
+                                .accessibilityIdentifier("tab.diary")
                         }
+                        .accessibilityIdentifier("tab.diary.content")
                         .tag(Tab.diary)
                     
                     // 设置页
@@ -79,7 +85,9 @@ private struct ContentRootView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("设置", systemImage: "gearshape")
+                                .accessibilityIdentifier("tab.settings")
                         }
+                        .accessibilityIdentifier("tab.settings.content")
                         .tag(Tab.settings)
                 }
                 .id(tabViewRefreshKey) // 使用id修饰符强制在key变化时重新创建TabView
@@ -124,6 +132,8 @@ private struct ContentRootView: View {
                                     // 添加id确保主题色变化时按钮重绘
                                     .id("add-button-\(themeManager.accentColorName)")
                             }
+                            .accessibilityLabel(tabBarController.selectedTab == .todo ? "新建待办" : "新建日记")
+                            .accessibilityIdentifier(tabBarController.selectedTab == .todo ? "todo.floatingAddButton" : "diary.addButton")
                             .padding(.bottom, 80)
                             .padding(.trailing, 20)
                         }

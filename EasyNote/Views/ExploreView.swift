@@ -334,6 +334,7 @@ struct ExploreView: View {
                         .clipShape(Circle())
                 }
                 .accessibilityLabel("新建待办")
+                .accessibilityIdentifier("todo.addButton")
             }
 
             Picker("待办分类", selection: $selectedTodoFilter) {
@@ -342,6 +343,7 @@ struct ExploreView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("todo.filterPicker")
 
             todoSection(title: selectedTodoFilter.rawValue, items: selectedTodoItems)
         }
