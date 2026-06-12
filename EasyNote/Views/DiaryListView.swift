@@ -84,6 +84,7 @@ struct DiaryListView: View {
             TextField("搜索日记...", text: searchTextBinding)
                 .textFieldStyle(.plain)
                 .submitLabel(.search)
+                .accessibilityIdentifier("diary.searchField")
                 .onSubmit {
                     refreshTrigger.toggle()
                 }
@@ -121,6 +122,7 @@ struct DiaryListView: View {
                     .background(hasActiveFilters ? Color.blue.opacity(0.18) : Color.blue.opacity(0.1))
                     .cornerRadius(12)
                 }
+                .accessibilityIdentifier("diary.filterButton")
                 
                 // 排序显示
                 HStack {
@@ -281,6 +283,7 @@ struct DiaryListView: View {
                         .background(Color.blue.opacity(0.1))
                         .cornerRadius(10)
                 }
+                .accessibilityIdentifier("diary.clearFiltersButton")
                 .padding(.top, 10)
             }
             
@@ -438,6 +441,7 @@ struct DiaryListView: View {
                                 Spacer()
                             }
                         }
+                        .accessibilityIdentifier("diary.clearFiltersButton")
                     }
                 }
             }

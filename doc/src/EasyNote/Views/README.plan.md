@@ -13,6 +13,7 @@
 ## Behavior Notes
 
 - `ContentView` is the tab composition root.
+- Primary navigation, diary search/filter/add, todo focus, and Settings API key controls expose stable accessibility identifiers for local UI smoke tests.
 - Diary views cover list, create, edit, detail, markdown, mood, and tag flows.
 - Diary transcription UI should present insert/replace actions explicitly; it should not mutate diary body text through implicit notifications.
 - Todo views cover recommendations, detail/edit, and unified add.
@@ -21,5 +22,5 @@
 
 ## Tests
 
-- UI test coverage is currently launch-level only.
-- Add UI smoke tests only after the app has stable accessibility identifiers for primary flows.
+- UI smoke coverage uses stable accessibility identifiers for non-destructive tab navigation and setup controls.
+- Do not add hosted blocking UI test expectations until runner stability has been proven.

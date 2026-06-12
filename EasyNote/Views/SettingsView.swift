@@ -30,6 +30,7 @@ struct SettingsView: View {
                     SecureField("DeepSeek API密钥", text: $apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("settings.apiKeyField")
 
                     if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("未配置 API 密钥")
@@ -45,6 +46,7 @@ struct SettingsView: View {
                         Button("清除API密钥", role: .destructive) {
                             apiKey = ""
                         }
+                        .accessibilityIdentifier("settings.clearApiKeyButton")
                     }
                 } header: {
                     Text("AI")
