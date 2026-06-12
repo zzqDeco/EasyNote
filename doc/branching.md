@@ -25,6 +25,8 @@ EasyNote follows the same lightweight branch model used by the user's active pro
 6. Open PR into `dev`.
 7. Merge `dev` into `main` only after integration validation is clean.
 
+See [MVP Runbook](mvp-runbook.md) for the full PR, CI, Codex review loop, and promotion workflow.
+
 ## Validation Expectations
 
 - Always run `git diff --check` for documentation-only changes.
@@ -32,8 +34,8 @@ EasyNote follows the same lightweight branch model used by the user's active pro
 - Run `xcodebuild test` against an installed simulator runtime when Swift code changes.
 - If the installed Xcode SDK and simulator runtimes do not match, record the exact destination/runtime error and do not report tests as passing.
 
-## Current Bootstrap State
+## Current State
 
-- `main` contains the first consolidated private prototype.
-- `dev` is the integration branch for upcoming EasyNote work.
+- `main` contains the stable baseline.
+- `dev` is the integration branch for the public local-first MVP.
 - GitHub default branch remains `main`; local development should normally happen on `dev` or topic branches from `dev`.

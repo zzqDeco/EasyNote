@@ -15,12 +15,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [ui-smoke-and-accessibility.plan.md](ui-smoke-and-accessibility.plan.md) | Add stable accessibility identifiers and local non-destructive UI smoke coverage | Active |
+| [mvp-runbook.plan.md](mvp-runbook.plan.md) | Capture the MVP development, validation, review, and promotion workflow | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [ui-smoke-and-accessibility.plan.md](ui-smoke-and-accessibility.plan.md) | Add stable accessibility identifiers and local non-destructive UI smoke coverage | Delivered |
 | [speech-diary-flow.plan.md](speech-diary-flow.plan.md) | Make speech transcription a permission-aware explicit diary draft input flow | Delivered |
 | [ai-parser-and-settings-hardening.plan.md](ai-parser-and-settings-hardening.plan.md) | Extract AI parsing into tested helpers and harden empty-key settings behavior | Delivered |
 | [todo-focus-view.plan.md](todo-focus-view.plan.md) | Add focused todo category views and remove duplicated todo CRUD from ExploreViewModel | Delivered |
