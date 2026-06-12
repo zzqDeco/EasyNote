@@ -13,14 +13,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 ## Active References
 
-| Document | Purpose | Status |
-|---|---|---|
-| [mvp-runbook.plan.md](mvp-runbook.plan.md) | Capture the MVP development, validation, review, and promotion workflow | Active |
+There are no active implementation plans.
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [mvp-runbook.plan.md](mvp-runbook.plan.md) | Capture the MVP development, validation, review, and promotion workflow | Delivered |
 | [ui-smoke-and-accessibility.plan.md](ui-smoke-and-accessibility.plan.md) | Add stable accessibility identifiers and local non-destructive UI smoke coverage | Delivered |
 | [speech-diary-flow.plan.md](speech-diary-flow.plan.md) | Make speech transcription a permission-aware explicit diary draft input flow | Delivered |
 | [ai-parser-and-settings-hardening.plan.md](ai-parser-and-settings-hardening.plan.md) | Extract AI parsing into tested helpers and harden empty-key settings behavior | Delivered |
