@@ -10,6 +10,7 @@ class TodoViewModel: ObservableObject {
     
     // 模型上下文
     private var modelContext: ModelContext
+    private var cancellables = Set<AnyCancellable>()
     
     // 初始化方法
     init(modelContext: ModelContext?) {
@@ -21,6 +22,13 @@ class TodoViewModel: ObservableObject {
         
         // 加载待办列表
         loadTodoItems()
+
+        NotificationCenter.default.publisher(for: .easyNoteBackupDidImport)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.loadTodoItems()
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - 数据管理方法

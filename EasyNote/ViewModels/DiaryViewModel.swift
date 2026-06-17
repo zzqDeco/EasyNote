@@ -97,6 +97,13 @@ class DiaryViewModel: ObservableObject {
                     self?.isSyncing = isSyncing
                 }
                 .store(in: &cancellables)
+
+            NotificationCenter.default.publisher(for: .easyNoteBackupDidImport)
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    self?.loadEntries()
+                }
+                .store(in: &cancellables)
             
             // 加载日记条目
             loadDiaryEntries()

@@ -37,6 +37,7 @@ Future refactors should separate pure business logic and service protocols from 
 ## Service Layer
 
 - `OpenAIService` is the DeepSeek-compatible chat-completions client. It must not contain default API keys.
+- `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
 - `SpeechRecognitionService` owns microphone/speech permissions, recording state, and transcription updates.
 - `CloudKitService` owns CloudKit interactions, but Debug currently defaults to simulation mode.
 

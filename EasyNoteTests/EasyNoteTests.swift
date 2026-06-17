@@ -8,6 +8,7 @@
 import Testing
 import Foundation
 import Combine
+import SwiftData
 @testable import EasyNote
 
 struct EasyNoteTests {
@@ -472,6 +473,282 @@ struct EasyNoteTests {
         #expect(DiaryEntryQuery(sortOption: .titleDesc).apply(to: entries).map(\.title) == ["Beta", "alpha"])
     }
 
+    @Test func backupV1RoundTripsThroughJSON() async throws {
+        let service = BackupService()
+        let exportedAt = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let diaryID = UUID()
+        let audioID = UUID()
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: exportedAt,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "语音日记",
+                    content: "今天记录了一段语音",
+                    mood: "4",
+                    tags: ["生活"],
+                    creationDate: exportedAt,
+                    lastModified: exportedAt,
+                    isFavorite: true,
+                    aiSummary: "摘要",
+                    audioAssetId: audioID
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: [
+                BackupAudioAsset(
+                    id: audioID,
+                    originalFilename: "recording.caf",
+                    pathExtension: "caf",
+                    byteCount: 3,
+                    data: Data([0x01, 0x02, 0x03])
+                )
+            ]
+        )
+
+        let decoded = try service.decodeAndValidateBackup(from: service.encodeBackup(backup))
+
+        #expect(decoded == backup)
+    }
+
+    @Test func backupExportIncludesCoreModelsAndAudioAsset() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let audioURL = directory.appendingPathComponent("recording.caf")
+        try Data([0x0A, 0x0B]).write(to: audioURL)
+
+        let diary = makeDiary(title: "语音日记", content: "正文", tags: ["语音"], isFavorite: true)
+        diary.audioURL = audioURL
+        let todo = makeTodo(title: "备份待办", deadline: Date())
+        let message = SessionMessage(content: "用户消息", isUser: true)
+        let session = ChatSession(title: "备份会话")
+        session.addMessage(message)
+
+        context.insert(diary)
+        context.insert(todo)
+        context.insert(message)
+        context.insert(session)
+        try context.save()
+
+        let backup = try BackupService(documentsDirectory: directory).exportBackup(from: context)
+
+        #expect(backup.diaryEntries.map(\.title) == ["语音日记"])
+        #expect(backup.todoItems.map(\.title) == ["备份待办"])
+        #expect(backup.chatSessions.map(\.title) == ["备份会话"])
+        #expect(backup.sessionMessages.map(\.content) == ["用户消息"])
+        #expect(backup.audioAssets.count == 1)
+        #expect(backup.audioAssets.first?.data == Data([0x0A, 0x0B]))
+        #expect(backup.diaryEntries.first?.audioAssetId == backup.audioAssets.first?.id)
+    }
+
+    @Test func backupExportSkipsMissingAudioWithoutDroppingDiary() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let diary = makeDiary(title: "缺失录音")
+        diary.audioURL = directory.appendingPathComponent("missing.caf")
+        context.insert(diary)
+        try context.save()
+
+        let backup = try BackupService(documentsDirectory: directory).exportBackup(from: context)
+
+        #expect(backup.diaryEntries.map(\.title) == ["缺失录音"])
+        #expect(backup.diaryEntries.first?.audioAssetId == nil)
+        #expect(backup.audioAssets.isEmpty)
+    }
+
+    @Test func backupImportRejectsUnsupportedVersionWithoutWriting() async throws {
+        let context = try makeModelContext()
+        let existing = makeDiary(title: "本地日记")
+        context.insert(existing)
+        try context.save()
+
+        let backup = EasyNoteBackupV1(
+            version: 99,
+            exportedAt: Date(),
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: UUID(),
+                    title: "不应导入",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: Date(),
+                    lastModified: Date(),
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: nil
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: []
+        )
+
+        do {
+            _ = try BackupService().importBackup(backup, into: context)
+            Issue.record("Expected unsupported backup version to fail")
+        } catch BackupServiceError.unsupportedVersion(99) {
+            #expect(true)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        let entries = try context.fetch(FetchDescriptor<DiaryEntry>())
+        #expect(entries.map(\.title) == ["本地日记"])
+    }
+
+    @Test func backupImportDataRejectsInvalidBase64WithoutWriting() async throws {
+        let context = try makeModelContext()
+        let existing = makeTodo(title: "本地待办")
+        context.insert(existing)
+        try context.save()
+
+        let assetID = UUID().uuidString
+        let invalidJSON = """
+        {
+          "audioAssets": [
+            {
+              "byteCount": 3,
+              "data": "not-base64",
+              "id": "\(assetID)",
+              "originalFilename": "recording.caf",
+              "pathExtension": "caf"
+            }
+          ],
+          "chatSessions": [],
+          "diaryEntries": [],
+          "exportedAt": "2026-06-17T10:00:00Z",
+          "sessionMessages": [],
+          "todoItems": [],
+          "version": 1
+        }
+        """
+
+        do {
+            _ = try BackupService().importBackupData(Data(invalidJSON.utf8), into: context)
+            Issue.record("Expected invalid base64 to fail")
+        } catch {
+            #expect(true)
+        }
+
+        let todos = try context.fetch(FetchDescriptor<TodoItem>())
+        #expect(todos.map(\.title) == ["本地待办"])
+    }
+
+    @Test func backupImportUpsertsSameIDAndPreservesUnmentionedLocalRecords() async throws {
+        let context = try makeModelContext()
+        let diaryID = UUID()
+        let localDiary = DiaryEntry(id: diaryID, title: "旧标题")
+        let localTodo = makeTodo(title: "保留的本地待办")
+        context.insert(localDiary)
+        context.insert(localTodo)
+        try context.save()
+
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let importedTodoID = UUID()
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "新标题",
+                    content: "导入正文",
+                    mood: "5",
+                    tags: ["导入"],
+                    creationDate: backupDate,
+                    lastModified: backupDate,
+                    isFavorite: true,
+                    aiSummary: "导入摘要",
+                    audioAssetId: nil
+                )
+            ],
+            todoItems: [
+                BackupTodoItem(
+                    id: importedTodoID,
+                    title: "导入待办",
+                    isCompleted: true,
+                    priority: .high,
+                    deadline: nil,
+                    notes: "导入备注",
+                    isRecurring: false,
+                    recurringInterval: nil,
+                    creationDate: backupDate
+                )
+            ],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: []
+        )
+
+        _ = try BackupService().importBackup(backup, into: context)
+
+        let diaries = try context.fetch(FetchDescriptor<DiaryEntry>())
+        let todos = try context.fetch(FetchDescriptor<TodoItem>())
+
+        #expect(diaries.count == 1)
+        #expect(diaries.first?.title == "新标题")
+        #expect(diaries.first?.content == "导入正文")
+        #expect(Set(todos.map(\.title)) == Set(["保留的本地待办", "导入待办"]))
+    }
+
+    @Test func backupImportRestoresAudioAssetToLocalFile() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let audioID = UUID()
+        let diaryID = UUID()
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "恢复录音",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: backupDate,
+                    lastModified: backupDate,
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: audioID
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: [
+                BackupAudioAsset(
+                    id: audioID,
+                    originalFilename: "recording.caf",
+                    pathExtension: "caf",
+                    byteCount: 3,
+                    data: Data([0x07, 0x08, 0x09])
+                )
+            ]
+        )
+
+        _ = try BackupService(documentsDirectory: directory).importBackup(backup, into: context)
+
+        let diary = try #require(try context.fetch(FetchDescriptor<DiaryEntry>()).first)
+        let restoredURL = try #require(diary.audioURL)
+
+        #expect(restoredURL.lastPathComponent == "restored_recording_\(audioID.uuidString).caf")
+        #expect(FileManager.default.fileExists(atPath: restoredURL.path))
+        #expect(try Data(contentsOf: restoredURL) == Data([0x07, 0x08, 0x09]))
+    }
+
     private func makeDiary(
         title: String,
         content: String = "",
@@ -504,6 +781,25 @@ struct EasyNoteTests {
             isRecurring: isRecurring,
             recurringInterval: recurringInterval
         )
+    }
+
+    private func makeModelContext() throws -> ModelContext {
+        let schema = Schema([
+            DiaryEntry.self,
+            TodoItem.self,
+            ChatSession.self,
+            SessionMessage.self
+        ])
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        return ModelContext(container)
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 
     private func publisherFailure<Output>(_ publisher: AnyPublisher<Output, OpenAIError>) async -> OpenAIError? {
