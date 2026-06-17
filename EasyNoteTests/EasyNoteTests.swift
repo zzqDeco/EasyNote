@@ -601,6 +601,24 @@ struct EasyNoteTests {
         #expect(backup.diaryEntries.first?.audioAssetId == backup.audioAssets.first?.id)
     }
 
+    @Test func backupExportExcludesOrphanedChatMessages() async throws {
+        let context = try makeModelContext()
+        let visibleMessage = SessionMessage(content: "可见消息", isUser: true)
+        let orphanedMessage = SessionMessage(content: "孤立消息", isUser: false)
+        let session = ChatSession(title: "可见会话")
+        session.addMessage(visibleMessage)
+
+        context.insert(visibleMessage)
+        context.insert(orphanedMessage)
+        context.insert(session)
+        try context.save()
+
+        let backup = try BackupService().exportBackup(from: context)
+
+        #expect(backup.chatSessions.map(\.messageIds) == [[visibleMessage.id]])
+        #expect(backup.sessionMessages.map(\.content) == ["可见消息"])
+    }
+
     @Test func backupExportSkipsMissingAudioWithoutDroppingDiary() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -883,6 +901,17 @@ struct EasyNoteTests {
         #expect(session.title == "   ")
     }
 
+    @Test func backupExportAllowsWhitespaceDiaryTitlesAlreadyCreatedByApp() async throws {
+        let context = try makeModelContext()
+        let diary = makeDiary(title: "   ")
+        context.insert(diary)
+        try context.save()
+
+        let backup = try BackupService().exportBackup(from: context)
+
+        #expect(backup.diaryEntries.map(\.title) == ["   "])
+    }
+
     @Test func backupImportPreservesLocalMessagesMissingFromOlderBackup() async throws {
         let context = try makeModelContext()
         let calendar = Calendar.current
@@ -893,6 +922,7 @@ struct EasyNoteTests {
         let localMessage = SessionMessage(id: UUID(), content: "本地新增消息", isUser: false, timestamp: later)
         let session = ChatSession(id: sessionID, title: "会话")
         session.addMessage(localMessage)
+        session.lastModifiedDate = later
         context.insert(localMessage)
         context.insert(session)
         try context.save()
@@ -907,7 +937,7 @@ struct EasyNoteTests {
                     id: sessionID,
                     title: "会话",
                     creationDate: earlier,
-                    lastModifiedDate: later,
+                    lastModifiedDate: earlier,
                     messageIds: [importedMessageID]
                 )
             ],
@@ -928,6 +958,7 @@ struct EasyNoteTests {
         let importedSession = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
         #expect(importedSession.messages.count == 2)
         #expect(Set(importedSession.messages.map(\.content)) == Set(["备份消息", "本地新增消息"]))
+        #expect(importedSession.lastModifiedDate == later)
     }
 
     private func makeDiary(

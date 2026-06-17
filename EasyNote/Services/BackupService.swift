@@ -120,12 +120,9 @@ struct BackupService {
         let chatSessions = try modelContext.fetch(FetchDescriptor<ChatSession>(
             sortBy: [SortDescriptor(\.creationDate, order: .forward)]
         ))
-        let fetchedMessages = try modelContext.fetch(FetchDescriptor<SessionMessage>(
-            sortBy: [SortDescriptor(\.timestamp, order: .forward)]
-        ))
 
         let audioExport = exportAudioAssets(for: diaryEntries)
-        let sessionMessages = mergeMessages(from: chatSessions, fetchedMessages: fetchedMessages)
+        let sessionMessages = sessionMessages(from: chatSessions)
 
         let backup = EasyNoteBackupV1(
             version: Self.supportedVersion,
@@ -309,14 +306,21 @@ struct BackupService {
                     title: sessionDTO.title
                 )
 
-                session.title = sessionDTO.title
-                session.creationDate = sessionDTO.creationDate
-                session.lastModifiedDate = sessionDTO.lastModifiedDate
-                session.messages = mergedSessionMessages(
+                let existingSession = existingSessions[sessionDTO.id]
+                let mergedMessages = mergedSessionMessages(
                     importedMessageIDs: sessionDTO.messageIds,
                     messagesByID: messagesByID,
-                    existingSession: existingSessions[sessionDTO.id]
+                    existingSession: existingSession
                 )
+
+                session.title = sessionDTO.title
+                session.creationDate = sessionDTO.creationDate
+                session.lastModifiedDate = mergedLastModifiedDate(
+                    importedLastModifiedDate: sessionDTO.lastModifiedDate,
+                    existingSession: existingSession,
+                    messages: mergedMessages
+                )
+                session.messages = mergedMessages
 
                 if existingSessions[sessionDTO.id] == nil {
                     modelContext.insert(session)
@@ -350,10 +354,6 @@ struct BackupService {
 
         let audioIDs = Set(backup.audioAssets.map(\.id))
         for diaryEntry in backup.diaryEntries {
-            if diaryEntry.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw BackupServiceError.invalidBackup("日记标题不能为空")
-            }
-
             if let audioAssetId = diaryEntry.audioAssetId, !audioIDs.contains(audioAssetId) {
                 throw BackupServiceError.invalidBackup("日记引用了不存在的录音资产")
             }
@@ -426,7 +426,7 @@ struct BackupService {
         }
     }
 
-    private func mergeMessages(from sessions: [ChatSession], fetchedMessages: [SessionMessage]) -> [SessionMessage] {
+    private func sessionMessages(from sessions: [ChatSession]) -> [SessionMessage] {
         var seen = Set<UUID>()
         var messages: [SessionMessage] = []
 
@@ -435,11 +435,6 @@ struct BackupService {
                 seen.insert(message.id)
                 messages.append(message)
             }
-        }
-
-        for message in fetchedMessages where !seen.contains(message.id) {
-            seen.insert(message.id)
-            messages.append(message)
         }
 
         return messages.sorted { lhs, rhs in
@@ -465,6 +460,19 @@ struct BackupService {
             }
             return lhs.timestamp < rhs.timestamp
         }
+    }
+
+    private func mergedLastModifiedDate(
+        importedLastModifiedDate: Date,
+        existingSession: ChatSession?,
+        messages: [SessionMessage]
+    ) -> Date {
+        var dates = [importedLastModifiedDate]
+        if let existingSession {
+            dates.append(existingSession.lastModifiedDate)
+        }
+        dates.append(contentsOf: messages.map(\.timestamp))
+        return dates.max() ?? importedLastModifiedDate
     }
 
     private func availableRestoredAudioURL(for asset: BackupAudioAsset) -> URL {
