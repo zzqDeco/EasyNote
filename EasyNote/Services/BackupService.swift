@@ -184,14 +184,14 @@ struct BackupService {
 
     func encodeBackup(_ backup: EasyNoteBackupV1) throws -> Data {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom(Self.encodeBackupDate)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(backup)
     }
 
     func decodeAndValidateBackup(from data: Data) throws -> EasyNoteBackupV1 {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom(Self.decodeBackupDate)
         let backup = try decoder.decode(EasyNoteBackupV1.self, from: data)
         try validate(backup)
         return backup
@@ -312,7 +312,11 @@ struct BackupService {
                 session.title = sessionDTO.title
                 session.creationDate = sessionDTO.creationDate
                 session.lastModifiedDate = sessionDTO.lastModifiedDate
-                session.messages = sessionDTO.messageIds.compactMap { messagesByID[$0] }
+                session.messages = mergedSessionMessages(
+                    importedMessageIDs: sessionDTO.messageIds,
+                    messagesByID: messagesByID,
+                    existingSession: existingSessions[sessionDTO.id]
+                )
 
                 if existingSessions[sessionDTO.id] == nil {
                     modelContext.insert(session)
@@ -357,10 +361,6 @@ struct BackupService {
 
         let messageIDs = Set(backup.sessionMessages.map(\.id))
         for session in backup.chatSessions {
-            if session.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw BackupServiceError.invalidBackup("会话标题不能为空")
-            }
-
             try ensureUnique(session.messageIds, name: "会话消息 ID")
 
             for messageID in session.messageIds where !messageIDs.contains(messageID) {
@@ -414,12 +414,7 @@ struct BackupService {
     private func restoreAudioAsset(_ asset: BackupAudioAsset) throws -> URL {
         try fileManager.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
 
-        let filename = "restored_recording_\(asset.id.uuidString).\(asset.pathExtension.lowercased())"
-        let restoredURL = documentsDirectory.appendingPathComponent(filename)
-
-        if fileManager.fileExists(atPath: restoredURL.path) {
-            try fileManager.removeItem(at: restoredURL)
-        }
+        let restoredURL = availableRestoredAudioURL(for: asset)
 
         try asset.data.write(to: restoredURL, options: .atomic)
         return restoredURL
@@ -455,6 +450,35 @@ struct BackupService {
         }
     }
 
+    private func mergedSessionMessages(
+        importedMessageIDs: [UUID],
+        messagesByID: [UUID: SessionMessage],
+        existingSession: ChatSession?
+    ) -> [SessionMessage] {
+        let importedIDSet = Set(importedMessageIDs)
+        let importedMessages = importedMessageIDs.compactMap { messagesByID[$0] }
+        let localMessages = existingSession?.messages.filter { !importedIDSet.contains($0.id) } ?? []
+
+        return (importedMessages + localMessages).sorted { lhs, rhs in
+            if lhs.timestamp == rhs.timestamp {
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+            return lhs.timestamp < rhs.timestamp
+        }
+    }
+
+    private func availableRestoredAudioURL(for asset: BackupAudioAsset) -> URL {
+        let pathExtension = asset.pathExtension.lowercased()
+        let baseFilename = "restored_recording_\(asset.id.uuidString)"
+        let preferredURL = documentsDirectory.appendingPathComponent("\(baseFilename).\(pathExtension)")
+
+        guard fileManager.fileExists(atPath: preferredURL.path) else {
+            return preferredURL
+        }
+
+        return documentsDirectory.appendingPathComponent("\(baseFilename)_\(UUID().uuidString).\(pathExtension)")
+    }
+
     private func fetchByID<T: PersistentModel & Identifiable>(
         _ type: T.Type,
         modelContext: ModelContext
@@ -467,5 +491,37 @@ struct BackupService {
         if Set(values).count != values.count {
             throw BackupServiceError.invalidBackup("\(name) 重复")
         }
+    }
+
+    private static func encodeBackupDate(_ date: Date, encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(fractionalDateFormatter().string(from: date))
+    }
+
+    private static func decodeBackupDate(_ decoder: Decoder) throws -> Date {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+
+        if let date = fractionalDateFormatter().date(from: value)
+            ?? wholeSecondDateFormatter().date(from: value) {
+            return date
+        }
+
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "Invalid backup date: \(value)"
+        )
+    }
+
+    private static func fractionalDateFormatter() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }
+
+    private static func wholeSecondDateFormatter() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
     }
 }

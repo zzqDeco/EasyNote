@@ -514,6 +514,61 @@ struct EasyNoteTests {
         #expect(decoded == backup)
     }
 
+    @Test func backupRoundTripPreservesFractionalSecondDates() async throws {
+        let service = BackupService()
+        let date = Date(timeIntervalSince1970: 1_781_694_000.456)
+        let diaryID = UUID()
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: date,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "精确时间",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: date,
+                    lastModified: date,
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: nil
+                )
+            ],
+            todoItems: [
+                BackupTodoItem(
+                    id: UUID(),
+                    title: "同秒待办",
+                    isCompleted: false,
+                    priority: .medium,
+                    deadline: date,
+                    notes: nil,
+                    isRecurring: false,
+                    recurringInterval: nil,
+                    creationDate: date
+                )
+            ],
+            chatSessions: [],
+            sessionMessages: [
+                BackupSessionMessage(
+                    id: UUID(),
+                    content: "同秒消息",
+                    isUser: true,
+                    timestamp: date,
+                    relatedEntryIds: []
+                )
+            ],
+            audioAssets: []
+        )
+
+        let decoded = try service.decodeAndValidateBackup(from: service.encodeBackup(backup))
+
+        #expect(abs(decoded.exportedAt.timeIntervalSince1970 - date.timeIntervalSince1970) < 0.001)
+        #expect(abs((decoded.diaryEntries.first?.creationDate.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
+        #expect(abs((decoded.todoItems.first?.deadline?.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
+        #expect(abs((decoded.sessionMessages.first?.timestamp.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
+    }
+
     @Test func backupExportIncludesCoreModelsAndAudioAsset() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -747,6 +802,131 @@ struct EasyNoteTests {
         #expect(restoredURL.lastPathComponent == "restored_recording_\(audioID.uuidString).caf")
         #expect(FileManager.default.fileExists(atPath: restoredURL.path))
         #expect(try Data(contentsOf: restoredURL) == Data([0x07, 0x08, 0x09]))
+    }
+
+    @Test func backupImportDoesNotDeleteExistingRestoredAudioWhenReimporting() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let audioID = UUID()
+        let existingURL = directory.appendingPathComponent("restored_recording_\(audioID.uuidString).caf")
+        try Data([0x01]).write(to: existingURL)
+
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: UUID(),
+                    title: "重复导入录音",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: backupDate,
+                    lastModified: backupDate,
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: audioID
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: [
+                BackupAudioAsset(
+                    id: audioID,
+                    originalFilename: "recording.caf",
+                    pathExtension: "caf",
+                    byteCount: 1,
+                    data: Data([0x02])
+                )
+            ]
+        )
+
+        _ = try BackupService(documentsDirectory: directory).importBackup(backup, into: context)
+        let diary = try #require(try context.fetch(FetchDescriptor<DiaryEntry>()).first)
+        let newURL = try #require(diary.audioURL)
+
+        #expect(FileManager.default.fileExists(atPath: existingURL.path))
+        #expect(try Data(contentsOf: existingURL) == Data([0x01]))
+        #expect(newURL != existingURL)
+        #expect(FileManager.default.fileExists(atPath: newURL.path))
+        #expect(try Data(contentsOf: newURL) == Data([0x02]))
+    }
+
+    @Test func backupImportAllowsBlankSessionTitlesAlreadyCreatedByApp() async throws {
+        let context = try makeModelContext()
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [],
+            todoItems: [],
+            chatSessions: [
+                BackupChatSession(
+                    id: UUID(),
+                    title: "   ",
+                    creationDate: backupDate,
+                    lastModifiedDate: backupDate,
+                    messageIds: []
+                )
+            ],
+            sessionMessages: [],
+            audioAssets: []
+        )
+
+        _ = try BackupService().importBackup(backup, into: context)
+
+        let session = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
+        #expect(session.title == "   ")
+    }
+
+    @Test func backupImportPreservesLocalMessagesMissingFromOlderBackup() async throws {
+        let context = try makeModelContext()
+        let calendar = Calendar.current
+        let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let later = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10, second: 1)))
+        let sessionID = UUID()
+        let importedMessageID = UUID()
+        let localMessage = SessionMessage(id: UUID(), content: "本地新增消息", isUser: false, timestamp: later)
+        let session = ChatSession(id: sessionID, title: "会话")
+        session.addMessage(localMessage)
+        context.insert(localMessage)
+        context.insert(session)
+        try context.save()
+
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: earlier,
+            diaryEntries: [],
+            todoItems: [],
+            chatSessions: [
+                BackupChatSession(
+                    id: sessionID,
+                    title: "会话",
+                    creationDate: earlier,
+                    lastModifiedDate: later,
+                    messageIds: [importedMessageID]
+                )
+            ],
+            sessionMessages: [
+                BackupSessionMessage(
+                    id: importedMessageID,
+                    content: "备份消息",
+                    isUser: true,
+                    timestamp: earlier,
+                    relatedEntryIds: []
+                )
+            ],
+            audioAssets: []
+        )
+
+        _ = try BackupService().importBackup(backup, into: context)
+
+        let importedSession = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
+        #expect(importedSession.messages.map(\.content) == ["备份消息", "本地新增消息"])
     }
 
     private func makeDiary(
