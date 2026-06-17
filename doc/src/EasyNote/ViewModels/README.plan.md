@@ -9,15 +9,21 @@
 
 - Do not make ViewModels the long-term owner of provider-specific parsing or low-level audio/cloud APIs.
 - Do not silently swallow core save failures; expose an error message or route through a documented fallback.
+- Production ViewModels should receive the app's shared SwiftData `ModelContext`; nil-context fallback stores are for previews, tests, or explicitly degraded states only.
 
 ## Behavior Notes
 
 - `DiaryViewModel` owns diary CRUD, current entry state, speech save integration, AI diary actions, and CloudKit entry points.
-- `TodoViewModel` owns focused todo CRUD and recurrence.
-- `ExploreViewModel` owns recommendation state and todo projection for the former Explore screen.
+- `DiaryViewModel` mirrors speech permission state and keeps transcription/AI-refined text separate from diary body content until the user explicitly inserts or replaces it.
+- `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, existing-entry replacement, and deletion do not leave unreachable files.
+- `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
+- `TodoViewModel` owns focused todo CRUD, recurrence, and todo list state.
+- `ExploreViewModel` owns recommendation generation and cached recommendation state.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
-- `ChatSessionViewModel` can create a fallback local SwiftData context and must keep its `ModelConfiguration` compatible with the app-level local store contract.
-- `ContentView` keeps stable app-level ViewModel instances and rebinds their `ModelContext` from the SwiftUI environment.
+- `ChatSessionViewModel` uses an in-memory fallback context only when no context is injected.
+- `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
+- Todo filtering belongs to the pure `TodoFilter` helper, not to `ExploreViewModel`.
+- Todo recurrence planning belongs to `TodoRecurrencePlanner` and is invoked from `TodoViewModel`.
 
 ## Tests
 

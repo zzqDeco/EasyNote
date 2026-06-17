@@ -13,7 +13,10 @@
 ## Behavior Notes
 
 - `DiaryEntry` owns diary content, metadata, optional audio URL, and AI summary.
+- `DiaryEntryQuery` owns pure diary list search, filter, and sort behavior.
 - `TodoItem` owns recurrence through `RecurringInterval.rawValue` stored as `String`.
+- `TodoRecurrencePlanner` owns pure next-todo creation rules for completed recurring todos.
+- `TodoFilter` owns pure todo category projection for the focused todo view.
 - `ChatSession` owns session messages and generates short titles from the latest user message.
 - `SessionMessage.relatedEntryIds` stores diary UUID strings instead of SwiftData relationships.
 - `TabSelectionManager` is transient UI coordination and not a persisted domain object.

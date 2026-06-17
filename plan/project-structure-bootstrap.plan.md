@@ -8,7 +8,7 @@ Align EasyNote with the user's other active repositories by adding a lightweight
 
 ## Current State
 
-- `main` contains the private prototype consolidation.
+- `main` contains the initial prototype consolidation.
 - The repository did not yet have `dev`, `doc/`, `plan/`, `AGENTS.md`, or GitHub PR/task templates.
 - The project is still an iOS prototype. Release automation remains deferred; the minimum CI gate is tracked separately in [basic-ci.plan.md](basic-ci.plan.md).
 

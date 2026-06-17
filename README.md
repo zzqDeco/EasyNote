@@ -1,11 +1,11 @@
 # EasyNote
 
-EasyNote 是一个 SwiftUI iOS 笔记原型，聚合日记、待办、语音转写和 AI 辅助写作能力。当前仓库目标是保留可运行的产品雏形，并逐步补齐工程化验证。
+EasyNote 是一个 SwiftUI iOS 笔记原型，聚合日记、待办、语音转写和 AI 辅助写作能力。当前仓库是公开的本地优先 MVP，目标是保留可运行的产品雏形，并逐步补齐工程化验证。
 
 ## 功能
 
-- 日记：创建、编辑、收藏、标签、心情、Markdown 预览和语音转写。
-- 待办：优先级、截止时间、循环任务、推荐活动转待办。
+- 日记：创建、编辑、检索、筛选、排序、收藏、标签、心情、Markdown 预览和语音转写。
+- 待办：优先级、截止时间、循环任务、分类视图和推荐活动转待办。
 - AI：DeepSeek 聊天补全接口用于日记摘要、文本润色、扩写、总结和笔记探索。
 - 数据：SwiftData 本地持久化，CloudKit 服务代码保留但 Debug 默认模拟。
 - 设置：主题模式、主题色和本机 API key 配置。
@@ -23,7 +23,9 @@ EasyNote 是一个 SwiftUI iOS 笔记原型，聚合日记、待办、语音转�
 
 1. 使用 Xcode 打开 `EasyNote.xcodeproj`。
 2. 选择 `EasyNote` scheme 和 iOS Simulator。
-3. 在应用的“设置”页填写 DeepSeek API 密钥后再使用 AI 功能。
+3. 在应用的“设置”页填写 DeepSeek API 密钥后再使用 AI 功能；未配置时 AI 调用会在本地失败并提示配置密钥。
+
+语音转写不会自动覆盖日记正文。录音完成或 AI 润色后，转写结果会先显示在编辑器中，用户需要选择“插入正文”或“替换正文”后才会写入当前日记；取消新建日记会丢弃未保存的本地录音文件。
 
 仓库不包含默认 API 密钥。此前本地原型中出现过硬编码密钥，该密钥应视为已泄露并轮换。
 
@@ -38,6 +40,7 @@ EasyNote 是一个 SwiftUI iOS 笔记原型，聚合日记、待办、语音转�
 - `main` 是稳定分支，`dev` 是集成分支。
 - 日常功能、修复、文档和重构工作从 `dev` 创建 topic branch，并优先合入 `dev`。
 - 当前工程文档入口见 [doc/README.md](doc/README.md)，其中 `doc/` 记录当前事实，`doc/src/` 镜像关键源码边界。
+- 开发、验证、Codex review loop 和 promotion 流程见 [doc/mvp-runbook.md](doc/mvp-runbook.md)。
 - 当前实施计划入口见 [plan/README.md](plan/README.md)。
 - Coding agent 约定见 [AGENTS.md](AGENTS.md)。
 

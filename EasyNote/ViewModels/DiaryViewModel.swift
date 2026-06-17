@@ -22,11 +22,14 @@ class DiaryViewModel: ObservableObject {
     @Published var isRecording = false
     @Published var transcribedText = ""
     @Published var recordingState: RecordingState = .idle
+    @Published var speechPermissionStatus: SpeechPermissionStatus = .notDetermined
+    @Published var microphonePermissionStatus: MicrophonePermissionStatus = .notDetermined
     @Published var isProcessingAI = false
     @Published var isSyncing = false
     @Published var errorMessage: String?
     @Published var toastMessage: String?
     @Published var showToast = false
+    @Published var diaryQuery = DiaryEntryQuery()
     
     // 取消令牌
     private var cancellables = Set<AnyCancellable>()
@@ -75,6 +78,12 @@ class DiaryViewModel: ObservableObject {
             
             speechService.$isRecording
                 .assign(to: &$isRecording)
+
+            speechService.$speechPermissionStatus
+                .assign(to: &$speechPermissionStatus)
+
+            speechService.$microphonePermissionStatus
+                .assign(to: &$microphonePermissionStatus)
             
             // 绑定AI处理状态
             openAIService.$isProcessing
@@ -108,13 +117,39 @@ class DiaryViewModel: ObservableObject {
     
     // MARK: - 语音录制功能
     
-    func startRecording() {
+    @discardableResult
+    func startRecording() -> Bool {
+        if speechPermissionStatus == .notDetermined || microphonePermissionStatus == .notDetermined {
+            speechService.requestPermissions { [weak self] isGranted in
+                guard let self else { return }
+                if isGranted {
+                    self.recordingState = .idle
+                    self.errorMessage = nil
+                    self.showToast(message: "语音和麦克风权限已开启，请再次点击语音输入开始录音")
+                } else {
+                    let message = self.speechPermissionStatus.failureMessage
+                        ?? self.microphonePermissionStatus.failureMessage
+                        ?? "语音录制权限未授权"
+                    self.recordingState = .error(NSError(
+                        domain: "SpeechRecognitionService",
+                        code: 12,
+                        userInfo: [NSLocalizedDescriptionKey: message]
+                    ))
+                    self.errorMessage = message
+                    self.showToast(message: message)
+                }
+            }
+            return false
+        }
+
         do {
             try speechService.startRecording()
+            return true
         } catch {
             // 处理任何可能从语音服务抛出的错误
             self.errorMessage = "录音启动失败: \(error.localizedDescription)"
-            self.showToast(message: "录音启动失败，请检查权限设置")
+            self.showToast(message: error.localizedDescription)
+            return false
         }
     }
     
@@ -125,65 +160,161 @@ class DiaryViewModel: ObservableObject {
             self.errorMessage = "停止录音失败: \(error.localizedDescription)"
         }
     }
+
+    @discardableResult
+    func captureVoiceRecordingDraft() -> VoiceRecordingDraft {
+        let (audioURL, transcription) = speechService.saveRecordingWithTranscription()
+
+        if !transcription.isEmpty {
+            transcribedText = transcription
+        }
+
+        return VoiceRecordingDraft(audioURL: audioURL, transcription: transcription)
+    }
+
+    static func removeRecordingFile(at url: URL?) {
+        guard isRemovableLocalRecordingFile(url) else {
+            return
+        }
+
+        guard let url else { return }
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+        } catch {
+            print("无法删除录音文件: \(error.localizedDescription)")
+        }
+    }
+
+    static func isRemovableLocalRecordingFile(_ url: URL?) -> Bool {
+        guard let url, url.isFileURL else {
+            return false
+        }
+
+        return ["caf", "m4a"].contains(url.pathExtension.lowercased())
+    }
+
+    static func removeReplacedRecordingFile(previous: URL?, replacement: URL?) {
+        guard let previous else {
+            return
+        }
+
+        if let replacement,
+           previous.standardizedFileURL == replacement.standardizedFileURL {
+            return
+        }
+
+        removeRecordingFile(at: previous)
+    }
+
+    func discardRecordingFile(at url: URL?) {
+        Self.removeRecordingFile(at: url)
+    }
+
+    static func shouldCaptureVoiceRecordingDraft(isRecording: Bool, recordingState: RecordingState) -> Bool {
+        if isRecording {
+            return true
+        }
+
+        if case .finished = recordingState {
+            return true
+        }
+
+        return false
+    }
+
+    func applyTranscription(to content: String, mode: DiaryTranscriptionApplyMode) -> String {
+        let nextContent = DiaryDraftComposer.apply(
+            transcription: transcribedText,
+            to: content,
+            mode: mode
+        )
+
+        if nextContent != content {
+            transcribedText = ""
+        }
+
+        return nextContent
+    }
+
+    @discardableResult
+    func applyTranscriptionToCurrentEntry(mode: DiaryTranscriptionApplyMode) -> Bool {
+        guard let entry = currentEntry else {
+            errorMessage = "没有正在编辑的日记"
+            return false
+        }
+
+        let nextContent = applyTranscription(to: entry.content, mode: mode)
+        guard nextContent != entry.content else {
+            return true
+        }
+
+        return updateCurrentEntry(content: nextContent)
+    }
     
     // MARK: - 日记管理
     
-    func createNewEntry(title: String, creationDate: Date = Date()) {
+    @discardableResult
+    func createNewEntry(title: String, creationDate: Date = Date()) -> Bool {
         let newEntry = DiaryEntry(title: title)
         newEntry.creationDate = creationDate
         newEntry.lastModified = creationDate
-        currentEntry = newEntry
         modelContext.insert(newEntry)
-        saveContext()
-    }
-    
-    func updateCurrentEntry(content: String? = nil, mood: String? = nil, tags: [String]? = nil) {
-        guard currentEntry != nil else { return }
-        
-        // 创建一个后台任务处理数据更新
-        Task {
-            // 复制需要更新的数据
-            let contentCopy = content
-            let moodCopy = mood 
-            let tagsCopy = tags?.map { $0 } // 创建标签的深拷贝
-            
-            // 在主线程更新UI和数据
-            await MainActor.run { [weak self] in
-                guard let self = self, let entry = self.currentEntry else { return }
-                
-                if let contentCopy = contentCopy {
-                    entry.content = contentCopy
-                }
-                
-                if let moodCopy = moodCopy {
-                    entry.mood = moodCopy
-                }
-                
-                if let tagsCopy = tagsCopy {
-                    entry.tags = tagsCopy
-                }
-                
-                self.saveContext()
-            }
+        guard saveContext() else {
+            return false
         }
+
+        currentEntry = newEntry
+        return true
     }
     
-    func saveVoiceRecordingToCurrentEntry() {
-        guard let entry = currentEntry else { return }
+    @discardableResult
+    func updateCurrentEntry(content: String? = nil, mood: String? = nil, tags: [String]? = nil) -> Bool {
+        guard let entry = currentEntry else {
+            errorMessage = "没有正在编辑的日记"
+            return false
+        }
+
+        if let content {
+            entry.content = content
+        }
+
+        if let mood {
+            entry.mood = mood
+        }
+
+        if let tags {
+            entry.tags = tags
+        }
+
+        entry.lastModified = Date()
+        return saveContext()
+    }
+    
+    @discardableResult
+    func saveVoiceRecordingToCurrentEntry() -> Bool {
+        guard let entry = currentEntry else {
+            errorMessage = "没有正在编辑的日记"
+            return false
+        }
         
-        let (audioURL, transcription) = speechService.saveRecordingWithTranscription()
+        let previousAudioURL = entry.audioURL
+        let recording = captureVoiceRecordingDraft()
+        var replacementAudioURL: URL?
         
-        if let url = audioURL, FileManager.default.fileExists(atPath: url.path) {
+        if let url = recording.audioURL, FileManager.default.fileExists(atPath: url.path) {
             entry.audioURL = url
+            replacementAudioURL = url
             print("成功保存录音到: \(url.path)")
-        } else if audioURL != nil {
+        } else if recording.audioURL != nil {
             print("音频文件URL无效或文件不存在")
         }
         
         // 保存原始识别文本到transcribedText，而不是直接修改entry.content
-        if !transcription.isEmpty {
+        if !recording.transcription.isEmpty {
             // 将识别文本保存到transcribedText供用户预览
-            self.transcribedText = transcription
+            self.transcribedText = recording.transcription
             
             // 不再自动润色文本，由用户手动触发
             // if !transcription.isEmpty && !openAIService.apiKey.isEmpty {
@@ -191,8 +322,16 @@ class DiaryViewModel: ObservableObject {
             // }
         }
         
-        // 保存上下文
-        saveContext()
+        let didSave = saveContext()
+        if didSave, replacementAudioURL != nil {
+            Self.removeReplacedRecordingFile(previous: previousAudioURL, replacement: replacementAudioURL)
+        } else if !didSave,
+                  let replacementAudioURL,
+                  previousAudioURL?.standardizedFileURL != replacementAudioURL.standardizedFileURL {
+            Self.removeRecordingFile(at: replacementAudioURL)
+        }
+
+        return didSave
     }
     
     // MARK: - AI功能
@@ -228,7 +367,8 @@ class DiaryViewModel: ObservableObject {
                 receiveValue: { [weak self] summary in
                     guard let self = self, let entry = self.currentEntry else { return }
                     entry.aiSummary = summary
-                    self.saveContext()
+                    entry.lastModified = Date()
+                    _ = self.saveContext()
                 }
             )
             .store(in: &cancellables)
@@ -316,17 +456,25 @@ class DiaryViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    func deleteEntry(_ entry: DiaryEntry) {
+    @discardableResult
+    func deleteEntry(_ entry: DiaryEntry) -> Bool {
+        let audioURL = entry.audioURL
+        modelContext.delete(entry)
+        guard saveContext() else {
+            return false
+        }
+
+        Self.removeRecordingFile(at: audioURL)
+
         if let index = diaryEntries.firstIndex(where: { $0.id == entry.id }) {
             diaryEntries.remove(at: index)
         }
         
-        modelContext.delete(entry)
-        saveContext()
-        
         if currentEntry?.id == entry.id {
             currentEntry = nil
         }
+
+        return true
     }
     
     private func loadDiaryEntries() {
@@ -338,25 +486,16 @@ class DiaryViewModel: ObservableObject {
         }
     }
     
-    private func saveContext() {
-        // 创建一个后台任务来处理保存操作
-        Task {
-            do {
-                // 在后台线程准备数据
-                // 此处可以进行一些数据验证或预处理
-                
-                // 切换到主线程进行实际的保存操作
-                // 因为SwiftData/CoreData要求在创建对象的同一线程上保存
-                try await MainActor.run { [weak self] in
-                    guard let self = self else { return }
-                    try self.modelContext.save()
-                }
-            } catch {
-                // 错误处理也在主线程上进行
-                await MainActor.run { [weak self] in
-                    self?.errorMessage = "保存日记失败: \(error.localizedDescription)"
-                }
-            }
+    @discardableResult
+    private func saveContext() -> Bool {
+        do {
+            try modelContext.save()
+            errorMessage = nil
+            return true
+        } catch {
+            modelContext.rollback()
+            errorMessage = "保存日记失败: \(error.localizedDescription)"
+            return false
         }
     }
     
@@ -436,7 +575,7 @@ class DiaryViewModel: ObservableObject {
                     }
                     
                     // 保存更改
-                    self.saveContext()
+                    _ = self.saveContext()
                 }
             )
             .store(in: &cancellables)
@@ -475,7 +614,7 @@ class DiaryViewModel: ObservableObject {
     
     // 为DiaryListView添加所需属性和方法
     var entries: [DiaryEntry] {
-        return diaryEntries
+        return diaryQuery.apply(to: diaryEntries)
     }
     
     var allEntries: [DiaryEntry] {
@@ -484,39 +623,49 @@ class DiaryViewModel: ObservableObject {
     
     // 搜索日记条目
     func searchEntries(_ query: String) {
-        if query.isEmpty {
-            loadEntries()
-            return
-        }
-        
-        // 筛选包含搜索词的条目
-        let filteredEntries = diaryEntries.filter { entry in
-            return entry.title.localizedCaseInsensitiveContains(query) ||
-                   entry.content.localizedCaseInsensitiveContains(query) ||
-                   entry.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
-        }
-        
-        diaryEntries = filteredEntries
+        updateDiaryQuery { $0.searchText = query }
     }
     
     // 按标签筛选
-    func filterByTag(_ tag: String) {
-        let filteredEntries = diaryEntries.filter { entry in
-            return entry.tags.contains(tag)
-        }
-        
-        diaryEntries = filteredEntries
+    func filterByTag(_ tag: String?) {
+        updateDiaryQuery { $0.selectedTag = tag }
     }
     
-    // 排序日记条目
-    func sortEntries(by comparator: (DiaryEntry, DiaryEntry) -> Bool) {
-        diaryEntries.sort(by: comparator)
+    func filterByMood(_ mood: String?) {
+        updateDiaryQuery { $0.selectedMood = mood }
+    }
+
+    func setFavoriteOnly(_ favoriteOnly: Bool) {
+        updateDiaryQuery { $0.favoriteOnly = favoriteOnly }
+    }
+
+    func setDateRange(start: Date?, end: Date?) {
+        updateDiaryQuery {
+            $0.startDate = start
+            $0.endDate = end
+        }
+    }
+
+    func sortEntries(by option: DiaryEntryQuery.SortOption) {
+        updateDiaryQuery { $0.sortOption = option }
+    }
+
+    func resetDiaryQuery() {
+        diaryQuery = DiaryEntryQuery()
+    }
+
+    private func updateDiaryQuery(_ update: (inout DiaryEntryQuery) -> Void) {
+        var nextQuery = diaryQuery
+        update(&nextQuery)
+        diaryQuery = nextQuery
     }
     
     // 收藏/取消收藏日记
-    func toggleFavorite(_ entry: DiaryEntry) {
+    @discardableResult
+    func toggleFavorite(_ entry: DiaryEntry) -> Bool {
         entry.isFavorite.toggle()
-        saveContext()
+        entry.lastModified = Date()
+        return saveContext()
     }
     
     // 刷新数据
@@ -584,17 +733,28 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 创建新日记条目的完整方法
-    func createNewEntry(title: String, content: String, mood: String?, tags: [String], creationDate: Date = Date()) -> DiaryEntry {
+    func createNewEntry(
+        title: String,
+        content: String,
+        mood: String?,
+        tags: [String],
+        creationDate: Date = Date(),
+        audioURL: URL? = nil
+    ) -> DiaryEntry? {
         let newEntry = DiaryEntry(title: title)
         newEntry.content = content
         newEntry.mood = mood
         newEntry.tags = tags
         newEntry.creationDate = creationDate
         newEntry.lastModified = creationDate
+        newEntry.audioURL = audioURL
         
         modelContext.insert(newEntry)
+        guard saveContext() else {
+            return nil
+        }
+
         diaryEntries.insert(newEntry, at: 0)
-        saveContext()
         
         return newEntry
     }
@@ -607,4 +767,4 @@ class DiaryViewModel: ObservableObject {
             self.showToast = false
         }
     }
-} 
+}

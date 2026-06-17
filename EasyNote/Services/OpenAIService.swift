@@ -108,35 +108,7 @@ class OpenAIService: ObservableObject {
         """
         
         return sendRequest(prompt: prompt)
-            .mapError { $0 } // 保持OpenAIError类型
-            .tryMap { responseStr -> (moods: [String], tags: [String]) in
-                // 尝试解析JSON响应
-                guard let data = responseStr.data(using: .utf8) else {
-                    throw OpenAIError.decodingFailed(NSError(domain: "OpenAIService", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法将响应转换为数据"]))
-                }
-                
-                struct AnalysisResponse: Decodable {
-                    let moods: [String]
-                    let tags: [String]
-                }
-                
-                do {
-                    let response = try JSONDecoder().decode(AnalysisResponse.self, from: data)
-                    return (moods: response.moods, tags: response.tags)
-                } catch {
-                    // 如果解析失败，返回默认值
-                    print("解析AI分析结果失败: \(error.localizedDescription)")
-                    return (moods: ["平静", "思考", "感动"], tags: ["日常", "生活", "随想"])
-                }
-            }
-            .mapError { error -> OpenAIError in
-                // 确保所有错误都是OpenAIError类型
-                if let openAIError = error as? OpenAIError {
-                    return openAIError
-                } else {
-                    return OpenAIError.decodingFailed(error)
-                }
-            }
+            .map { AIResponseParser.parseDiaryAnalysis($0) }
             .eraseToAnyPublisher()
     }
     
@@ -217,175 +189,8 @@ class OpenAIService: ObservableObject {
         """
         
         return sendRequest(prompt: prompt)
-            .mapError { $0 }
-            .tryMap { responseStr -> (recommendations: [String], todos: [String]) in
-                // 尝试解析JSON响应
-                guard let data = responseStr.data(using: .utf8) else {
-                    throw OpenAIError.decodingFailed(NSError(domain: "OpenAIService", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法将响应转换为数据"]))
-                }
-                
-                struct RecommendationsResponse: Decodable {
-                    let recommendations: [String]
-                    let todos: [String]
-                }
-                
-                do {
-                    let response = try JSONDecoder().decode(RecommendationsResponse.self, from: data)
-                    return (recommendations: response.recommendations, todos: response.todos)
-                } catch {
-                    // 如果解析失败，返回默认值
-                    print("解析AI推荐结果失败: \(error.localizedDescription)")
-                    print("原始响应: \(responseStr)")
-                    
-                    // 尝试使用正则表达式提取内容
-                    let recommendations = self.extractRecommendationsFromText(responseStr)
-                    let todos = self.extractTodosFromText(responseStr)
-                    
-                    if !recommendations.isEmpty || !todos.isEmpty {
-                        return (recommendations: recommendations, todos: todos)
-                    }
-                    
-                    // 如果所有尝试都失败，返回默认推荐
-                    return (
-                        recommendations: ["花点时间阅读一本书", "尝试冥想15分钟", "进行30分钟的有氧运动", "和朋友或家人联系", "学习一项新技能"],
-                        todos: ["记录今天的心情和想法", "整理工作计划", "确保充足的水分摄入"]
-                    )
-                }
-            }
-            .mapError { error -> OpenAIError in
-                if let openAIError = error as? OpenAIError {
-                    return openAIError
-                } else {
-                    return OpenAIError.decodingFailed(error)
-                }
-            }
+            .map { AIResponseParser.parseRecommendations($0) }
             .eraseToAnyPublisher()
-    }
-    
-    // 从文本中提取推荐活动
-    private func extractRecommendationsFromText(_ text: String) -> [String] {
-        var recommendations: [String] = []
-        
-        // 尝试不同的模式来匹配推荐
-        let patterns = [
-            "\"recommendations\"\\s*:\\s*\\[([^\\]]+)\\]",  // 标准JSON格式
-            "recommendations\\s*:?\\s*\\[([^\\]]+)\\]",     // 宽松的JSON格式
-            "推荐活动：\\s*([\\s\\S]*?)(?=待办事项|$)",       // 中文标记
-            "推荐：\\s*([\\s\\S]*?)(?=待办|$)"              // 简化中文标记
-        ]
-        
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-               let match = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) {
-                
-                if match.numberOfRanges > 1, let range = Range(match.range(at: 1), in: text) {
-                    let matchedText = String(text[range])
-                    
-                    // 分割项目
-                    let items = matchedText.components(separatedBy: CharacterSet(charactersIn: ",\""))
-                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty && $0 != "," && $0 != "\"" }
-                    
-                    if !items.isEmpty {
-                        recommendations.append(contentsOf: items)
-                        break
-                    }
-                }
-            }
-        }
-        
-        // 如果没有找到匹配，尝试查找带编号的列表
-        if recommendations.isEmpty {
-            let lines = text.components(separatedBy: .newlines)
-            var collectingRecommendations = false
-            
-            for line in lines {
-                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                
-                if trimmedLine.lowercased().contains("推荐") || trimmedLine.lowercased().contains("建议") {
-                    collectingRecommendations = true
-                    continue
-                }
-                
-                if collectingRecommendations {
-                    if trimmedLine.lowercased().contains("待办") || trimmedLine.isEmpty {
-                        collectingRecommendations = false
-                        continue
-                    }
-                    
-                    // 移除可能的编号或符号
-                    let cleanLine = trimmedLine.replacingOccurrences(of: "^[0-9-\\.•\\*\\+]+\\s*", with: "", options: .regularExpression)
-                    if !cleanLine.isEmpty {
-                        recommendations.append(cleanLine)
-                    }
-                }
-            }
-        }
-        
-        return recommendations
-    }
-    
-    // 从文本中提取待办事项
-    private func extractTodosFromText(_ text: String) -> [String] {
-        var todos: [String] = []
-        
-        // 尝试不同的模式来匹配待办事项
-        let patterns = [
-            "\"todos\"\\s*:\\s*\\[([^\\]]+)\\]",       // 标准JSON格式
-            "todos\\s*:?\\s*\\[([^\\]]+)\\]",          // 宽松的JSON格式
-            "待办事项：\\s*([\\s\\S]*?)(?=推荐|$)",       // 中文标记
-            "待办：\\s*([\\s\\S]*?)(?=推荐|$)"          // 简化中文标记
-        ]
-        
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-               let match = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) {
-                
-                if match.numberOfRanges > 1, let range = Range(match.range(at: 1), in: text) {
-                    let matchedText = String(text[range])
-                    
-                    // 分割项目
-                    let items = matchedText.components(separatedBy: CharacterSet(charactersIn: ",\""))
-                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty && $0 != "," && $0 != "\"" }
-                    
-                    if !items.isEmpty {
-                        todos.append(contentsOf: items)
-                        break
-                    }
-                }
-            }
-        }
-        
-        // 如果没有找到匹配，尝试查找带编号的列表
-        if todos.isEmpty {
-            let lines = text.components(separatedBy: .newlines)
-            var collectingTodos = false
-            
-            for line in lines {
-                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                
-                if trimmedLine.lowercased().contains("待办") || trimmedLine.lowercased().contains("任务") {
-                    collectingTodos = true
-                    continue
-                }
-                
-                if collectingTodos {
-                    if trimmedLine.lowercased().contains("推荐") || trimmedLine.isEmpty {
-                        collectingTodos = false
-                        continue
-                    }
-                    
-                    // 移除可能的编号或符号
-                    let cleanLine = trimmedLine.replacingOccurrences(of: "^[0-9-\\.•\\*\\+]+\\s*", with: "", options: .regularExpression)
-                    if !cleanLine.isEmpty {
-                        todos.append(cleanLine)
-                    }
-                }
-            }
-        }
-        
-        return todos
     }
     
     private func sendRequest(prompt: String) -> AnyPublisher<String, OpenAIError> {
@@ -516,4 +321,4 @@ struct OpenAIResponse: Decodable {
         let role: String
         let content: String
     }
-} 
+}

@@ -13,15 +13,18 @@ Source notes are required for public contracts, cross-module boundaries, persist
 
 ## Services
 
+- [AIResponseParser](EasyNote/Services/AIResponseParser.swift.plan.md)
 - [OpenAIService](EasyNote/Services/OpenAIService.swift.plan.md)
 - [SpeechRecognitionService](EasyNote/Services/SpeechRecognitionService.swift.plan.md)
 - [CloudKitService](EasyNote/Services/CloudKitService.swift.plan.md)
 
 ## ViewModels And Views
 
+- [DiaryDraftComposer](EasyNote/ViewModels/DiaryDraftComposer.swift.plan.md)
 - [ViewModels Overview](EasyNote/ViewModels/README.plan.md)
 - [Views Overview](EasyNote/Views/README.plan.md)
 - [SettingsView](EasyNote/Views/SettingsView.swift.plan.md)
+- [TranscriptionDisplayView](EasyNote/Views/TranscriptionDisplayView.swift.plan.md)
 
 ## Tests And CI
 

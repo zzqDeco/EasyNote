@@ -25,9 +25,12 @@ The current store is created under the app documents directory as `EasyNote.stor
 ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 
 - `DiaryViewModel` owns diary list/current-entry state, speech integration, AI diary actions, and CloudKit sync entry points.
-- `TodoViewModel` owns focused todo CRUD and recurrence behavior.
-- `ExploreViewModel` owns recommendation cards plus a todo projection for the former Explore screen.
+- `TodoViewModel` owns focused todo CRUD, recurrence behavior, and todo list state.
+- `ExploreViewModel` owns recommendation generation and recommendation cache state; it does not own todo CRUD.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
+- `ContentView` passes the shared SwiftData `ModelContext` into stable app-level ViewModels through its root view instead of relying on production nil-context fallback stores.
+- Recurring todo completion is planned through a shared helper so todo entry points do not duplicate next-occurrence creation rules.
+- Todo list categories are projected through a pure `TodoFilter` helper before SwiftUI renders the selected segment.
 
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
 

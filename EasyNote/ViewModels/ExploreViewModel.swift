@@ -6,34 +6,15 @@ import SwiftUI
 class ExploreViewModel: ObservableObject {
     // 数据状态
     @Published var recommendations: [Recommendation] = []
-    @Published private(set) var allTodoItems: [TodoItem] = []
     @Published var isLoading = true
     @Published var lastUpdated: Date?
     @Published var errorMessage: String?
-    
-    // 计算属性：今日待办（只显示今天截止或没有设置截止日期的待办）
-    var todoItems: [TodoItem] {
-        return allTodoItems.filter { item in
-            // 没有设置截止日期的项目
-            if item.deadline == nil {
-                return true
-            }
-            
-            // 截止日期是今天的项目
-            if let deadline = item.deadline {
-                let calendar = Calendar.current
-                return calendar.isDateInToday(deadline)
-            }
-            
-            return false
-        }
-    }
     
     // 服务
     private let openAIService: OpenAIService
     
     // 模型上下文
-    @Published var modelContext: ModelContext
+    private var modelContext: ModelContext
     
     // 取消令牌
     private var cancellables = Set<AnyCancellable>()
@@ -65,9 +46,6 @@ class ExploreViewModel: ObservableObject {
                 }
             }
         }
-        
-        // 加载待办列表
-        loadTodoItems()
         
         // 加载缓存的推荐内容
         loadCachedRecommendations()
@@ -269,152 +247,8 @@ class ExploreViewModel: ObservableObject {
         }
     }
     
-    /// 加载所有待办事项
-    private func loadTodoItems() {
-        let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
-        
-        do {
-            allTodoItems = try modelContext.fetch(descriptor)
-            print("从数据库加载了 \(allTodoItems.count) 个待办事项")
-        } catch {
-            print("加载待办事项失败: \(error)")
-            allTodoItems = []
-        }
-    }
-    
     func updateModelContext(_ newContext: ModelContext) {
         modelContext = newContext
-        loadTodoItems()
-    }
-    
-    /// 标记待办事项为已完成或未完成
-    func toggleTodoCompletion(for id: UUID) {
-        if let index = allTodoItems.firstIndex(where: { $0.id == id }) {
-            // 修改内存中的模型
-            allTodoItems[index].isCompleted.toggle()
-            
-            // 检查是否需要创建下一个循环任务
-            let item = allTodoItems[index]
-            
-            if allTodoItems[index].isCompleted && item.isRecurring, 
-               let intervalString = item.recurringInterval,
-               let interval = TodoItem.RecurringInterval(rawValue: intervalString),
-               let deadline = item.deadline {
-                
-                // 创建下一个循环待办
-                let nextDate = interval.nextDate(from: deadline)
-                let newTodo = TodoItem(
-                    id: UUID(),
-                    title: item.title,
-                    isCompleted: false,
-                    priority: item.priority,
-                    deadline: nextDate,
-                    notes: item.notes,
-                    isRecurring: true,
-                    recurringInterval: intervalString
-                )
-                
-                // 添加到待办列表并保存到数据库
-                withAnimation {
-                    allTodoItems.append(newTodo)
-                    modelContext.insert(newTodo)
-                }
-            }
-            
-            // 保存更改到数据库
-            saveContext()
-        }
-    }
-    
-    /// 重置所有待办事项
-    func resetAllTodoItems() {
-        for i in 0..<allTodoItems.count {
-            allTodoItems[i].isCompleted = false
-        }
-        // 保存更改到数据库
-        saveContext()
-    }
-    
-    /// 删除指定ID的待办事项
-    func deleteTodoItem(withID id: UUID, completion: (() -> Void)? = nil) {
-        if let index = allTodoItems.firstIndex(where: { $0.id == id }) {
-            let item = allTodoItems[index]
-            
-            // 使用动画删除
-            withAnimation(.easeInOut(duration: 0.3)) {
-                allTodoItems.remove(at: index)
-                modelContext.delete(item)
-            }
-            
-            // 保存更改到数据库
-            if saveContext() {
-                completion?()
-            }
-        }
-    }
-    
-    /// 从推荐活动创建待办事项
-    func createTodoFromRecommendation(_ recommendation: Recommendation) {
-        let newTodo = TodoItem(
-            id: UUID(),
-            title: recommendation.title,
-            isCompleted: false,
-            priority: TodoItem.PriorityLevel(rawValue: recommendation.priority.rawValue) ?? .medium,
-            deadline: Date().addingTimeInterval(3600), // 默认1小时后
-            notes: nil,
-            isRecurring: false
-        )
-        
-        // 添加到内存中的列表
-        withAnimation {
-            allTodoItems.append(newTodo)
-        }
-        
-        // 保存到数据库
-        modelContext.insert(newTodo)
-        saveContext()
-    }
-    
-    /// 编辑待办事项
-    func updateTodoItem(id: UUID, title: String, priority: TodoItem.PriorityLevel, deadline: Date?, notes: String?, isRecurring: Bool = false, recurringInterval: String? = nil) {
-        if let index = allTodoItems.firstIndex(where: { $0.id == id }) {
-            withAnimation {
-                allTodoItems[index].title = title
-                allTodoItems[index].priority = priority
-                allTodoItems[index].deadline = deadline
-                allTodoItems[index].notes = notes
-                allTodoItems[index].isRecurring = isRecurring
-                allTodoItems[index].recurringInterval = recurringInterval
-            }
-            
-            // 保存到数据库
-            saveContext()
-        }
-    }
-    
-    /// 创建待办事项
-    func addTodoItem(_ todo: TodoItem) {
-        // 添加到内存中的列表
-        withAnimation {
-            allTodoItems.append(todo)
-        }
-        
-        // 保存到数据库
-        modelContext.insert(todo)
-        saveContext()
-    }
-    
-    @discardableResult
-    private func saveContext() -> Bool {
-        do {
-            try modelContext.save()
-            errorMessage = nil
-            return true
-        } catch {
-            errorMessage = "保存待办事项失败: \(error.localizedDescription)"
-            print("保存待办事项失败: \(error)")
-            return false
-        }
     }
 }
 

@@ -4,6 +4,7 @@
 
 - Hold launch-level UI smoke coverage for the app target.
 - Prove that the app can be installed, launched, and enter the foreground in a simulator test run.
+- Exercise non-destructive navigation across the primary tabs using stable accessibility identifiers with label fallback.
 
 ## Boundaries
 
@@ -13,6 +14,7 @@
 ## Behavior Notes
 
 - `testLaunches` starts the app and asserts that it reaches the foreground.
+- `testPrimaryTabNavigationSmoke` switches across explore, todo, diary, and settings without creating, editing, deleting, recording audio, calling the network, or requiring a configured API key.
 - Launch performance remains template-level smoke coverage and should be tightened only after CI runtime is stable.
 
 ## Tests

@@ -16,8 +16,7 @@ struct ExploreView: View {
     @State private var editNotes: String = ""
     @State private var editIsRecurring = false
     @State private var editRecurringInterval: RecurringInterval = .daily
-    @State private var showAllTodos = false
-    @State private var showAllTodosSheet = false
+    @State private var selectedTodoFilter: TodoFilter = .today
     @State private var isRefreshing = false
     @State private var showToast = false
     @State private var toastMessage = ""
@@ -102,31 +101,7 @@ struct ExploreView: View {
                                 .padding(.bottom, 5)
                         }
                         
-                        // 待办事项区域，只显示今日待办
-                        todoSection(title: "今日待办", items: todoViewModel.todoItems.filter { item in
-                            if let deadline = item.deadline {
-                                return Calendar.current.isDateInToday(deadline)
-                            }
-                            return false
-                        })
-                        
-                        // 显示全部/隐藏按钮，修改为打开弹出页面
-                        HStack {
-                            Spacer()
-                            
-                            Button {
-                                showAllTodosSheet = true
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Text("查看全部")
-                                        .font(.caption)
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                }
-                                .foregroundColor(.blue)
-                            }
-                        }
-                        .padding(.top, 5)
+                        todoFocusSection
                         
                         // 分隔符
                         Divider()
@@ -260,76 +235,6 @@ struct ExploreView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showAllTodosSheet) {
-            // 全部待办事项弹出页面
-            NavigationView {
-                VStack {
-                    // 全部待办事项列表
-                    if todoViewModel.todoItems.isEmpty {
-                        VStack {
-                            Spacer()
-                            Image(systemName: "checkmark.circle")
-                                .font(.system(size: 60))
-                                .foregroundColor(.gray)
-                                .padding()
-                            
-                            Text("暂无待办事项")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                    } else {
-                        List {
-                            ForEach(todoViewModel.todoItems.sorted(by: { 
-                                // 按照截止日期排序，完成的项目放在最后
-                                if $0.isCompleted && !$1.isCompleted { return false }
-                                if !$0.isCompleted && $1.isCompleted { return true }
-                                
-                                // 同为完成或未完成状态，按截止日期排序
-                                if let date1 = $0.deadline, let date2 = $1.deadline {
-                                    return date1 < date2
-                                } else if $0.deadline != nil {
-                                    return true
-                                } else if $1.deadline != nil {
-                                    return false
-                                }
-                                
-                                // 默认按创建日期排序
-                                return $0.creationDate > $1.creationDate
-                            })) { item in
-                                SwipeableTodoItemView(
-                                    item: item,
-                                    todoViewModel: todoViewModel,
-                                    onEdit: { showEditTodoSheet(item) }
-                                )
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 5, leading: 10, bottom: 5, trailing: 10))
-                            }
-                        }
-                        .listStyle(PlainListStyle())
-                    }
-                }
-                .navigationTitle("全部待办事项")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            showAllTodosSheet = false
-                        } label: {
-                            Text("关闭")
-                        }
-                    }
-                    
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            createNewTodo()
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                    }
-                }
-            }
-        }
         .onAppear {
             viewModel.generateRecommendations()
         }
@@ -409,6 +314,44 @@ struct ExploreView: View {
         
         return themes
     }
+
+    private var todoFocusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("待办")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Spacer()
+
+                Button {
+                    createNewTodo()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.headline)
+                        .frame(width: 32, height: 32)
+                        .background(Color.blue.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("新建待办")
+                .accessibilityIdentifier("todo.addButton")
+            }
+
+            Picker("待办分类", selection: $selectedTodoFilter) {
+                ForEach(TodoFilter.allCases) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("todo.filterPicker")
+
+            todoSection(title: selectedTodoFilter.rawValue, items: selectedTodoItems)
+        }
+    }
+
+    private var selectedTodoItems: [TodoItem] {
+        selectedTodoFilter.apply(to: todoViewModel.todoItems)
+    }
     
     // 待办事项分区视图
     private func todoSection(title: String, items: [TodoItem]) -> some View {
@@ -446,102 +389,6 @@ struct ExploreView: View {
                 }
             }
         }
-    }
-    
-    // 待办事项卡片（供SwipeableTodoItemView使用）
-    private func todoItemContent(_ item: TodoItem) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 15) {
-                // 完成状态按钮
-                Button {
-                    todoViewModel.toggleTodoCompletion(for: item.id)
-                } label: {
-                    Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(item.isCompleted ? .green : .gray)
-                        .font(.title3)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    // 标题
-                    Text(item.title)
-                        .font(.headline)
-                        .strikethrough(item.isCompleted)
-                        .foregroundColor(item.isCompleted ? .gray : .primary)
-                    
-                    HStack {
-                        // 优先级指示器
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(item.priority.color)
-                                .frame(width: 8, height: 8)
-                            
-                            Text(priorityText(item.priority))
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        // 截止日期（如果有）
-                        if let deadline = item.deadline {
-                            HStack(spacing: 3) {
-                                Image(systemName: "calendar")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                                
-                                Text(formatDeadline(deadline))
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        // 循环指示器（如果是循环待办）
-                        if item.isRecurring {
-                            HStack(spacing: 3) {
-                                Image(systemName: "repeat")
-                                    .font(.caption2)
-                                    .foregroundColor(.blue)
-                                
-                                if let interval = item.recurringInterval {
-                                    Text(interval)
-                                        .font(.caption2)
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                Spacer()
-            }
-            
-            // 备注（如果有）
-            if let notes = item.notes, !notes.isEmpty {
-                Text(notes)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                    .padding(.leading, 35)
-            }
-        }
-        .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(10)
-    }
-    
-    // 优先级文本
-    private func priorityText(_ priority: TodoItem.PriorityLevel) -> String {
-        switch priority {
-        case .high: return "高优先级"
-        case .medium: return "中优先级"
-        case .low: return "低优先级"
-        }
-    }
-    
-    // 格式化截止日期
-    private func formatDeadline(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
     }
     
     // 显示编辑待办事项的Sheet
@@ -646,7 +493,9 @@ struct ExploreView: View {
     // 创建新的待办事项
     private func createNewTodo() {
         let newTodo = TodoItem(title: "新待办事项")
-        todoViewModel.addTodoItem(title: newTodo.title)
+        guard todoViewModel.addTodoItem(newTodo) else {
+            return
+        }
         
         // 设置为编辑状态
         editingTodo = newTodo
@@ -941,4 +790,4 @@ struct AddToTodoButton: View {
             .foregroundColor(isAdding ? .green : .blue)
         }
     }
-} 
+}

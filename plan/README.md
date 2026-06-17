@@ -13,12 +13,19 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 ## Active References
 
-No active implementation plans are currently open.
+There are no active implementation plans.
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [mvp-runbook.plan.md](mvp-runbook.plan.md) | Capture the MVP development, validation, review, and promotion workflow | Delivered |
+| [ui-smoke-and-accessibility.plan.md](ui-smoke-and-accessibility.plan.md) | Add stable accessibility identifiers and local non-destructive UI smoke coverage | Delivered |
+| [speech-diary-flow.plan.md](speech-diary-flow.plan.md) | Make speech transcription a permission-aware explicit diary draft input flow | Delivered |
+| [ai-parser-and-settings-hardening.plan.md](ai-parser-and-settings-hardening.plan.md) | Extract AI parsing into tested helpers and harden empty-key settings behavior | Delivered |
+| [todo-focus-view.plan.md](todo-focus-view.plan.md) | Add focused todo category views and remove duplicated todo CRUD from ExploreViewModel | Delivered |
+| [diary-search-filter.plan.md](diary-search-filter.plan.md) | Add stable diary search, filtering, and sort behavior without mutating source entries | Delivered |
+| [local-core-reliability.plan.md](local-core-reliability.plan.md) | Tighten local ViewModel context binding, save failures, and recurring todo completion | Delivered |
 | [project-structure-bootstrap.plan.md](project-structure-bootstrap.plan.md) | Align EasyNote with the user's branch, doc, plan, and PR workflow conventions | Delivered |
 | [basic-ci.plan.md](basic-ci.plan.md) | Add the first GitHub Actions CI gate for Xcode project listing and tests | Delivered |
 

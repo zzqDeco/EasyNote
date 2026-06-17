@@ -21,20 +21,11 @@ class ChatSessionViewModel: ObservableObject {
         } else {
             // 如果没有提供ModelContext，创建一个内存中的临时ModelContext
             do {
-                // 确保使用相同的URL路径
-                let storeURL = URL.documentsDirectory.appending(path: "EasyNote.store")
                 let schema = Schema([ChatSession.self, SessionMessage.self])
-                let config = ModelConfiguration(
-                    "EasyNoteChatSessions",
-                    schema: schema,
-                    url: storeURL,
-                    allowsSave: true,
-                    cloudKitDatabase: .none
-                )
-                
+                let config = ModelConfiguration(isStoredInMemoryOnly: true)
                 let container = try ModelContainer(for: schema, configurations: [config])
                 self.modelContext = ModelContext(container)
-                print("ChatSessionViewModel: 创建了ModelContext，使用数据库路径: \(storeURL.path())")
+                print("ChatSessionViewModel: 创建了内存ModelContext")
             } catch {
                 print("无法创建临时ModelContext: \(error)")
                 fatalError("无法创建ModelContext，应用程序无法继续: \(error)")
@@ -86,7 +77,8 @@ class ChatSessionViewModel: ObservableObject {
     }
     
     // 创建新会话
-    func createNewSession(title: String = "新会话") -> ChatSession {
+    @discardableResult
+    func createNewSession(title: String = "新会话") -> ChatSession? {
         let newSession = ChatSession(title: title)
         
         // 确保添加前没有相同ID的会话
@@ -98,7 +90,9 @@ class ChatSessionViewModel: ObservableObject {
         modelContext.insert(newSession)
         
         // 立即保存更改
-        saveContext()
+        guard saveContext() else {
+            return nil
+        }
         
         print("创建了新会话: \(title), ID: \(newSession.id)")
         
@@ -141,16 +135,23 @@ class ChatSessionViewModel: ObservableObject {
         session.updateLastModified()
         
         // 立即保存更改
-        saveContext()
+        guard saveContext() else {
+            return nil
+        }
         
         print("添加消息到会话 '\(session.title)': \(content.prefix(20))...")
         
         // 如果会话有自定义标题，则不更新
         if session.title == "新会话" && isUser {
             // 生成新标题
+            let oldTitle = session.title
+            let oldModifiedDate = session.lastModifiedDate
             let newTitle = session.generateSummary()
             session.title = newTitle
-            saveContext()
+            if !saveContext() {
+                session.title = oldTitle
+                session.lastModifiedDate = oldModifiedDate
+            }
             
             print("更新会话标题为: \(newTitle)")
         }
@@ -159,28 +160,39 @@ class ChatSessionViewModel: ObservableObject {
     }
     
     // 更新会话标题
-    func updateSessionTitle(_ session: ChatSession, newTitle: String) {
+    @discardableResult
+    func updateSessionTitle(_ session: ChatSession, newTitle: String) -> Bool {
+        let oldTitle = session.title
+        let oldModifiedDate = session.lastModifiedDate
         session.title = newTitle
         session.updateLastModified()
-        saveContext()
+        guard saveContext() else {
+            session.title = oldTitle
+            session.lastModifiedDate = oldModifiedDate
+            return false
+        }
         
         print("更新会话标题: \(newTitle)")
+        return true
     }
     
     // 删除会话
-    func deleteSession(_ session: ChatSession) {
+    @discardableResult
+    func deleteSession(_ session: ChatSession) -> Bool {
         // 保存会话ID，用于日志
         let sessionID = session.id
         let sessionTitle = session.title
-        
+
+        // 从数据库中删除
+        modelContext.delete(session)
+        guard saveContext() else {
+            return false
+        }
+
         // 在本地列表中删除
         if let index = sessions.firstIndex(where: { $0.id == session.id }) {
             sessions.remove(at: index)
         }
-        
-        // 从数据库中删除
-        modelContext.delete(session)
-        saveContext()
         
         print("删除会话: \(sessionTitle), ID: \(sessionID)")
         
@@ -195,11 +207,14 @@ class ChatSessionViewModel: ObservableObject {
                 print("已删除所有会话，创建新会话")
             }
         }
+
+        return true
     }
     
     // 清空当前会话
-    func clearCurrentSession() {
-        guard let session = currentSession else { return }
+    @discardableResult
+    func clearCurrentSession() -> Bool {
+        guard let session = currentSession else { return false }
         
         // 保存会话ID，用于日志
         let sessionID = session.id
@@ -213,19 +228,27 @@ class ChatSessionViewModel: ObservableObject {
         session.messages.removeAll()
         session.title = "新会话"
         session.updateLastModified()
-        saveContext()
+        guard saveContext() else {
+            return false
+        }
         
         print("清空会话消息, ID: \(sessionID)")
+        return true
     }
     
     // 保存上下文
-    private func saveContext() {
+    @discardableResult
+    private func saveContext() -> Bool {
         do {
             try modelContext.save()
             print("成功保存数据库变更")
+            errorMessage = nil
+            return true
         } catch {
+            modelContext.rollback()
             errorMessage = "保存会话失败: \(error.localizedDescription)"
             print("保存会话失败: \(error.localizedDescription)")
+            return false
         }
     }
 }

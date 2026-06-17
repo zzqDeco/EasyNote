@@ -10,19 +10,34 @@ extension Color {
 }
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    var body: some View {
+        ContentRootView(modelContext: modelContext)
+    }
+}
+
+private struct ContentRootView: View {
+    private let modelContext: ModelContext
     @StateObject private var themeManager = ThemeManager()
     @StateObject private var tabBarController = TabBarController()
     @StateObject private var tabSelectionManager = TabSelectionManager(selectedTab: .constant(0))
-    @Environment(\.modelContext) private var modelContext
     @State private var showingUnifiedAddSheet = false
     @State private var showingCreateDiarySheet = false
     @State private var addingType: AddingContentType = .diary
-    @StateObject private var diaryViewModel = DiaryViewModel(modelContext: nil)
-    @StateObject private var exploreViewModel = ExploreViewModel(modelContext: nil)
-    @StateObject private var todoViewModel = TodoViewModel(modelContext: nil)
+    @StateObject private var diaryViewModel: DiaryViewModel
+    @StateObject private var exploreViewModel: ExploreViewModel
+    @StateObject private var todoViewModel: TodoViewModel
     
     // 添加一个State变量用于强制重新渲染TabView
     @State private var tabViewRefreshKey = UUID()
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+        _diaryViewModel = StateObject(wrappedValue: DiaryViewModel(modelContext: modelContext))
+        _exploreViewModel = StateObject(wrappedValue: ExploreViewModel(modelContext: modelContext))
+        _todoViewModel = StateObject(wrappedValue: TodoViewModel(modelContext: modelContext))
+    }
     
     var body: some View {
         Group {
@@ -37,7 +52,9 @@ struct ContentView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("探索", systemImage: "magnifyingglass.circle")
+                                .accessibilityIdentifier("tab.explore")
                         }
+                        .accessibilityIdentifier("tab.explore.content")
                         .tag(Tab.explore)
                     
                     // 待办页面（原探索页面更名）
@@ -48,7 +65,9 @@ struct ContentView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("待办", systemImage: "checkmark.circle")
+                                .accessibilityIdentifier("tab.todo")
                         }
+                        .accessibilityIdentifier("tab.todo.content")
                         .tag(Tab.todo)
                     
                     // 日记页
@@ -56,7 +75,9 @@ struct ContentView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("日记", systemImage: "book.closed")
+                                .accessibilityIdentifier("tab.diary")
                         }
+                        .accessibilityIdentifier("tab.diary.content")
                         .tag(Tab.diary)
                     
                     // 设置页
@@ -64,7 +85,9 @@ struct ContentView: View {
                         .environment(\.colorScheme, themeManager.colorScheme)
                         .tabItem {
                             Label("设置", systemImage: "gearshape")
+                                .accessibilityIdentifier("tab.settings")
                         }
+                        .accessibilityIdentifier("tab.settings.content")
                         .tag(Tab.settings)
                 }
                 .id(tabViewRefreshKey) // 使用id修饰符强制在key变化时重新创建TabView
@@ -109,6 +132,8 @@ struct ContentView: View {
                                     // 添加id确保主题色变化时按钮重绘
                                     .id("add-button-\(themeManager.accentColorName)")
                             }
+                            .accessibilityLabel(tabBarController.selectedTab == .todo ? "新建待办" : "新建日记")
+                            .accessibilityIdentifier(tabBarController.selectedTab == .todo ? "todo.floatingAddButton" : "diary.addButton")
                             .padding(.bottom, 80)
                             .padding(.trailing, 20)
                         }
@@ -153,8 +178,6 @@ struct ContentView: View {
                 .environmentObject(themeManager)
             }
             .onAppear {
-                bindModelContext()
-                
                 // 初始设置UI外观
                 updateAppearance()
                 
@@ -196,12 +219,6 @@ struct ContentView: View {
             .environmentObject(themeManager)
         }
         .preferredColorScheme(themeManager.colorScheme)
-    }
-    
-    private func bindModelContext() {
-        diaryViewModel.updateModelContext(modelContext)
-        exploreViewModel.updateModelContext(modelContext)
-        todoViewModel.updateModelContext(modelContext)
     }
     
     // 更新UI外观
@@ -340,5 +357,5 @@ class ThemeManager: ObservableObject {
 // 预览
 #Preview {
     ContentView()
-        .modelContainer(for: DiaryEntry.self, inMemory: true)
+        .modelContainer(for: [DiaryEntry.self, TodoItem.self, ChatSession.self, SessionMessage.self], inMemory: true)
 } 
