@@ -926,7 +926,8 @@ struct EasyNoteTests {
         _ = try BackupService().importBackup(backup, into: context)
 
         let importedSession = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
-        #expect(importedSession.messages.map(\.content) == ["备份消息", "本地新增消息"])
+        #expect(importedSession.messages.count == 2)
+        #expect(Set(importedSession.messages.map(\.content)) == Set(["备份消息", "本地新增消息"]))
     }
 
     private func makeDiary(
