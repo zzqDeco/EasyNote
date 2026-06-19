@@ -179,9 +179,9 @@ struct ExploreView: View {
                             }
                         }
                         .padding(.horizontal)
-
-                        recommendationAIHistorySection
                     }
+
+                    recommendationAIHistorySection
                 }
                 .navigationTitle("探索")
                 

@@ -561,11 +561,11 @@ struct DiaryDetailView: View {
     }
 
     private var pendingSummaryResult: AIActionResult? {
-        viewModel.pendingAIResult(for: .diarySummary)
+        viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: entry.id)
     }
 
     private var recentAISummaryResults: [AIActionResult] {
-        viewModel.recentAIResults(for: .diarySummary)
+        viewModel.recentAIResults(for: .diarySummary, sourceEntityId: entry.id)
     }
     
     private var metadataSection: some View {

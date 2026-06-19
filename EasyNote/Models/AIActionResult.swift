@@ -24,7 +24,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
         }
     }
 
-    enum ApplicationTarget: String, Codable {
+    enum ApplicationTarget: String, Codable, Hashable {
         case none
         case diarySummary
         case transcriptionText
@@ -34,6 +34,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
     let id: UUID
     let actionType: ActionType
     let applicationTarget: ApplicationTarget
+    let sourceEntityId: UUID?
     let inputPreview: String
     let outputText: String
     let timestamp: Date
@@ -47,6 +48,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
     static func success(
         actionType: ActionType,
         applicationTarget: ApplicationTarget,
+        sourceEntityId: UUID? = nil,
         input: String,
         outputText: String,
         timestamp: Date = Date(),
@@ -56,6 +58,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
             id: UUID(),
             actionType: actionType,
             applicationTarget: applicationTarget,
+            sourceEntityId: sourceEntityId,
             inputPreview: preview(from: input, limit: previewLimit),
             outputText: outputText,
             timestamp: timestamp,
@@ -67,6 +70,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
     static func failure(
         actionType: ActionType,
         applicationTarget: ApplicationTarget,
+        sourceEntityId: UUID? = nil,
         input: String,
         message: String,
         timestamp: Date = Date(),
@@ -76,6 +80,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
             id: UUID(),
             actionType: actionType,
             applicationTarget: applicationTarget,
+            sourceEntityId: sourceEntityId,
             inputPreview: preview(from: input, limit: previewLimit),
             outputText: "",
             timestamp: timestamp,

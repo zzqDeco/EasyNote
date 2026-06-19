@@ -71,9 +71,11 @@ The parser is pure and must not read API keys, send network requests, or inspect
 
 ## AI Result Confirmation Boundary
 
-`AIActionResult` records current-session AI outcomes without changing SwiftData schema. Results include an action type (`summary`, `refine`, `expand`, `analyze`, or `recommendation`), an application target, input preview, output text, timestamp, success state, and optional failure message.
+`AIActionResult` records current-session AI outcomes without changing SwiftData schema. Results include an action type (`summary`, `refine`, `expand`, `analyze`, or `recommendation`), an application target, optional source entity id, input preview, output text, timestamp, success state, and optional failure message.
 
 Text-generating diary and transcription actions must not mutate persisted diary fields or `transcribedText` until the user applies the pending result. Copy is UI-only; discard removes the pending result from current-session history without mutating diary data. Recommendation results are reviewable/copyable history entries and are not directly applied through this boundary. Empty API keys still fail closed before network requests and may record a failure result, but must not create a successful pending result.
+
+Pending text results are tracked per application target. Diary summary results must be bound to the `DiaryEntry.id` that produced them, and views must only render/apply summary results for that source entry.
 
 ## Speech Boundary
 

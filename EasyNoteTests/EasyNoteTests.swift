@@ -307,6 +307,7 @@ struct EasyNoteTests {
         let result = AIActionResult.success(
             actionType: .summary,
             applicationTarget: .diarySummary,
+            sourceEntityId: entry.id,
             input: entry.content,
             outputText: "项目复盘摘要"
         )
@@ -318,6 +319,56 @@ struct EasyNoteTests {
         #expect(viewModel.applyAIResult(result))
         #expect(entry.aiSummary == "项目复盘摘要")
         #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelAppliesSummaryToSourceEntryAfterCurrentEntryChanges() async throws {
+        let context = try makeModelContext()
+        let sourceEntry = makeDiary(title: "源日记", content: "需要摘要的内容")
+        let otherEntry = makeDiary(title: "当前日记", content: "不应该被写入")
+        context.insert(sourceEntry)
+        context.insert(otherEntry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        viewModel.diaryEntries = [sourceEntry, otherEntry]
+        viewModel.currentEntry = otherEntry
+        let result = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: sourceEntry.id,
+            input: sourceEntry.content,
+            outputText: "源日记摘要"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: sourceEntry.id) == result)
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: otherEntry.id) == nil)
+        #expect(viewModel.applyAIResult(result))
+        #expect(sourceEntry.aiSummary == "源日记摘要")
+        #expect(otherEntry.aiSummary == nil)
+    }
+
+    @Test func diaryViewModelKeepsPendingAIResultsPerApplicationTarget() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let summary = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: UUID(),
+            input: "日记正文",
+            outputText: "摘要"
+        )
+        let transcription = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "原始转写",
+            outputText: "润色转写"
+        )
+
+        viewModel.recordAIActionResult(summary)
+        viewModel.recordAIActionResult(transcription)
+
+        #expect(viewModel.pendingAIResult(for: .diarySummary) == summary)
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == transcription)
     }
 
     @Test func diaryViewModelAppliesPendingTranscriptionOnlyAfterConfirmation() async throws {

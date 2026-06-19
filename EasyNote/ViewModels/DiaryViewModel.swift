@@ -26,7 +26,7 @@ class DiaryViewModel: ObservableObject {
     @Published var microphonePermissionStatus: MicrophonePermissionStatus = .notDetermined
     @Published var isProcessingAI = false
     @Published var aiActionHistory: [AIActionResult] = []
-    @Published var pendingAIResult: AIActionResult?
+    @Published var pendingAIResults: [AIActionResult.ApplicationTarget: AIActionResult] = [:]
     @Published var isSyncing = false
     @Published var errorMessage: String?
     @Published var toastMessage: String?
@@ -354,27 +354,41 @@ class DiaryViewModel: ObservableObject {
         aiActionHistory.insert(result, at: 0)
 
         if result.canApply {
-            pendingAIResult = result
+            pendingAIResults[result.applicationTarget] = result
         }
     }
 
-    func pendingAIResult(for target: AIActionResult.ApplicationTarget) -> AIActionResult? {
-        guard pendingAIResult?.applicationTarget == target else {
-            return nil
-        }
-
-        return pendingAIResult
+    var pendingAIResult: AIActionResult? {
+        pendingAIResults.values.sorted { $0.timestamp > $1.timestamp }.first
     }
 
-    func recentAIResults(for target: AIActionResult.ApplicationTarget, limit: Int = 3) -> [AIActionResult] {
+    func pendingAIResult(
+        for target: AIActionResult.ApplicationTarget,
+        sourceEntityId: UUID? = nil
+    ) -> AIActionResult? {
+        guard let result = pendingAIResults[target] else { return nil }
+        guard let sourceEntityId else { return result }
+        return result.sourceEntityId == sourceEntityId ? result : nil
+    }
+
+    func recentAIResults(
+        for target: AIActionResult.ApplicationTarget,
+        sourceEntityId: UUID? = nil,
+        limit: Int = 3
+    ) -> [AIActionResult] {
+        let pendingIds = Set(pendingAIResults.values.map(\.id))
         Array(aiActionHistory
-            .filter { $0.applicationTarget == target && $0.id != pendingAIResult?.id }
+            .filter {
+                $0.applicationTarget == target
+                    && !pendingIds.contains($0.id)
+                    && (sourceEntityId == nil || $0.sourceEntityId == sourceEntityId)
+            }
             .prefix(limit))
     }
 
     func discardAIResult(_ result: AIActionResult) {
-        if pendingAIResult?.id == result.id {
-            pendingAIResult = nil
+        if pendingAIResults[result.applicationTarget]?.id == result.id {
+            pendingAIResults[result.applicationTarget] = nil
         }
         aiActionHistory.removeAll { $0.id == result.id }
     }
@@ -388,7 +402,7 @@ class DiaryViewModel: ObservableObject {
 
         switch result.applicationTarget {
         case .diarySummary:
-            guard let entry = currentEntry else {
+            guard let entry = diaryEntry(for: result) else {
                 errorMessage = "没有正在编辑的日记"
                 return false
             }
@@ -404,15 +418,28 @@ class DiaryViewModel: ObservableObject {
             return false
         }
 
-        if pendingAIResult?.id == result.id {
-            pendingAIResult = nil
+        if pendingAIResults[result.applicationTarget]?.id == result.id {
+            pendingAIResults[result.applicationTarget] = nil
         }
         return true
+    }
+
+    private func diaryEntry(for result: AIActionResult) -> DiaryEntry? {
+        guard let sourceEntityId = result.sourceEntityId else {
+            return currentEntry
+        }
+
+        if currentEntry?.id == sourceEntityId {
+            return currentEntry
+        }
+
+        return diaryEntries.first { $0.id == sourceEntityId }
     }
 
     private func recordAIActionFailure(
         actionType: AIActionResult.ActionType,
         applicationTarget: AIActionResult.ApplicationTarget,
+        sourceEntityId: UUID? = nil,
         input: String,
         message: String
     ) {
@@ -420,6 +447,7 @@ class DiaryViewModel: ObservableObject {
         recordAIActionResult(.failure(
             actionType: actionType,
             applicationTarget: applicationTarget,
+            sourceEntityId: sourceEntityId,
             input: input,
             message: message
         ))
@@ -436,6 +464,7 @@ class DiaryViewModel: ObservableObject {
             recordAIActionFailure(
                 actionType: .summary,
                 applicationTarget: .diarySummary,
+                sourceEntityId: entry.id,
                 input: entry.content,
                 message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
             )
@@ -453,6 +482,7 @@ class DiaryViewModel: ObservableObject {
                         self?.recordAIActionFailure(
                             actionType: .summary,
                             applicationTarget: .diarySummary,
+                            sourceEntityId: entry.id,
                             input: entry.content,
                             message: "生成摘要失败: \(error.localizedDescription)"
                         )
@@ -463,6 +493,7 @@ class DiaryViewModel: ObservableObject {
                     self.recordAIActionResult(.success(
                         actionType: .summary,
                         applicationTarget: .diarySummary,
+                        sourceEntityId: entry.id,
                         input: entry.content,
                         outputText: summary
                     ))
