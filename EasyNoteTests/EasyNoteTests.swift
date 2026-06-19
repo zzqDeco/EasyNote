@@ -489,13 +489,13 @@ struct EasyNoteTests {
 
         #expect(projection.totalEntryCount == 3)
         #expect(projection.totalFavoriteCount == 2)
+        #expect(projection.totalDistinctTagCount == 3)
         #expect(calendar.component(.month, from: juneSummary.monthStart) == 6)
         #expect(juneSummary.entryCount == 2)
         #expect(juneSummary.favoriteCount == 1)
-        #expect(juneSummary.moodDistribution == [
-            DiaryReviewProjection.MoodCount(mood: "3", count: 1),
-            DiaryReviewProjection.MoodCount(mood: "4", count: 1)
-        ])
+        let juneMoodCounts = Dictionary(uniqueKeysWithValues: juneSummary.moodDistribution.map { ($0.mood, $0.count) })
+        #expect(juneMoodCounts["一般"] == 1)
+        #expect(juneMoodCounts["不错"] == 1)
         #expect(juneSummary.topTags == [
             DiaryReviewProjection.TagCount(tag: "review", count: 2),
             DiaryReviewProjection.TagCount(tag: "life", count: 1),
@@ -520,6 +520,24 @@ struct EasyNoteTests {
         ])
     }
 
+    @Test func diaryReviewProjectionTracksDistinctTagsBeyondTopLimit() async throws {
+        let calendar = makeGregorianCalendar()
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "A", tags: ["alpha"], creationDate: date),
+            makeDiary(title: "B", tags: ["beta"], creationDate: date),
+            makeDiary(title: "C", tags: ["gamma"], creationDate: date),
+            makeDiary(title: "D", tags: ["delta"], creationDate: date),
+            makeDiary(title: "E", tags: ["epsilon"], creationDate: date),
+            makeDiary(title: "F", tags: ["zeta"], creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: date, topLimit: 2)
+
+        #expect(projection.totalDistinctTagCount == 6)
+        #expect(projection.overallTopTags.count == 2)
+    }
+
     @Test func diaryReviewProjectionCountsMoodDistributionAndRecentFavorites() async throws {
         let calendar = makeGregorianCalendar()
         let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
@@ -533,10 +551,28 @@ struct EasyNoteTests {
         let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: later)
 
         #expect(projection.overallMoodDistribution == [
-            DiaryReviewProjection.MoodCount(mood: "5", count: 2),
-            DiaryReviewProjection.MoodCount(mood: "4", count: 1)
+            DiaryReviewProjection.MoodCount(mood: "很棒", count: 2),
+            DiaryReviewProjection.MoodCount(mood: "不错", count: 1)
         ])
         #expect(projection.recentFavorites.map(\.title) == ["新收藏", "旧收藏"])
+    }
+
+    @Test func diaryReviewProjectionNormalizesNumericAndLabelMoods() async throws {
+        let calendar = makeGregorianCalendar()
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "数字心情", mood: "4", creationDate: date),
+            makeDiary(title: "标签心情", mood: "不错", creationDate: date),
+            makeDiary(title: "带空格数字", mood: " 4 ", creationDate: date),
+            makeDiary(title: "自定义心情", mood: "专注", creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: date)
+
+        #expect(projection.overallMoodDistribution == [
+            DiaryReviewProjection.MoodCount(mood: "不错", count: 3),
+            DiaryReviewProjection.MoodCount(mood: "专注", count: 1)
+        ])
     }
 
     @Test func diaryReviewProjectionReturnsEmptyProjectionForNoEntries() async throws {
@@ -547,6 +583,7 @@ struct EasyNoteTests {
 
         #expect(projection.totalEntryCount == 0)
         #expect(projection.totalFavoriteCount == 0)
+        #expect(projection.totalDistinctTagCount == 0)
         #expect(projection.monthlySummaries.isEmpty)
         #expect(projection.overallTopTags.isEmpty)
         #expect(projection.overallMoodDistribution.isEmpty)

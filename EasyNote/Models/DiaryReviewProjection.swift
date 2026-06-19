@@ -45,6 +45,7 @@ struct DiaryReviewProjection {
 
     let totalEntryCount: Int
     let totalFavoriteCount: Int
+    let totalDistinctTagCount: Int
     let monthlySummaries: [MonthlySummary]
     let windowSummaries: [WindowSummary]
     let overallTopTags: [TagCount]
@@ -71,6 +72,7 @@ struct DiaryReviewProjection {
         return DiaryReviewProjection(
             totalEntryCount: entries.count,
             totalFavoriteCount: entries.filter(\.isFavorite).count,
+            totalDistinctTagCount: distinctTagCount(from: entries),
             monthlySummaries: monthlySummaries,
             windowSummaries: windows,
             overallTopTags: topTags(from: entries, limit: topLimit),
@@ -182,7 +184,7 @@ struct DiaryReviewProjection {
 
     private static func moodDistribution(from entries: [DiaryEntry]) -> [MoodCount] {
         let counts = entries
-            .compactMap(\.mood)
+            .compactMap { normalizedMood($0.mood) }
             .reduce(into: [String: Int]()) { result, mood in
                 result[mood, default: 0] += 1
             }
@@ -194,6 +196,44 @@ struct DiaryReviewProjection {
                 }
                 return lhs.count > rhs.count
             }
+    }
+
+    private static func distinctTagCount(from entries: [DiaryEntry]) -> Int {
+        Set(entries.flatMap(\.tags)).count
+    }
+
+    private static func normalizedMood(_ mood: String?) -> String? {
+        guard let rawMood = mood?.trimmingCharacters(in: .whitespacesAndNewlines), !rawMood.isEmpty else {
+            return nil
+        }
+
+        if let numericMood = Int(rawMood) {
+            return moodLabel(for: numericMood) ?? rawMood
+        }
+
+        return rawMood
+    }
+
+    private static func moodLabel(for mood: Int) -> String? {
+        switch mood {
+        case 1: return "很糟"
+        case 2: return "不好"
+        case 3: return "一般"
+        case 4: return "不错"
+        case 5: return "很棒"
+        case 6: return "愤怒"
+        case 7: return "恐惧"
+        case 8: return "焦虑"
+        case 9: return "思考"
+        case 10: return "疲倦"
+        case 11: return "兴奋"
+        case 12: return "搞笑"
+        case 13: return "爱意"
+        case 14: return "感恩"
+        case 15: return "自信"
+        case 16: return "放松"
+        default: return nil
+        }
     }
 
     private static func entrySort(_ lhs: DiaryEntry, _ rhs: DiaryEntry) -> Bool {

@@ -15,7 +15,7 @@
 - `ContentView` is the tab composition root.
 - Primary navigation, diary search/filter/add, todo focus, and Settings API key controls expose stable accessibility identifiers for local UI smoke tests.
 - Diary views cover list, create, edit, detail, review insights, markdown, mood, and tag flows.
-- Diary review UI is read-only and consumes `DiaryReviewProjection` from the full diary dataset rather than the active search/filter result.
+- Diary review UI is read-only, consumes `DiaryReviewProjection` from the full diary dataset rather than the active search/filter result, and keeps bottom scroll padding for the tab-level floating add button.
 - Diary transcription UI should present insert/replace actions explicitly; it should not mutate diary body text through implicit notifications.
 - Todo views cover recommendations, detail/edit, and unified add.
 - Chat views cover AI exploration and persisted session selection.

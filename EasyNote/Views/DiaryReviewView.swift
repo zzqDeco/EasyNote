@@ -51,6 +51,7 @@ struct DiaryReviewView: View {
                         }
                     }
                     .padding()
+                    .padding(.bottom, 120)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -84,7 +85,7 @@ struct DiaryReviewView: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
             metricTile(title: "日记", value: "\(projection.totalEntryCount)", systemImage: "doc.text")
             metricTile(title: "收藏", value: "\(projection.totalFavoriteCount)", systemImage: "star.fill")
-            metricTile(title: "标签", value: "\(projection.overallTopTags.count)", systemImage: "tag")
+            metricTile(title: "标签", value: "\(projection.totalDistinctTagCount)", systemImage: "tag")
         }
     }
 
