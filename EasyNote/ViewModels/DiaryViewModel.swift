@@ -377,7 +377,7 @@ class DiaryViewModel: ObservableObject {
         limit: Int = 3
     ) -> [AIActionResult] {
         let pendingIds = Set(pendingAIResults.values.map(\.id))
-        Array(aiActionHistory
+        return Array(aiActionHistory
             .filter {
                 $0.applicationTarget == target
                     && !pendingIds.contains($0.id)
