@@ -235,7 +235,7 @@ class ExploreViewModel: ObservableObject {
     /// 处理API错误
     private func handleAPIError(_ error: Error) {
         errorMessage = Self.recommendationErrorMessage(for: error)
-        
+
         // 如果当前没有推荐，生成默认推荐
         if recommendations.isEmpty {
             generateDefaultRecommendations()
