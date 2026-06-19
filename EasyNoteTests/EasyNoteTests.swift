@@ -269,6 +269,107 @@ struct EasyNoteTests {
         #expect(message == "请在设置中添加DeepSeek API密钥后再使用AI功能")
     }
 
+    @Test func aiActionResultRecordsSuccessFailureAndPreview() async throws {
+        let timestamp = try #require(makeGregorianCalendar().date(from: DateComponents(year: 2026, month: 6, day: 20)))
+        let success = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "第一行\n第二行内容很长",
+            outputText: "润色结果",
+            timestamp: timestamp,
+            previewLimit: 5
+        )
+        let failure = AIActionResult.failure(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            input: "日记正文",
+            message: "生成失败",
+            timestamp: timestamp
+        )
+
+        #expect(success.isSuccess)
+        #expect(success.canApply)
+        #expect(success.inputPreview == "第一行 第...")
+        #expect(success.outputText == "润色结果")
+        #expect(success.timestamp == timestamp)
+        #expect(!failure.isSuccess)
+        #expect(!failure.canApply)
+        #expect(failure.failureMessage == "生成失败")
+    }
+
+    @Test func diaryViewModelAppliesPendingSummaryOnlyAfterConfirmation() async throws {
+        let context = try makeModelContext()
+        let entry = makeDiary(title: "需要摘要", content: "今天完成了项目复盘。")
+        context.insert(entry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        viewModel.currentEntry = entry
+        let result = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            input: entry.content,
+            outputText: "项目复盘摘要"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(entry.aiSummary == nil)
+        #expect(viewModel.pendingAIResult == result)
+        #expect(viewModel.applyAIResult(result))
+        #expect(entry.aiSummary == "项目复盘摘要")
+        #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelAppliesPendingTranscriptionOnlyAfterConfirmation() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.transcribedText = "原始转写"
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "原始转写",
+            outputText: "润色后的转写"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(viewModel.transcribedText == "原始转写")
+        #expect(viewModel.pendingAIResult == result)
+        #expect(viewModel.applyAIResult(result))
+        #expect(viewModel.transcribedText == "润色后的转写")
+        #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelDoesNotPromoteFailureResultToPending() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let result = AIActionResult.failure(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            input: "内容",
+            message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(viewModel.aiActionHistory.first == result)
+        #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelDiscardsPendingAIResultFromHistory() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let result = AIActionResult.success(
+            actionType: .expand,
+            applicationTarget: .transcriptionText,
+            input: "短句",
+            outputText: "扩写后的内容"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.discardAIResult(result)
+
+        #expect(viewModel.pendingAIResult == nil)
+        #expect(viewModel.aiActionHistory.isEmpty)
+    }
+
     @Test func diaryDraftComposerInsertsTranscriptionAfterExistingContent() async throws {
         let result = DiaryDraftComposer.apply(
             transcription: "今天完成了语音记录",

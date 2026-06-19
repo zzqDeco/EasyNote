@@ -1,0 +1,98 @@
+import Foundation
+
+struct AIActionResult: Identifiable, Codable, Equatable {
+    enum ActionType: String, CaseIterable, Codable {
+        case summary
+        case refine
+        case expand
+        case analyze
+        case recommendation
+
+        var displayName: String {
+            switch self {
+            case .summary:
+                return "总结"
+            case .refine:
+                return "润色"
+            case .expand:
+                return "扩写"
+            case .analyze:
+                return "分析"
+            case .recommendation:
+                return "推荐"
+            }
+        }
+    }
+
+    enum ApplicationTarget: String, Codable {
+        case none
+        case diarySummary
+        case transcriptionText
+        case recommendationList
+    }
+
+    let id: UUID
+    let actionType: ActionType
+    let applicationTarget: ApplicationTarget
+    let inputPreview: String
+    let outputText: String
+    let timestamp: Date
+    let isSuccess: Bool
+    let failureMessage: String?
+
+    var canApply: Bool {
+        isSuccess && !outputText.isEmpty && applicationTarget != .none && applicationTarget != .recommendationList
+    }
+
+    static func success(
+        actionType: ActionType,
+        applicationTarget: ApplicationTarget,
+        input: String,
+        outputText: String,
+        timestamp: Date = Date(),
+        previewLimit: Int = 80
+    ) -> AIActionResult {
+        AIActionResult(
+            id: UUID(),
+            actionType: actionType,
+            applicationTarget: applicationTarget,
+            inputPreview: preview(from: input, limit: previewLimit),
+            outputText: outputText,
+            timestamp: timestamp,
+            isSuccess: true,
+            failureMessage: nil
+        )
+    }
+
+    static func failure(
+        actionType: ActionType,
+        applicationTarget: ApplicationTarget,
+        input: String,
+        message: String,
+        timestamp: Date = Date(),
+        previewLimit: Int = 80
+    ) -> AIActionResult {
+        AIActionResult(
+            id: UUID(),
+            actionType: actionType,
+            applicationTarget: applicationTarget,
+            inputPreview: preview(from: input, limit: previewLimit),
+            outputText: "",
+            timestamp: timestamp,
+            isSuccess: false,
+            failureMessage: message
+        )
+    }
+
+    private static func preview(from input: String, limit: Int) -> String {
+        let normalized = input
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard normalized.count > limit else {
+            return normalized
+        }
+
+        return "\(normalized.prefix(limit))..."
+    }
+}

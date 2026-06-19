@@ -9,6 +9,7 @@ class ExploreViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var lastUpdated: Date?
     @Published var errorMessage: String?
+    @Published var aiActionHistory: [AIActionResult] = []
     
     // 服务
     private let openAIService: OpenAIService
@@ -116,12 +117,20 @@ class ExploreViewModel: ObservableObject {
                 case .finished:
                     break
                 case .failure(let error):
+                    self?.recordAIActionFailure(input: contentWithCurrentDate, error: error)
                     self?.handleAPIError(error)
                 }
                 self?.isLoading = false
             }, receiveValue: { [weak self] result in
-                self?.processRecommendationResponse(result)
-                self?.saveRecommendations()
+                guard let self else { return }
+                self.processRecommendationResponse(result)
+                self.recordAIActionResult(.success(
+                    actionType: .recommendation,
+                    applicationTarget: .recommendationList,
+                    input: contentWithCurrentDate,
+                    outputText: Self.recommendationOutputText(from: result)
+                ))
+                self.saveRecommendations()
             })
             .store(in: &cancellables)
     }
@@ -245,6 +254,37 @@ class ExploreViewModel: ObservableObject {
         if recommendations.isEmpty {
             generateDefaultRecommendations()
         }
+    }
+
+    private func recordAIActionFailure(input: String, error: Error) {
+        let message: String
+        if let networkError = error as? URLError {
+            message = networkError.localizedDescription
+        } else {
+            message = error.localizedDescription
+        }
+
+        recordAIActionResult(.failure(
+            actionType: .recommendation,
+            applicationTarget: .recommendationList,
+            input: input,
+            message: message
+        ))
+    }
+
+    private func recordAIActionResult(_ result: AIActionResult) {
+        aiActionHistory.insert(result, at: 0)
+    }
+
+    private static func recommendationOutputText(from response: (recommendations: [String], todos: [String])) -> String {
+        var sections: [String] = []
+        if !response.recommendations.isEmpty {
+            sections.append("推荐活动：\n" + response.recommendations.map { "- \($0)" }.joined(separator: "\n"))
+        }
+        if !response.todos.isEmpty {
+            sections.append("待办建议：\n" + response.todos.map { "- \($0)" }.joined(separator: "\n"))
+        }
+        return sections.joined(separator: "\n\n")
     }
     
     func updateModelContext(_ newContext: ModelContext) {

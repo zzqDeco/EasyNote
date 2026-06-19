@@ -16,7 +16,8 @@
 - Primary navigation, diary search/filter/add, todo focus, and Settings API key controls expose stable accessibility identifiers for local UI smoke tests.
 - Diary views cover list, create, edit, detail, review insights, markdown, mood, and tag flows.
 - Diary review UI is read-only, consumes `DiaryReviewProjection` from the full diary dataset rather than the active search/filter result, and keeps bottom scroll padding for the tab-level floating add button.
-- Diary transcription UI should present insert/replace actions explicitly; it should not mutate diary body text through implicit notifications.
+- Diary transcription UI should present AI apply/copy/discard controls and insert/replace actions explicitly; it should not mutate diary body text through implicit notifications.
+- Diary detail UI should show pending AI summaries before they are applied to the persisted summary field.
 - Todo views cover recommendations, detail/edit, and unified add.
 - Chat views cover AI exploration and persisted session selection.
 - Settings owns local theme and DeepSeek API key entry.
@@ -24,5 +25,5 @@
 ## Tests
 
 - UI smoke coverage uses stable accessibility identifiers for non-destructive tab navigation and setup controls.
-- Unit tests cover `DiaryReviewProjection`; manual smoke should verify diary review entry, empty state, and independence from active filters.
+- Unit tests cover `DiaryReviewProjection` and AI result confirmation helpers; manual smoke should verify diary review entry, empty state, filter independence, AI apply/copy/discard, and no accidental diary-body mutation.
 - Do not add hosted blocking UI test expectations until runner stability has been proven.

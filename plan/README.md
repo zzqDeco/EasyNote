@@ -15,12 +15,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [diary-review-insights.plan.md](diary-review-insights.plan.md) | Add local diary review projections and read-only insights UI | Active |
+| [ai-workflow-history.plan.md](ai-workflow-history.plan.md) | Add current-session AI result history with apply/copy/discard confirmation | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [diary-review-insights.plan.md](diary-review-insights.plan.md) | Add local diary review projections and read-only insights UI | Delivered |
 | [local-export-backup.plan.md](local-export-backup.plan.md) | Add local JSON backup and restore with voice recording assets | Delivered |
 | [mvp-runbook.plan.md](mvp-runbook.plan.md) | Capture the MVP development, validation, review, and promotion workflow | Delivered |
 | [ui-smoke-and-accessibility.plan.md](ui-smoke-and-accessibility.plan.md) | Add stable accessibility identifiers and local non-destructive UI smoke coverage | Delivered |

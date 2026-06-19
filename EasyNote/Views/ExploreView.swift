@@ -179,6 +179,8 @@ struct ExploreView: View {
                             }
                         }
                         .padding(.horizontal)
+
+                        recommendationAIHistorySection
                     }
                 }
                 .navigationTitle("探索")
@@ -279,6 +281,61 @@ struct ExploreView: View {
         .frame(height: 90)
         .background(Color(UIColor.secondarySystemBackground))
         .cornerRadius(10)
+    }
+
+    private var recommendationAIHistorySection: some View {
+        Group {
+            if !viewModel.aiActionHistory.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("最近AI推荐结果")
+                        .font(.headline)
+
+                    ForEach(viewModel.aiActionHistory.prefix(2)) { result in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(result.actionType.displayName)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(result.isSuccess ? "成功" : "失败")
+                                    .font(.caption2)
+                                    .foregroundColor(result.isSuccess ? .green : .red)
+                            }
+
+                            Text(result.isSuccess ? result.outputText : (result.failureMessage ?? "AI推荐失败"))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(3)
+
+                            if result.isSuccess {
+                                Button {
+                                    UIPasteboard.general.string = result.outputText
+                                    toastSuccess = true
+                                    toastMessage = "AI结果已复制"
+                                    withAnimation {
+                                        showToast = true
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                        withAnimation(.easeOut) {
+                                            showToast = false
+                                        }
+                                    }
+                                } label: {
+                                    Label("复制", systemImage: "doc.on.doc")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        .padding(10)
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(10)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 12)
+            }
+        }
     }
     
     // 从推荐内容中提取主题的辅助方法
