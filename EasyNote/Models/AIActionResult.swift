@@ -35,6 +35,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
     let actionType: ActionType
     let applicationTarget: ApplicationTarget
     let sourceEntityId: UUID?
+    let inputFingerprint: String
     let inputPreview: String
     let outputText: String
     let timestamp: Date
@@ -43,6 +44,10 @@ struct AIActionResult: Identifiable, Codable, Equatable {
 
     var canApply: Bool {
         isSuccess && !outputText.isEmpty && applicationTarget != .none && applicationTarget != .recommendationList
+    }
+
+    func matchesInput(_ input: String) -> Bool {
+        inputFingerprint == Self.fingerprint(from: input)
     }
 
     static func success(
@@ -59,6 +64,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
             actionType: actionType,
             applicationTarget: applicationTarget,
             sourceEntityId: sourceEntityId,
+            inputFingerprint: fingerprint(from: input),
             inputPreview: preview(from: input, limit: previewLimit),
             outputText: outputText,
             timestamp: timestamp,
@@ -81,6 +87,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
             actionType: actionType,
             applicationTarget: applicationTarget,
             sourceEntityId: sourceEntityId,
+            inputFingerprint: fingerprint(from: input),
             inputPreview: preview(from: input, limit: previewLimit),
             outputText: "",
             timestamp: timestamp,
@@ -99,5 +106,14 @@ struct AIActionResult: Identifiable, Codable, Equatable {
         }
 
         return "\(normalized.prefix(limit))..."
+    }
+
+    private static func fingerprint(from input: String) -> String {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in input.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(hash, radix: 16)
     }
 }

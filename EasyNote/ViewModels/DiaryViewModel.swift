@@ -408,12 +408,22 @@ class DiaryViewModel: ObservableObject {
                 errorMessage = "没有正在编辑的日记"
                 return false
             }
+            guard result.matchesInput(entry.content) else {
+                pendingAIResults.removeAll { $0.id == result.id }
+                errorMessage = "日记内容已变化，请重新生成AI摘要"
+                return false
+            }
             entry.aiSummary = result.outputText
             entry.lastModified = Date()
             guard saveContext() else {
                 return false
             }
         case .transcriptionText:
+            guard result.matchesInput(transcribedText) else {
+                pendingAIResults.removeAll { $0.id == result.id }
+                errorMessage = "转写内容已变化，请重新生成AI结果"
+                return false
+            }
             transcribedText = result.outputText
         case .none, .recommendationList:
             errorMessage = "该AI结果不能直接应用"

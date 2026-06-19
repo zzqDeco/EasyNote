@@ -234,21 +234,7 @@ class ExploreViewModel: ObservableObject {
     
     /// 处理API错误
     private func handleAPIError(_ error: Error) {
-        // 提供更具体的错误信息
-        if let networkError = error as? URLError {
-            switch networkError.code {
-            case .notConnectedToInternet:
-                errorMessage = "网络连接已断开，请检查您的网络设置后重试"
-            case .timedOut:
-                errorMessage = "请求超时，服务器可能暂时不可用"
-            case .cannotConnectToHost:
-                errorMessage = "无法连接到服务器，请稍后重试"
-            default:
-                errorMessage = "网络错误: \(networkError.localizedDescription)"
-            }
-        } else {
-            errorMessage = "生成推荐时出错: \(error.localizedDescription)"
-        }
+        errorMessage = Self.recommendationErrorMessage(for: error)
         
         // 如果当前没有推荐，生成默认推荐
         if recommendations.isEmpty {
@@ -257,12 +243,7 @@ class ExploreViewModel: ObservableObject {
     }
 
     private func recordAIActionFailure(input: String, error: Error) {
-        let message: String
-        if let networkError = error as? URLError {
-            message = networkError.localizedDescription
-        } else {
-            message = error.localizedDescription
-        }
+        let message = Self.recommendationErrorMessage(for: error)
 
         recordAIActionResult(.failure(
             actionType: .recommendation,
@@ -270,6 +251,23 @@ class ExploreViewModel: ObservableObject {
             input: input,
             message: message
         ))
+    }
+
+    private static func recommendationErrorMessage(for error: Error) -> String {
+        if let networkError = error as? URLError {
+            switch networkError.code {
+            case .notConnectedToInternet:
+                return "网络连接已断开，请检查您的网络设置后重试"
+            case .timedOut:
+                return "请求超时，服务器可能暂时不可用"
+            case .cannotConnectToHost:
+                return "无法连接到服务器，请稍后重试"
+            default:
+                return "网络错误: \(networkError.localizedDescription)"
+            }
+        } else {
+            return "生成推荐时出错: \(error.localizedDescription)"
+        }
     }
 
     private func recordAIActionResult(_ result: AIActionResult) {

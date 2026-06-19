@@ -289,6 +289,8 @@ struct EasyNoteTests {
 
         #expect(success.isSuccess)
         #expect(success.canApply)
+        #expect(success.matchesInput("第一行\n第二行内容很长"))
+        #expect(!success.matchesInput("第一行\n第二行内容已变化"))
         #expect(success.inputPreview == "第一行 第...")
         #expect(success.outputText == "润色结果")
         #expect(success.timestamp == timestamp)
@@ -348,6 +350,30 @@ struct EasyNoteTests {
         #expect(otherEntry.aiSummary == nil)
     }
 
+    @Test func diaryViewModelRejectsStalePendingSummaryAfterContentChanges() async throws {
+        let context = try makeModelContext()
+        let entry = makeDiary(title: "源日记", content: "旧正文")
+        context.insert(entry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        viewModel.currentEntry = entry
+        let result = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: entry.id,
+            input: entry.content,
+            outputText: "旧摘要"
+        )
+
+        viewModel.recordAIActionResult(result)
+        entry.content = "新正文"
+
+        #expect(!viewModel.applyAIResult(result))
+        #expect(entry.aiSummary == nil)
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: entry.id) == nil)
+        #expect(viewModel.errorMessage == "日记内容已变化，请重新生成AI摘要")
+    }
+
     @Test func diaryViewModelKeepsPendingAIResultsPerApplicationTarget() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let firstDiaryId = UUID()
@@ -399,6 +425,25 @@ struct EasyNoteTests {
         #expect(viewModel.applyAIResult(result))
         #expect(viewModel.transcribedText == "润色后的转写")
         #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelRejectsStalePendingTranscriptionAfterTextChanges() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.transcribedText = "旧转写"
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "旧转写",
+            outputText: "旧润色"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.transcribedText = "新转写"
+
+        #expect(!viewModel.applyAIResult(result))
+        #expect(viewModel.transcribedText == "新转写")
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+        #expect(viewModel.errorMessage == "转写内容已变化，请重新生成AI结果")
     }
 
     @Test func diaryViewModelDoesNotPromoteFailureResultToPending() async throws {

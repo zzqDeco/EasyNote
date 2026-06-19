@@ -18,10 +18,11 @@
 - `DiaryViewModel` records current-session AI action history and per-target/source pending AI results; diary summaries and transcription AI outputs require explicit apply before mutating `DiaryEntry.aiSummary` or `transcribedText`.
 - `DiaryViewModel` binds pending diary summary results to their source `DiaryEntry.id` and removes discarded pending results from current-session history.
 - `DiaryViewModel` clears stale pending results when a later AI action fails in the same target/source scope.
+- `DiaryViewModel` rejects pending diary summary or transcription results when the source text fingerprint no longer matches the current text.
 - `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, existing-entry replacement, and deletion do not leave unreachable files.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
 - `TodoViewModel` owns focused todo CRUD, recurrence, and todo list state.
-- `ExploreViewModel` owns recommendation generation, cached recommendation state, and current-session recommendation AI history.
+- `ExploreViewModel` owns recommendation generation, cached recommendation state, current-session recommendation AI history, and shared user-facing recommendation error mapping.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
 - `ChatSessionViewModel` uses an in-memory fallback context only when no context is injected.
 - `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
