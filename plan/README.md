@@ -13,7 +13,9 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 ## Active References
 
-There are no active implementation plans.
+| Document | Purpose | Status |
+|---|---|---|
+| [local-export-backup.plan.md](local-export-backup.plan.md) | Add local JSON backup and restore with voice recording assets | Active |
 
 ## Delivered Or Recent References
 

@@ -68,6 +68,10 @@ Before treating a branch as a usable app build, manually verify:
 - deny speech or microphone permission and confirm the editor shows a user-visible reason without losing typed content
 - insert transcription into existing diary content and confirm it appends after the existing text
 - replace diary content with transcription and confirm the replace is explicit
+- export a backup from Settings and confirm the preview count includes diary, todo, chat, message, and recording totals
+- import a backup after adding unrelated local data and confirm same-ID records update while unrelated local records remain
+- import a backup containing a voice diary and confirm the restored diary points to a local `restored_recording_<uuid>` audio file
+- try importing a malformed or unsupported backup file and confirm no local records are changed
 
 ## Known Local Limitation
 

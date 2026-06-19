@@ -24,6 +24,24 @@ Model changes require a migration or compatibility note before implementation.
 
 Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
 
+## Local Backup Boundary
+
+`BackupService` owns local export and import for the public, local-first MVP.
+
+Backup v1 uses a single JSON file with `.easynotebackup` extension and root type `EasyNoteBackupV1`:
+
+- `version`: currently `1`
+- `exportedAt`
+- `diaryEntries`
+- `todoItems`
+- `chatSessions`
+- `sessionMessages`
+- `audioAssets`
+
+Diary backup records reference voice recordings through `audioAssetId`. Audio assets contain the original filename, supported extension, byte count, and base64-encoded file data. Only local `.caf` and `.m4a` recording files are exported.
+
+Only messages referenced by exported chat sessions are included in `sessionMessages`; fetchable orphaned messages from deleted sessions are not exported. Import validates the full backup before writing SwiftData. Unsupported versions, duplicate IDs, missing message/audio references, unsupported audio extensions, or malformed base64 data must fail without writing model changes. Same-ID model records are updated, missing same-type records are inserted, and local records absent from the backup are preserved. When an older backup is imported over a session with newer local messages, those local messages remain attached and the session modified time stays at the latest imported, existing, or preserved message timestamp. Restored audio files are written under the app Documents directory as `restored_recording_<uuid>.<ext>`.
+
 ## DeepSeek Chat-Completions Boundary
 
 `OpenAIService` sends OpenAI-compatible requests to:
