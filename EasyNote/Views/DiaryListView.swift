@@ -9,6 +9,13 @@ import SwiftUI
 import SwiftData
 
 struct DiaryListView: View {
+    private enum DisplayMode: String, CaseIterable, Identifiable {
+        case entries = "列表"
+        case review = "回顾"
+
+        var id: String { rawValue }
+    }
+
     @ObservedObject var viewModel: DiaryViewModel
     @EnvironmentObject private var tabManager: TabSelectionManager
     @State private var isAddingEntry = false
@@ -16,6 +23,7 @@ struct DiaryListView: View {
     @State private var entryToDelete: DiaryEntry?
     @State private var scrollToTop = false
     @State private var showingFilterSheet = false
+    @State private var selectedDisplayMode: DisplayMode = .entries
     
     // 用于动画的状态
     @State private var listOpacity = 0.0
@@ -26,21 +34,28 @@ struct DiaryListView: View {
             ZStack {
                 // 主列表内容
                 VStack(spacing: 0) {
-                    // 搜索栏
-                    searchBar
-                    
-                    // 筛选栏
-                    filterBar
-                    
-                    if viewModel.entries.isEmpty {
-                        emptyStateView
+                    displayModePicker
+
+                    if selectedDisplayMode == .review {
+                        DiaryReviewView(entries: viewModel.allEntries)
                     } else {
-                        // 日记列表
-                        diaryList
+                        // 搜索栏
+                        searchBar
+
+                        // 筛选栏
+                        filterBar
+
+                        if viewModel.entries.isEmpty {
+                            emptyStateView
+                        } else {
+                            // 日记列表
+                            diaryList
+                        }
                     }
                 }
                 .animation(.easeInOut(duration: 0.3), value: viewModel.entries.count)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.diaryQuery)
+                .animation(.easeInOut(duration: 0.2), value: selectedDisplayMode)
             }
             .navigationTitle("日记")
             .navigationBarTitleDisplayMode(.large)
@@ -75,6 +90,18 @@ struct DiaryListView: View {
     }
     
     // MARK: - 子视图
+
+    private var displayModePicker: some View {
+        Picker("日记视图", selection: $selectedDisplayMode) {
+            ForEach(DisplayMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .padding(.top, 10)
+        .accessibilityIdentifier("diary.displayModeSegmentedControl")
+    }
     
     private var searchBar: some View {
         HStack {

@@ -55,6 +55,8 @@ Before treating a branch as a usable app build, manually verify:
 - edit diary content, mood, and tags
 - search diary title, content, and tags
 - filter diaries by tag, mood, favorite state, and date range, then clear filters
+- open diary review and confirm monthly overview, tag trends, mood distribution, and recent favorites render from the full diary set
+- confirm diary review results do not change when the diary list has an active search or filter
 - create and complete a todo
 - create a recurring todo and complete it once
 - switch todo segments for today, overdue, upcoming, no-date, recurring, and completed groups
