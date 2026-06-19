@@ -350,12 +350,21 @@ struct EasyNoteTests {
 
     @Test func diaryViewModelKeepsPendingAIResultsPerApplicationTarget() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let firstDiaryId = UUID()
+        let secondDiaryId = UUID()
         let summary = AIActionResult.success(
             actionType: .summary,
             applicationTarget: .diarySummary,
-            sourceEntityId: UUID(),
+            sourceEntityId: firstDiaryId,
             input: "日记正文",
             outputText: "摘要"
+        )
+        let secondSummary = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: secondDiaryId,
+            input: "另一篇日记正文",
+            outputText: "另一篇摘要"
         )
         let transcription = AIActionResult.success(
             actionType: .refine,
@@ -365,9 +374,11 @@ struct EasyNoteTests {
         )
 
         viewModel.recordAIActionResult(summary)
+        viewModel.recordAIActionResult(secondSummary)
         viewModel.recordAIActionResult(transcription)
 
-        #expect(viewModel.pendingAIResult(for: .diarySummary) == summary)
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: firstDiaryId) == summary)
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: secondDiaryId) == secondSummary)
         #expect(viewModel.pendingAIResult(for: .transcriptionText) == transcription)
     }
 
@@ -403,6 +414,28 @@ struct EasyNoteTests {
 
         #expect(viewModel.aiActionHistory.first == result)
         #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelClearsStalePendingResultAfterFailureForSameTarget() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let success = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "旧转写",
+            outputText: "旧润色"
+        )
+        let failure = AIActionResult.failure(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "新转写",
+            message: "网络错误"
+        )
+
+        viewModel.recordAIActionResult(success)
+        viewModel.recordAIActionResult(failure)
+
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+        #expect(viewModel.aiActionHistory.first == failure)
     }
 
     @Test func diaryViewModelDiscardsPendingAIResultFromHistory() async throws {

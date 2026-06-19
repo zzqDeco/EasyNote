@@ -26,7 +26,7 @@ class DiaryViewModel: ObservableObject {
     @Published var microphonePermissionStatus: MicrophonePermissionStatus = .notDetermined
     @Published var isProcessingAI = false
     @Published var aiActionHistory: [AIActionResult] = []
-    @Published var pendingAIResults: [AIActionResult.ApplicationTarget: AIActionResult] = [:]
+    @Published var pendingAIResults: [AIActionResult] = []
     @Published var isSyncing = false
     @Published var errorMessage: String?
     @Published var toastMessage: String?
@@ -354,21 +354,25 @@ class DiaryViewModel: ObservableObject {
         aiActionHistory.insert(result, at: 0)
 
         if result.canApply {
-            pendingAIResults[result.applicationTarget] = result
+            pendingAIResults.removeAll { hasSamePendingScope($0, as: result) }
+            pendingAIResults.insert(result, at: 0)
+        } else {
+            pendingAIResults.removeAll { hasSamePendingScope($0, as: result) }
         }
     }
 
     var pendingAIResult: AIActionResult? {
-        pendingAIResults.values.sorted { $0.timestamp > $1.timestamp }.first
+        pendingAIResults.sorted { $0.timestamp > $1.timestamp }.first
     }
 
     func pendingAIResult(
         for target: AIActionResult.ApplicationTarget,
         sourceEntityId: UUID? = nil
     ) -> AIActionResult? {
-        guard let result = pendingAIResults[target] else { return nil }
-        guard let sourceEntityId else { return result }
-        return result.sourceEntityId == sourceEntityId ? result : nil
+        pendingAIResults.first {
+            $0.applicationTarget == target
+                && (sourceEntityId == nil || $0.sourceEntityId == sourceEntityId)
+        }
     }
 
     func recentAIResults(
@@ -376,7 +380,7 @@ class DiaryViewModel: ObservableObject {
         sourceEntityId: UUID? = nil,
         limit: Int = 3
     ) -> [AIActionResult] {
-        let pendingIds = Set(pendingAIResults.values.map(\.id))
+        let pendingIds = Set(pendingAIResults.map(\.id))
         return Array(aiActionHistory
             .filter {
                 $0.applicationTarget == target
@@ -387,9 +391,7 @@ class DiaryViewModel: ObservableObject {
     }
 
     func discardAIResult(_ result: AIActionResult) {
-        if pendingAIResults[result.applicationTarget]?.id == result.id {
-            pendingAIResults[result.applicationTarget] = nil
-        }
+        pendingAIResults.removeAll { $0.id == result.id }
         aiActionHistory.removeAll { $0.id == result.id }
     }
 
@@ -418,10 +420,12 @@ class DiaryViewModel: ObservableObject {
             return false
         }
 
-        if pendingAIResults[result.applicationTarget]?.id == result.id {
-            pendingAIResults[result.applicationTarget] = nil
-        }
+        pendingAIResults.removeAll { $0.id == result.id }
         return true
+    }
+
+    private func hasSamePendingScope(_ lhs: AIActionResult, as rhs: AIActionResult) -> Bool {
+        lhs.applicationTarget == rhs.applicationTarget && lhs.sourceEntityId == rhs.sourceEntityId
     }
 
     private func diaryEntry(for result: AIActionResult) -> DiaryEntry? {

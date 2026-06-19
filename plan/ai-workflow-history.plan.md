@@ -23,7 +23,8 @@ Non-goals:
 
 - Introduce `AIActionResult` as an app-local Codable/Equatable/Identifiable value with action type, input preview, output text, timestamp, success flag, and optional failure message.
 - Keep `DiaryViewModel.aiActionHistory` and `DiaryViewModel.pendingAIResults` as `@Published` current-session state.
-- Track pending diary and transcription results per application target, and bind diary summary results to the source `DiaryEntry.id` so navigation cannot apply a summary to the wrong diary.
+- Track pending diary and transcription results per application target/source scope, and bind diary summary results to the source `DiaryEntry.id` so navigation cannot apply a summary to the wrong diary.
+- Clear stale pending results when a later AI action fails in the same target/source scope.
 - For diary summary generation:
   - Empty API key continues to fail closed before any network request.
   - Successful summary creates a pending `.summary` result but does not write `DiaryEntry.aiSummary` until the user applies it.
@@ -39,7 +40,7 @@ Non-goals:
 
 - Unit tests cover `AIActionResult` success/failure factories and input preview truncation.
 - Unit tests cover applying pending summary updates `DiaryEntry.aiSummary` only after explicit apply.
-- Unit tests cover pending results per application target and applying a diary summary to the source diary after `currentEntry` changes.
+- Unit tests cover pending results per application target/source scope, stale pending cleanup after failures, and applying a diary summary to the source diary after `currentEntry` changes.
 - Unit tests cover applying pending transcription results updates `transcribedText` only after explicit apply.
 - Existing empty-key OpenAIService test remains the fail-closed network boundary.
 - Local validation:
