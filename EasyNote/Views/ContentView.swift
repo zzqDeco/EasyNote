@@ -157,7 +157,7 @@ private struct ContentRootView: View {
             }
             .sheet(isPresented: $showingCreateDiarySheet, onDismiss: {
                 // 重置视图模型，避免重复使用
-                diaryViewModel.transcribedText = ""
+                diaryViewModel.setTranscriptionText("")
             }) {
                 NavigationStack {
                     CreateDiaryView(
@@ -169,7 +169,7 @@ private struct ContentRootView: View {
                     .environment(\.colorScheme, themeManager.colorScheme)
                     .onAppear {
                         // 确保每次打开时都重新设置视图模型
-                        diaryViewModel.transcribedText = ""
+                        diaryViewModel.setTranscriptionText("")
                         diaryViewModel.updateModelContext(modelContext)
                     }
                 }

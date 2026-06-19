@@ -244,7 +244,7 @@ struct TranscriptionDisplayView: View {
 
             HStack(spacing: 10) {
                 Button {
-                    _ = viewModel.applyAIResult(result)
+                    _ = viewModel.applyAIResult(result, currentEditorContent: content)
                 } label: {
                     Label("应用", systemImage: "checkmark.circle.fill")
                 }

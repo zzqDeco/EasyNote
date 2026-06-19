@@ -123,7 +123,7 @@ struct NewDiaryView: View {
         }
         .onDisappear {
             cleanupDraftRecordingIfNeeded()
-            viewModel.transcribedText = ""
+            viewModel.setTranscriptionText("")
         }
     }
     
@@ -283,8 +283,8 @@ struct NewDiaryView: View {
         Group {
             if !content.isEmpty && !viewModel.isRecording && !viewModel.isProcessingAI {
                 Button {
-                    viewModel.transcribedText = content
-                    viewModel.refineTranscribedText(content)
+                    viewModel.setTranscriptionText(content, inputSource: .editorContent)
+                    viewModel.refineTranscribedText(content, inputSource: .editorContent)
                     isShowingTranscription = true
                 } label: {
                     HStack {

@@ -31,10 +31,16 @@ struct AIActionResult: Identifiable, Codable, Equatable {
         case recommendationList
     }
 
+    enum InputSource: String, Codable {
+        case defaultText
+        case editorContent
+    }
+
     let id: UUID
     let actionType: ActionType
     let applicationTarget: ApplicationTarget
     let sourceEntityId: UUID?
+    let inputSource: InputSource
     let inputFingerprint: String
     let inputPreview: String
     let outputText: String
@@ -54,6 +60,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
         actionType: ActionType,
         applicationTarget: ApplicationTarget,
         sourceEntityId: UUID? = nil,
+        inputSource: InputSource = .defaultText,
         input: String,
         outputText: String,
         timestamp: Date = Date(),
@@ -64,6 +71,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
             actionType: actionType,
             applicationTarget: applicationTarget,
             sourceEntityId: sourceEntityId,
+            inputSource: inputSource,
             inputFingerprint: fingerprint(from: input),
             inputPreview: preview(from: input, limit: previewLimit),
             outputText: outputText,
@@ -77,6 +85,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
         actionType: ActionType,
         applicationTarget: ApplicationTarget,
         sourceEntityId: UUID? = nil,
+        inputSource: InputSource = .defaultText,
         input: String,
         message: String,
         timestamp: Date = Date(),
@@ -87,6 +96,7 @@ struct AIActionResult: Identifiable, Codable, Equatable {
             actionType: actionType,
             applicationTarget: applicationTarget,
             sourceEntityId: sourceEntityId,
+            inputSource: inputSource,
             inputFingerprint: fingerprint(from: input),
             inputPreview: preview(from: input, limit: previewLimit),
             outputText: "",

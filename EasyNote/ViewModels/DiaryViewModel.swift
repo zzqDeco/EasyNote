@@ -21,6 +21,7 @@ class DiaryViewModel: ObservableObject {
     @Published var currentEntry: DiaryEntry?
     @Published var isRecording = false
     @Published var transcribedText = ""
+    @Published private(set) var transcriptionInputSource: AIActionResult.InputSource = .defaultText
     @Published var recordingState: RecordingState = .idle
     @Published var speechPermissionStatus: SpeechPermissionStatus = .notDetermined
     @Published var microphonePermissionStatus: MicrophonePermissionStatus = .notDetermined
@@ -129,6 +130,8 @@ class DiaryViewModel: ObservableObject {
     
     @discardableResult
     func startRecording() -> Bool {
+        transcriptionInputSource = .defaultText
+
         if speechPermissionStatus == .notDetermined || microphonePermissionStatus == .notDetermined {
             speechService.requestPermissions { [weak self] isGranted in
                 guard let self else { return }
@@ -176,7 +179,7 @@ class DiaryViewModel: ObservableObject {
         let (audioURL, transcription) = speechService.saveRecordingWithTranscription()
 
         if !transcription.isEmpty {
-            transcribedText = transcription
+            setTranscriptionText(transcription)
         }
 
         return VoiceRecordingDraft(audioURL: audioURL, transcription: transcription)
@@ -242,7 +245,7 @@ class DiaryViewModel: ObservableObject {
         )
 
         if nextContent != content {
-            transcribedText = ""
+            setTranscriptionText("")
         }
 
         return nextContent
@@ -324,7 +327,7 @@ class DiaryViewModel: ObservableObject {
         // 保存原始识别文本到transcribedText，而不是直接修改entry.content
         if !recording.transcription.isEmpty {
             // 将识别文本保存到transcribedText供用户预览
-            self.transcribedText = recording.transcription
+            self.setTranscriptionText(recording.transcription)
             
             // 不再自动润色文本，由用户手动触发
             // if !transcription.isEmpty && !openAIService.apiKey.isEmpty {
@@ -349,6 +352,11 @@ class DiaryViewModel: ObservableObject {
     // 获取OpenAIService实例
     func getOpenAIService() -> OpenAIService {
         return openAIService
+    }
+
+    func setTranscriptionText(_ text: String, inputSource: AIActionResult.InputSource = .defaultText) {
+        transcribedText = text
+        transcriptionInputSource = inputSource
     }
 
     func recordAIActionResult(_ result: AIActionResult) {
@@ -397,7 +405,7 @@ class DiaryViewModel: ObservableObject {
     }
 
     @discardableResult
-    func applyAIResult(_ result: AIActionResult) -> Bool {
+    func applyAIResult(_ result: AIActionResult, currentEditorContent: String? = nil) -> Bool {
         guard result.canApply else {
             errorMessage = result.failureMessage ?? "没有可应用的AI结果"
             return false
@@ -420,12 +428,15 @@ class DiaryViewModel: ObservableObject {
                 return false
             }
         case .transcriptionText:
-            guard result.matchesInput(transcribedText) else {
+            let sourceText = transcriptionValidationText(for: result, currentEditorContent: currentEditorContent)
+            guard result.matchesInput(sourceText) else {
                 pendingAIResults.removeAll { $0.id == result.id }
-                errorMessage = "转写内容已变化，请重新生成AI结果"
+                errorMessage = result.inputSource == .editorContent
+                    ? "当前编辑内容已变化，请重新生成AI结果"
+                    : "转写内容已变化，请重新生成AI结果"
                 return false
             }
-            transcribedText = result.outputText
+            setTranscriptionText(result.outputText, inputSource: result.inputSource)
             if result.actionType == .refine {
                 analyzeAcceptedRefinedContent(result.outputText)
             }
@@ -454,6 +465,14 @@ class DiaryViewModel: ObservableObject {
         return diaryEntries.first { $0.id == sourceEntityId }
     }
 
+    private func transcriptionValidationText(for result: AIActionResult, currentEditorContent: String?) -> String {
+        if result.inputSource == .editorContent, let currentEditorContent {
+            return currentEditorContent
+        }
+
+        return transcribedText
+    }
+
     private func analyzeAcceptedRefinedContent(_ content: String) {
         if let refinedContentAnalysisHandler {
             refinedContentAnalysisHandler(content)
@@ -466,6 +485,7 @@ class DiaryViewModel: ObservableObject {
         actionType: AIActionResult.ActionType,
         applicationTarget: AIActionResult.ApplicationTarget,
         sourceEntityId: UUID? = nil,
+        inputSource: AIActionResult.InputSource = .defaultText,
         input: String,
         message: String
     ) {
@@ -474,6 +494,7 @@ class DiaryViewModel: ObservableObject {
             actionType: actionType,
             applicationTarget: applicationTarget,
             sourceEntityId: sourceEntityId,
+            inputSource: inputSource,
             input: input,
             message: message
         ))
@@ -531,12 +552,15 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 使用AI润色语音识别的文本
-    func refineTranscribedText(_ text: String) {
+    func refineTranscribedText(_ text: String, inputSource: AIActionResult.InputSource? = nil) {
+        let resolvedInputSource = inputSource ?? transcriptionInputSource
+
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
             recordAIActionFailure(
                 actionType: .refine,
                 applicationTarget: .transcriptionText,
+                inputSource: resolvedInputSource,
                 input: text,
                 message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
             )
@@ -554,6 +578,7 @@ class DiaryViewModel: ObservableObject {
                         self?.recordAIActionFailure(
                             actionType: .refine,
                             applicationTarget: .transcriptionText,
+                            inputSource: resolvedInputSource,
                             input: text,
                             message: "优化文本失败: \(error.localizedDescription)"
                         )
@@ -571,6 +596,7 @@ class DiaryViewModel: ObservableObject {
                     self.recordAIActionResult(.success(
                         actionType: .refine,
                         applicationTarget: .transcriptionText,
+                        inputSource: resolvedInputSource,
                         input: text,
                         outputText: cleanedText
                     ))
@@ -860,12 +886,15 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 为TranscriptionDisplayView添加所需方法
-    func expandTranscribedText(_ text: String) {
+    func expandTranscribedText(_ text: String, inputSource: AIActionResult.InputSource? = nil) {
+        let resolvedInputSource = inputSource ?? transcriptionInputSource
+
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
             recordAIActionFailure(
                 actionType: .expand,
                 applicationTarget: .transcriptionText,
+                inputSource: resolvedInputSource,
                 input: text,
                 message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
             )
@@ -884,6 +913,7 @@ class DiaryViewModel: ObservableObject {
                         self?.recordAIActionFailure(
                             actionType: .expand,
                             applicationTarget: .transcriptionText,
+                            inputSource: resolvedInputSource,
                             input: text,
                             message: "扩展文本失败: \(error.localizedDescription)"
                         )
@@ -894,6 +924,7 @@ class DiaryViewModel: ObservableObject {
                     self.recordAIActionResult(.success(
                         actionType: .expand,
                         applicationTarget: .transcriptionText,
+                        inputSource: resolvedInputSource,
                         input: text,
                         outputText: expandedText
                     ))
@@ -903,12 +934,15 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 总结转写文本
-    func summarizeTranscribedText(_ text: String) {
+    func summarizeTranscribedText(_ text: String, inputSource: AIActionResult.InputSource? = nil) {
+        let resolvedInputSource = inputSource ?? transcriptionInputSource
+
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
             recordAIActionFailure(
                 actionType: .summary,
                 applicationTarget: .transcriptionText,
+                inputSource: resolvedInputSource,
                 input: text,
                 message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
             )
@@ -927,6 +961,7 @@ class DiaryViewModel: ObservableObject {
                         self?.recordAIActionFailure(
                             actionType: .summary,
                             applicationTarget: .transcriptionText,
+                            inputSource: resolvedInputSource,
                             input: text,
                             message: "总结文本失败: \(error.localizedDescription)"
                         )
@@ -937,6 +972,7 @@ class DiaryViewModel: ObservableObject {
                     self.recordAIActionResult(.success(
                         actionType: .summary,
                         applicationTarget: .transcriptionText,
+                        inputSource: resolvedInputSource,
                         input: text,
                         outputText: summarizedText
                     ))

@@ -71,11 +71,11 @@ The parser is pure and must not read API keys, send network requests, or inspect
 
 ## AI Result Confirmation Boundary
 
-`AIActionResult` records current-session AI outcomes without changing SwiftData schema. Results include an action type (`summary`, `refine`, `expand`, `analyze`, or `recommendation`), an application target, optional source entity id, input fingerprint, input preview, output text, timestamp, success state, and optional failure message.
+`AIActionResult` records current-session AI outcomes without changing SwiftData schema. Results include an action type (`summary`, `refine`, `expand`, `analyze`, or `recommendation`), an application target, optional source entity id, input source, input fingerprint, input preview, output text, timestamp, success state, and optional failure message.
 
 Text-generating diary and transcription actions must not mutate persisted diary fields or `transcribedText` until the user applies the pending result. Copy is UI-only; discard removes the pending result from current-session history without mutating diary data. Recommendation results are reviewable/copyable history entries and are not directly applied through this boundary. Empty API keys still fail closed before network requests and may record a failure result, but must not create a successful pending result.
 
-Pending text results are tracked by application target plus source entity id. Diary summary results must be bound to the `DiaryEntry.id` that produced them, and views must only render/apply summary results for that source entry. Applying diary summary or transcription results must verify that the current source text still matches the recorded input fingerprint. Failed actions clear stale pending results for the same target/source scope.
+Pending text results are tracked by application target plus source entity id. Diary summary results must be bound to the `DiaryEntry.id` that produced them, and views must only render/apply summary results for that source entry. Applying diary summary or transcription results must verify that the current source text still matches the recorded input fingerprint. Transcription results launched from editor content must validate against the current editor text, not only the copied `transcribedText` buffer. Failed actions clear stale pending results for the same target/source scope.
 
 Accepted transcription `.refine` results update `transcribedText` first and then run the existing refined-content analysis path so mood/tag suggestions remain tied to text the user explicitly accepted. Expand and summary transcription results do not trigger this analysis.
 

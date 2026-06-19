@@ -187,8 +187,8 @@ struct DiaryEditView: View {
             
             if !editedContent.isEmpty && !viewModel.isRecording && !viewModel.isProcessingAI {
                 Button {
-                    viewModel.transcribedText = editedContent
-                    viewModel.refineTranscribedText(editedContent)
+                    viewModel.setTranscriptionText(editedContent, inputSource: .editorContent)
+                    viewModel.refineTranscribedText(editedContent, inputSource: .editorContent)
                     isShowingTranscription = true
                 } label: {
                     Image(systemName: "wand.and.stars")
