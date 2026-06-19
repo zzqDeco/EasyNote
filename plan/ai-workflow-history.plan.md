@@ -25,6 +25,7 @@ Non-goals:
 - Keep `DiaryViewModel.aiActionHistory` and `DiaryViewModel.pendingAIResults` as `@Published` current-session state.
 - Track pending diary and transcription results per application target/source scope, and bind diary summary results to the source `DiaryEntry.id` so navigation cannot apply a summary to the wrong diary.
 - Store a deterministic input fingerprint with text-generating results and reject Apply when diary or transcription source text has changed.
+- Snapshot diary summary input before sending the AI request so returned summaries are fingerprinted against the text that was actually sent.
 - Clear stale pending results when a later AI action fails in the same target/source scope.
 - Reuse the same user-facing recommendation error mapping for Explore error state and recommendation AI history.
 - For diary summary generation:

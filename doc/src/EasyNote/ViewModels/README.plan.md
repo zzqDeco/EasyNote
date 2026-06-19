@@ -19,6 +19,7 @@
 - `DiaryViewModel` binds pending diary summary results to their source `DiaryEntry.id` and removes discarded pending results from current-session history.
 - `DiaryViewModel` clears stale pending results when a later AI action fails in the same target/source scope.
 - `DiaryViewModel` rejects pending diary summary or transcription results when the source text fingerprint no longer matches the current text.
+- `DiaryViewModel` snapshots diary summary input before sending the AI request and uses that same snapshot for the result fingerprint.
 - `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, existing-entry replacement, and deletion do not leave unreachable files.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
 - `TodoViewModel` owns focused todo CRUD, recurrence, and todo list state.

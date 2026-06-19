@@ -472,14 +472,16 @@ class DiaryViewModel: ObservableObject {
             errorMessage = "无法生成摘要：日记内容为空"
             return
         }
+        let sourceEntryId = entry.id
+        let summaryInput = entry.content
         
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
             recordAIActionFailure(
                 actionType: .summary,
                 applicationTarget: .diarySummary,
-                sourceEntityId: entry.id,
-                input: entry.content,
+                sourceEntityId: sourceEntryId,
+                input: summaryInput,
                 message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
             )
             return
@@ -487,7 +489,7 @@ class DiaryViewModel: ObservableObject {
         
         isProcessingAI = true
         
-        openAIService.generateSummary(from: entry.content)
+        openAIService.generateSummary(from: summaryInput)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
@@ -496,8 +498,8 @@ class DiaryViewModel: ObservableObject {
                         self?.recordAIActionFailure(
                             actionType: .summary,
                             applicationTarget: .diarySummary,
-                            sourceEntityId: entry.id,
-                            input: entry.content,
+                            sourceEntityId: sourceEntryId,
+                            input: summaryInput,
                             message: "生成摘要失败: \(error.localizedDescription)"
                         )
                     }
@@ -507,8 +509,8 @@ class DiaryViewModel: ObservableObject {
                     self.recordAIActionResult(.success(
                         actionType: .summary,
                         applicationTarget: .diarySummary,
-                        sourceEntityId: entry.id,
-                        input: entry.content,
+                        sourceEntityId: sourceEntryId,
+                        input: summaryInput,
                         outputText: summary
                     ))
                 }
