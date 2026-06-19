@@ -77,6 +77,8 @@ Text-generating diary and transcription actions must not mutate persisted diary 
 
 Pending text results are tracked by application target plus source entity id. Diary summary results must be bound to the `DiaryEntry.id` that produced them, and views must only render/apply summary results for that source entry. Applying diary summary or transcription results must verify that the current source text still matches the recorded input fingerprint. Failed actions clear stale pending results for the same target/source scope.
 
+Accepted transcription `.refine` results update `transcribedText` first and then run the existing refined-content analysis path so mood/tag suggestions remain tied to text the user explicitly accepted. Expand and summary transcription results do not trigger this analysis.
+
 ## Speech Boundary
 
 `SpeechRecognitionService` owns:

@@ -35,6 +35,7 @@ class DiaryViewModel: ObservableObject {
     
     // 取消令牌
     private var cancellables = Set<AnyCancellable>()
+    var refinedContentAnalysisHandler: ((String) -> Void)?
     
     // 模型上下文
     private var modelContext: ModelContext
@@ -425,6 +426,9 @@ class DiaryViewModel: ObservableObject {
                 return false
             }
             transcribedText = result.outputText
+            if result.actionType == .refine {
+                analyzeAcceptedRefinedContent(result.outputText)
+            }
         case .none, .recommendationList:
             errorMessage = "该AI结果不能直接应用"
             return false
@@ -448,6 +452,14 @@ class DiaryViewModel: ObservableObject {
         }
 
         return diaryEntries.first { $0.id == sourceEntityId }
+    }
+
+    private func analyzeAcceptedRefinedContent(_ content: String) {
+        if let refinedContentAnalysisHandler {
+            refinedContentAnalysisHandler(content)
+        } else {
+            analyzeRefinedContent(content)
+        }
     }
 
     private func recordAIActionFailure(

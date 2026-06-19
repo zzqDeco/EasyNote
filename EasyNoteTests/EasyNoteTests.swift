@@ -427,6 +427,30 @@ struct EasyNoteTests {
         #expect(viewModel.pendingAIResult == nil)
     }
 
+    @Test func diaryViewModelAnalyzesRefinedTranscriptionAfterApply() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        final class AnalysisProbe {
+            var content: String?
+        }
+        let probe = AnalysisProbe()
+        viewModel.refinedContentAnalysisHandler = { content in
+            probe.content = content
+        }
+        viewModel.transcribedText = "原始转写"
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "原始转写",
+            outputText: "润色后的转写"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(probe.content == nil)
+        #expect(viewModel.applyAIResult(result))
+        #expect(probe.content == "润色后的转写")
+    }
+
     @Test func diaryViewModelRejectsStalePendingTranscriptionAfterTextChanges() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.transcribedText = "旧转写"
