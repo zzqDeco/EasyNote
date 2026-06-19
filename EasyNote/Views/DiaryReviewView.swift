@@ -267,8 +267,8 @@ struct DiaryReviewView: View {
     private func rankedBars<Item>(
         items: [Item],
         maxCount: Int,
-        title: (Item) -> String,
-        count: (Item) -> Int,
+        title: @escaping (Item) -> String,
+        count: @escaping (Item) -> Int,
         color: Color
     ) -> some View {
         VStack(spacing: 12) {
