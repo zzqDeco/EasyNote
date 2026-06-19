@@ -473,6 +473,143 @@ struct EasyNoteTests {
         #expect(DiaryEntryQuery(sortOption: .titleDesc).apply(to: entries).map(\.title) == ["Beta", "alpha"])
     }
 
+    @Test func diaryReviewProjectionAggregatesMonthlyCountsFavoritesMoodsAndTags() async throws {
+        let calendar = makeGregorianCalendar()
+        let june1 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 1, hour: 9)))
+        let june2 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 2, hour: 9)))
+        let may31 = try #require(calendar.date(from: DateComponents(year: 2026, month: 5, day: 31, hour: 9)))
+        let entries = [
+            makeDiary(title: "六月工作", tags: ["work", "review"], mood: "4", creationDate: june1, isFavorite: true),
+            makeDiary(title: "六月生活", tags: ["life", "review"], mood: "3", creationDate: june2),
+            makeDiary(title: "五月记录", tags: ["work"], mood: "4", creationDate: may31, isFavorite: true)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: june2)
+        let juneSummary = try #require(projection.monthlySummaries.first)
+
+        #expect(projection.totalEntryCount == 3)
+        #expect(projection.totalFavoriteCount == 2)
+        #expect(projection.totalDistinctTagCount == 3)
+        #expect(calendar.component(.month, from: juneSummary.monthStart) == 6)
+        #expect(juneSummary.entryCount == 2)
+        #expect(juneSummary.favoriteCount == 1)
+        let juneMoodCounts = Dictionary(uniqueKeysWithValues: juneSummary.moodDistribution.map { ($0.mood, $0.count) })
+        #expect(juneMoodCounts["一般"] == 1)
+        #expect(juneMoodCounts["不错"] == 1)
+        #expect(juneSummary.topTags == [
+            DiaryReviewProjection.TagCount(tag: "review", count: 2),
+            DiaryReviewProjection.TagCount(tag: "life", count: 1),
+            DiaryReviewProjection.TagCount(tag: "work", count: 1)
+        ])
+    }
+
+    @Test func diaryReviewProjectionSortsTopTagsByCountThenLocalizedName() async throws {
+        let date = try #require(makeGregorianCalendar().date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "A", tags: ["beta", "alpha"], creationDate: date),
+            makeDiary(title: "B", tags: ["gamma", "beta"], creationDate: date),
+            makeDiary(title: "C", tags: ["alpha", "gamma"], creationDate: date),
+            makeDiary(title: "D", tags: ["gamma"], creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: makeGregorianCalendar(), now: date, topLimit: 2)
+
+        #expect(projection.overallTopTags == [
+            DiaryReviewProjection.TagCount(tag: "gamma", count: 3),
+            DiaryReviewProjection.TagCount(tag: "alpha", count: 2)
+        ])
+    }
+
+    @Test func diaryReviewProjectionTracksDistinctTagsBeyondTopLimit() async throws {
+        let calendar = makeGregorianCalendar()
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "A", tags: ["alpha"], creationDate: date),
+            makeDiary(title: "B", tags: ["beta"], creationDate: date),
+            makeDiary(title: "C", tags: ["gamma"], creationDate: date),
+            makeDiary(title: "D", tags: ["delta"], creationDate: date),
+            makeDiary(title: "E", tags: ["epsilon"], creationDate: date),
+            makeDiary(title: "F", tags: ["zeta"], creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: date, topLimit: 2)
+
+        #expect(projection.totalDistinctTagCount == 6)
+        #expect(projection.overallTopTags.count == 2)
+    }
+
+    @Test func diaryReviewProjectionCountsMoodDistributionAndRecentFavorites() async throws {
+        let calendar = makeGregorianCalendar()
+        let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let later = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
+        let entries = [
+            makeDiary(title: "旧收藏", mood: "5", creationDate: earlier, isFavorite: true),
+            makeDiary(title: "新收藏", mood: "4", creationDate: later, isFavorite: true),
+            makeDiary(title: "普通", mood: "5", creationDate: later)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: later)
+
+        #expect(projection.overallMoodDistribution == [
+            DiaryReviewProjection.MoodCount(mood: "很棒", count: 2),
+            DiaryReviewProjection.MoodCount(mood: "不错", count: 1)
+        ])
+        #expect(projection.recentFavorites.map(\.title) == ["新收藏", "旧收藏"])
+    }
+
+    @Test func diaryReviewProjectionNormalizesNumericAndLabelMoods() async throws {
+        let calendar = makeGregorianCalendar()
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "数字心情", mood: "4", creationDate: date),
+            makeDiary(title: "标签心情", mood: "不错", creationDate: date),
+            makeDiary(title: "带空格数字", mood: " 4 ", creationDate: date),
+            makeDiary(title: "自定义心情", mood: "专注", creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: date)
+
+        #expect(projection.overallMoodDistribution == [
+            DiaryReviewProjection.MoodCount(mood: "不错", count: 3),
+            DiaryReviewProjection.MoodCount(mood: "专注", count: 1)
+        ])
+    }
+
+    @Test func diaryReviewProjectionReturnsEmptyProjectionForNoEntries() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
+
+        let projection = DiaryReviewProjection.build(from: [], calendar: calendar, now: now)
+
+        #expect(projection.totalEntryCount == 0)
+        #expect(projection.totalFavoriteCount == 0)
+        #expect(projection.totalDistinctTagCount == 0)
+        #expect(projection.monthlySummaries.isEmpty)
+        #expect(projection.overallTopTags.isEmpty)
+        #expect(projection.overallMoodDistribution.isEmpty)
+        #expect(projection.recentFavorites.isEmpty)
+        #expect(projection.windowSummaries.allSatisfy { $0.entryCount == 0 && $0.favoriteCount == 0 })
+    }
+
+    @Test func diaryReviewProjectionWindowsIncludeTodayAndExcludeOutsideRange() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 12)))
+        let today = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 23, minute: 59)))
+        let sixDaysAgo = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 6, hour: 8)))
+        let sevenDaysAgo = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 5, hour: 8)))
+        let may31 = try #require(calendar.date(from: DateComponents(year: 2026, month: 5, day: 31, hour: 23)))
+        let entries = [
+            makeDiary(title: "今天", creationDate: today),
+            makeDiary(title: "六天前", creationDate: sixDaysAgo),
+            makeDiary(title: "七天前", creationDate: sevenDaysAgo),
+            makeDiary(title: "五月末", creationDate: may31)
+        ]
+
+        #expect(DiaryReviewProjection.entries(for: .recent7Days, in: entries, calendar: calendar, now: now).map(\.title) == ["今天", "六天前"])
+        #expect(DiaryReviewProjection.entries(for: .recent30Days, in: entries, calendar: calendar, now: now).map(\.title) == ["今天", "六天前", "七天前", "五月末"])
+        #expect(DiaryReviewProjection.entries(for: .currentMonth, in: entries, calendar: calendar, now: now).map(\.title) == ["今天", "六天前", "七天前"])
+    }
+
     @Test func backupV1RoundTripsThroughJSON() async throws {
         let service = BackupService()
         let exportedAt = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
@@ -1012,6 +1149,12 @@ struct EasyNoteTests {
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+
+    private func makeGregorianCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
     }
 
     private func publisherFailure<Output>(_ publisher: AnyPublisher<Output, OpenAIError>) async -> OpenAIError? {
