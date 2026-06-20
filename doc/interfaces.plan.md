@@ -27,6 +27,7 @@ Core SwiftData save paths should return a success value or set a user-visible `e
 ## Local Backup Boundary
 
 `BackupService` owns local export and import for the public, local-first MVP.
+`SettingsView` consumes this behavior through `BackupServiceProviding`; the default implementation remains `BackupService`.
 
 Backup v1 uses a single JSON file with `.easynotebackup` extension and root type `EasyNoteBackupV1`:
 
@@ -68,6 +69,7 @@ Current response contract expects `choices[0].message.content`. Malformed or fai
 - Completely malformed recommendations return the stable default recommendations/todos.
 
 The parser is pure and must not read API keys, send network requests, or inspect provider transport metadata.
+ViewModels consume AI behavior through `OpenAIServiceProviding`. The protocol exposes request methods, API key access, and an erased processing-state publisher without exposing concrete `@Published` storage.
 
 ## AI Result Confirmation Boundary
 
@@ -92,6 +94,7 @@ Resetting or replacing the transcription buffer, or starting a new recording att
 - local recording file writing and URL validation
 
 Views and ViewModels should not manage `AVAudioEngine` or `SFSpeechAudioBufferRecognitionRequest` directly.
+`DiaryViewModel` consumes speech behavior through `SpeechRecognitionProviding`, including erased publishers for transcription, recording state, recording activity, and permission status.
 
 Transcription content is not written into diary body text automatically. Views must apply transcribed or AI-refined text through an explicit insert or replace action, using the shared diary draft composition helper. Insert/replace actions should stay unavailable while speech recognition is still recording or processing partial results.
 
@@ -100,6 +103,7 @@ Draft recording files are owned by diary save flows after capture. Unsaved new-e
 ## CloudKit Boundary
 
 `CloudKitService` owns CloudKit account checks, audio file sync, diary sync, and quota/user-id helpers. Debug mode currently sets simulation mode and reports iCloud unavailable for free-developer-account workflows.
+`DiaryViewModel` consumes the current diary sync entry points through `CloudKitDiarySyncProviding`; real sync behavior remains owned by `CloudKitService`.
 
 Real CloudKit enablement requires a dedicated plan covering entitlement, container, schema, merge, conflict, and validation behavior.
 

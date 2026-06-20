@@ -39,7 +39,12 @@ struct SettingsView: View {
     @State private var backupMessage: String?
     @State private var backupErrorMessage: String?
 
-    private let backupService = BackupService()
+    private let backupService: any BackupServiceProviding
+
+    init(themeManager: ThemeManager, backupService: any BackupServiceProviding = BackupService()) {
+        self._themeManager = ObservedObject(wrappedValue: themeManager)
+        self.backupService = backupService
+    }
     
     var body: some View {
         NavigationView {

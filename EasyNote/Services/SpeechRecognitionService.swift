@@ -396,3 +396,25 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         self.recordingURL = nil
     }
 }
+
+extension SpeechRecognitionService: SpeechRecognitionProviding {
+    var transcribedTextPublisher: AnyPublisher<String, Never> {
+        $transcribedText.eraseToAnyPublisher()
+    }
+
+    var recordingStatePublisher: AnyPublisher<RecordingState, Never> {
+        $recordingState.eraseToAnyPublisher()
+    }
+
+    var isRecordingPublisher: AnyPublisher<Bool, Never> {
+        $isRecording.eraseToAnyPublisher()
+    }
+
+    var speechPermissionStatusPublisher: AnyPublisher<SpeechPermissionStatus, Never> {
+        $speechPermissionStatus.eraseToAnyPublisher()
+    }
+
+    var microphonePermissionStatusPublisher: AnyPublisher<MicrophonePermissionStatus, Never> {
+        $microphonePermissionStatus.eraseToAnyPublisher()
+    }
+}

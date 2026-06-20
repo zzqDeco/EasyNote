@@ -269,6 +269,30 @@ struct EasyNoteTests {
         #expect(message == "请在设置中添加DeepSeek API密钥后再使用AI功能")
     }
 
+    @Test func diaryViewModelUsesInjectedAIServiceForEmptyKeySummaryFailure() async throws {
+        let context = try makeModelContext()
+        let entry = makeDiary(title: "待总结", content: "今天完成了服务注入边界整理。")
+        context.insert(entry)
+        try context.save()
+
+        let aiService = FakeOpenAIService(apiKey: "")
+        let viewModel = DiaryViewModel(
+            modelContext: context,
+            speechService: FakeSpeechRecognitionService(),
+            openAIService: aiService,
+            cloudKitService: FakeCloudKitDiarySyncService()
+        )
+        viewModel.currentEntry = entry
+
+        viewModel.generateAISummary()
+
+        #expect(aiService.generateSummaryCallCount == 0)
+        #expect(viewModel.pendingAIResults.isEmpty)
+        #expect(viewModel.aiActionHistory.count == 1)
+        #expect(viewModel.aiActionHistory.first?.isSuccess == false)
+        #expect(viewModel.errorMessage == "请在设置中添加DeepSeek API密钥后再使用AI功能")
+    }
+
     @Test func aiActionResultRecordsSuccessFailureAndPreview() async throws {
         let timestamp = try #require(makeGregorianCalendar().date(from: DateComponents(year: 2026, month: 6, day: 20)))
         let success = AIActionResult.success(
@@ -1537,6 +1561,115 @@ struct EasyNoteTests {
 
     private final class CancellableBox {
         var cancellable: AnyCancellable?
+    }
+
+    private final class FakeOpenAIService: OpenAIServiceProviding {
+        var apiKey: String
+        private let processingSubject = CurrentValueSubject<Bool, Never>(false)
+        private(set) var generateSummaryCallCount = 0
+
+        init(apiKey: String) {
+            self.apiKey = apiKey
+        }
+
+        var isProcessingPublisher: AnyPublisher<Bool, Never> {
+            processingSubject.eraseToAnyPublisher()
+        }
+
+        func generateSummary(from text: String) -> AnyPublisher<String, OpenAIError> {
+            generateSummaryCallCount += 1
+            return Just("fake summary")
+                .setFailureType(to: OpenAIError.self)
+                .eraseToAnyPublisher()
+        }
+
+        func refineTranscription(text: String) -> AnyPublisher<String, OpenAIError> {
+            Just(text)
+                .setFailureType(to: OpenAIError.self)
+                .eraseToAnyPublisher()
+        }
+
+        func analyzeDiaryContent(text: String) -> AnyPublisher<(moods: [String], tags: [String]), OpenAIError> {
+            Just((moods: ["平静"], tags: ["测试"]))
+                .setFailureType(to: OpenAIError.self)
+                .eraseToAnyPublisher()
+        }
+
+        func expandText(text: String) -> AnyPublisher<String, OpenAIError> {
+            Just(text)
+                .setFailureType(to: OpenAIError.self)
+                .eraseToAnyPublisher()
+        }
+
+        func summarizeText(text: String) -> AnyPublisher<String, OpenAIError> {
+            Just(text)
+                .setFailureType(to: OpenAIError.self)
+                .eraseToAnyPublisher()
+        }
+
+        func chat(prompt: String) async throws -> String {
+            "fake response"
+        }
+
+        func generateRecommendations(from diaryContent: String) -> AnyPublisher<(recommendations: [String], todos: [String]), OpenAIError> {
+            Just((recommendations: ["散步"], todos: ["复盘"]))
+                .setFailureType(to: OpenAIError.self)
+                .eraseToAnyPublisher()
+        }
+    }
+
+    private final class FakeSpeechRecognitionService: SpeechRecognitionProviding {
+        private let transcribedTextSubject = CurrentValueSubject<String, Never>("")
+        private let recordingStateSubject = CurrentValueSubject<RecordingState, Never>(.idle)
+        private let isRecordingSubject = CurrentValueSubject<Bool, Never>(false)
+        private let speechPermissionSubject = CurrentValueSubject<SpeechPermissionStatus, Never>(.authorized)
+        private let microphonePermissionSubject = CurrentValueSubject<MicrophonePermissionStatus, Never>(.granted)
+
+        var transcribedTextPublisher: AnyPublisher<String, Never> {
+            transcribedTextSubject.eraseToAnyPublisher()
+        }
+
+        var recordingStatePublisher: AnyPublisher<RecordingState, Never> {
+            recordingStateSubject.eraseToAnyPublisher()
+        }
+
+        var isRecordingPublisher: AnyPublisher<Bool, Never> {
+            isRecordingSubject.eraseToAnyPublisher()
+        }
+
+        var speechPermissionStatusPublisher: AnyPublisher<SpeechPermissionStatus, Never> {
+            speechPermissionSubject.eraseToAnyPublisher()
+        }
+
+        var microphonePermissionStatusPublisher: AnyPublisher<MicrophonePermissionStatus, Never> {
+            microphonePermissionSubject.eraseToAnyPublisher()
+        }
+
+        func requestPermissions(completion: ((Bool) -> Void)?) {
+            completion?(true)
+        }
+
+        func startRecording() throws {}
+
+        func stopRecording() throws {}
+
+        func saveRecordingWithTranscription() -> (audioURL: URL?, transcription: String) {
+            (nil, transcribedTextSubject.value)
+        }
+    }
+
+    private final class FakeCloudKitDiarySyncService: CloudKitDiarySyncProviding {
+        func syncDiaryEntries(entries: [DiaryEntry]) -> AnyPublisher<Void, Error> {
+            Just(())
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+        }
+
+        func fetchDiaryEntries() -> AnyPublisher<[DiaryEntry], Error> {
+            Just([])
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+        }
     }
 
 }

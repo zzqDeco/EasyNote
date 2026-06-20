@@ -533,3 +533,5 @@ struct BackupService {
         return formatter
     }
 }
+
+extension BackupService: BackupServiceProviding {}

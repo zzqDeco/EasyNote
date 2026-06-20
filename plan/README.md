@@ -13,7 +13,9 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 ## Active References
 
-No active implementation plans.
+| Document | Purpose | Status |
+|---|---|---|
+| [service-injection-seams.plan.md](service-injection-seams.plan.md) | Add narrow service protocols and initializer injection seams for ViewModels and Settings | Active |
 
 ## Delivered Or Recent References
 
