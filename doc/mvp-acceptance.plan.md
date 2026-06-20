@@ -33,6 +33,8 @@ Current focused tests cover:
 - `TodoItem.RecurringInterval.nextDate`
 - `ChatSession.generateSummary`
 - `ChatSession` and `SessionMessage` basic integrity
+- `AIActionResult` success/failure state and input preview generation
+- diary AI result application helpers that only mutate summary or transcription text after explicit confirmation
 
 When diary, todo, chat, or AI parsing behavior changes, add focused tests before relying on manual verification.
 
@@ -55,12 +57,19 @@ Before treating a branch as a usable app build, manually verify:
 - edit diary content, mood, and tags
 - search diary title, content, and tags
 - filter diaries by tag, mood, favorite state, and date range, then clear filters
+- open diary review and confirm monthly overview, tag trends, mood distribution, and recent favorites render from the full diary set
+- confirm diary review results do not change when the diary list has an active search or filter
 - create and complete a todo
 - create a recurring todo and complete it once
 - switch todo segments for today, overdue, upcoming, no-date, recurring, and completed groups
 - create a todo from a recommendation and confirm it appears in the expected todo group
 - configure and clear the DeepSeek API key in Settings
 - start AI actions with an empty key and confirm the failure is user-visible
+- generate a diary AI summary with a configured key and confirm the diary summary is unchanged until Apply is tapped
+- generate a transcription refine, expand, or summary result and confirm transcription text is unchanged until Apply is tapped
+- copy a pending AI result and confirm no diary or transcription field changes
+- discard a pending AI result and confirm no diary or transcription field changes
+- open recent AI results in diary, transcription, or explore flows and confirm successful and failed outcomes are reviewable in the current session
 - record speech on a real device or compatible simulator, stop recording, confirm transcription appears before it is applied
 - save a new diary while recording is active and confirm the entry keeps the captured audio URL
 - cancel a new diary after stopping a recording and confirm the unsaved local recording is not retained by any diary entry
@@ -68,6 +77,10 @@ Before treating a branch as a usable app build, manually verify:
 - deny speech or microphone permission and confirm the editor shows a user-visible reason without losing typed content
 - insert transcription into existing diary content and confirm it appends after the existing text
 - replace diary content with transcription and confirm the replace is explicit
+- export a backup from Settings and confirm the preview count includes diary, todo, chat, message, and recording totals
+- import a backup after adding unrelated local data and confirm same-ID records update while unrelated local records remain
+- import a backup containing a voice diary and confirm the restored diary points to a local `restored_recording_<uuid>` audio file
+- try importing a malformed or unsupported backup file and confirm no local records are changed
 
 ## Known Local Limitation
 

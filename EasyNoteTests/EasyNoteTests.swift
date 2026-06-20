@@ -8,6 +8,7 @@
 import Testing
 import Foundation
 import Combine
+import SwiftData
 @testable import EasyNote
 
 struct EasyNoteTests {
@@ -268,6 +269,365 @@ struct EasyNoteTests {
         #expect(message == "请在设置中添加DeepSeek API密钥后再使用AI功能")
     }
 
+    @Test func aiActionResultRecordsSuccessFailureAndPreview() async throws {
+        let timestamp = try #require(makeGregorianCalendar().date(from: DateComponents(year: 2026, month: 6, day: 20)))
+        let success = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "第一行\n第二行内容很长",
+            outputText: "润色结果",
+            timestamp: timestamp,
+            previewLimit: 5
+        )
+        let failure = AIActionResult.failure(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            input: "日记正文",
+            message: "生成失败",
+            timestamp: timestamp
+        )
+
+        #expect(success.isSuccess)
+        #expect(success.canApply)
+        #expect(success.matchesInput("第一行\n第二行内容很长"))
+        #expect(!success.matchesInput("第一行\n第二行内容已变化"))
+        #expect(success.inputPreview == "第一行 第...")
+        #expect(success.outputText == "润色结果")
+        #expect(success.timestamp == timestamp)
+        #expect(!failure.isSuccess)
+        #expect(!failure.canApply)
+        #expect(failure.failureMessage == "生成失败")
+    }
+
+    @Test func diaryViewModelAppliesPendingSummaryOnlyAfterConfirmation() async throws {
+        let context = try makeModelContext()
+        let entry = makeDiary(title: "需要摘要", content: "今天完成了项目复盘。")
+        context.insert(entry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        viewModel.currentEntry = entry
+        let result = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: entry.id,
+            input: entry.content,
+            outputText: "项目复盘摘要"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(entry.aiSummary == nil)
+        #expect(viewModel.pendingAIResult == result)
+        #expect(viewModel.applyAIResult(result))
+        #expect(entry.aiSummary == "项目复盘摘要")
+        #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelAppliesSummaryToSourceEntryAfterCurrentEntryChanges() async throws {
+        let context = try makeModelContext()
+        let sourceEntry = makeDiary(title: "源日记", content: "需要摘要的内容")
+        let otherEntry = makeDiary(title: "当前日记", content: "不应该被写入")
+        context.insert(sourceEntry)
+        context.insert(otherEntry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        viewModel.diaryEntries = [sourceEntry, otherEntry]
+        viewModel.currentEntry = otherEntry
+        let result = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: sourceEntry.id,
+            input: sourceEntry.content,
+            outputText: "源日记摘要"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: sourceEntry.id) == result)
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: otherEntry.id) == nil)
+        #expect(viewModel.applyAIResult(result))
+        #expect(sourceEntry.aiSummary == "源日记摘要")
+        #expect(otherEntry.aiSummary == nil)
+    }
+
+    @Test func diaryViewModelRejectsStalePendingSummaryAfterContentChanges() async throws {
+        let context = try makeModelContext()
+        let entry = makeDiary(title: "源日记", content: "旧正文")
+        context.insert(entry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        viewModel.currentEntry = entry
+        let result = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: entry.id,
+            input: entry.content,
+            outputText: "旧摘要"
+        )
+
+        viewModel.recordAIActionResult(result)
+        entry.content = "新正文"
+
+        #expect(!viewModel.applyAIResult(result))
+        #expect(entry.aiSummary == nil)
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: entry.id) == nil)
+        #expect(viewModel.errorMessage == "日记内容已变化，请重新生成AI摘要")
+    }
+
+    @Test func diaryViewModelKeepsPendingAIResultsPerApplicationTarget() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let firstDiaryId = UUID()
+        let secondDiaryId = UUID()
+        let summary = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: firstDiaryId,
+            input: "日记正文",
+            outputText: "摘要"
+        )
+        let secondSummary = AIActionResult.success(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            sourceEntityId: secondDiaryId,
+            input: "另一篇日记正文",
+            outputText: "另一篇摘要"
+        )
+        let transcription = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "原始转写",
+            outputText: "润色转写"
+        )
+
+        viewModel.recordAIActionResult(summary)
+        viewModel.recordAIActionResult(secondSummary)
+        viewModel.recordAIActionResult(transcription)
+
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: firstDiaryId) == summary)
+        #expect(viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: secondDiaryId) == secondSummary)
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == transcription)
+    }
+
+    @Test func diaryViewModelAppliesPendingTranscriptionOnlyAfterConfirmation() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.transcribedText = "原始转写"
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "原始转写",
+            outputText: "润色后的转写"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(viewModel.transcribedText == "原始转写")
+        #expect(viewModel.pendingAIResult == result)
+        #expect(viewModel.applyAIResult(result))
+        #expect(viewModel.transcribedText == "润色后的转写")
+        #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelAnalyzesRefinedTranscriptionAfterApply() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        final class AnalysisProbe {
+            var content: String?
+        }
+        let probe = AnalysisProbe()
+        viewModel.refinedContentAnalysisHandler = { content in
+            probe.content = content
+        }
+        viewModel.transcribedText = "原始转写"
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "原始转写",
+            outputText: "润色后的转写"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(probe.content == nil)
+        #expect(viewModel.applyAIResult(result))
+        #expect(probe.content == "润色后的转写")
+    }
+
+    @Test func diaryViewModelAppliesEditorContentAIResultWhenEditorIsUnchanged() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        final class AnalysisProbe {
+            var content: String?
+        }
+        let probe = AnalysisProbe()
+        viewModel.refinedContentAnalysisHandler = { content in
+            probe.content = content
+        }
+        viewModel.setTranscriptionText("编辑正文", inputSource: .editorContent)
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            inputSource: .editorContent,
+            input: "编辑正文",
+            outputText: "润色正文"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(viewModel.applyAIResult(result, currentEditorContent: "编辑正文"))
+        #expect(viewModel.transcribedText == "润色正文")
+        #expect(viewModel.transcriptionInputSource == .defaultText)
+        #expect(probe.content == "润色正文")
+    }
+
+    @Test func diaryViewModelAppliesChainedResultAfterEditorContentResult() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.refinedContentAnalysisHandler = { _ in }
+        viewModel.setTranscriptionText("编辑正文", inputSource: .editorContent)
+        let firstResult = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            inputSource: .editorContent,
+            input: "编辑正文",
+            outputText: "润色正文"
+        )
+
+        viewModel.recordAIActionResult(firstResult)
+        #expect(viewModel.applyAIResult(firstResult, currentEditorContent: "编辑正文"))
+
+        let chainedResult = AIActionResult.success(
+            actionType: .expand,
+            applicationTarget: .transcriptionText,
+            input: "润色正文",
+            outputText: "扩写正文"
+        )
+        viewModel.recordAIActionResult(chainedResult)
+
+        #expect(viewModel.applyAIResult(chainedResult, currentEditorContent: "编辑正文"))
+        #expect(viewModel.transcribedText == "扩写正文")
+    }
+
+    @Test func diaryViewModelRejectsEditorContentAIResultAfterEditorChanges() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.setTranscriptionText("旧正文", inputSource: .editorContent)
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            inputSource: .editorContent,
+            input: "旧正文",
+            outputText: "旧润色"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(!viewModel.applyAIResult(result, currentEditorContent: "新正文"))
+        #expect(viewModel.transcribedText == "旧正文")
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+        #expect(viewModel.errorMessage == "当前编辑内容已变化，请重新生成AI结果")
+    }
+
+    @Test func diaryViewModelClearsPendingTranscriptionResultsWhenBufferResets() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let result = AIActionResult.success(
+            actionType: .expand,
+            applicationTarget: .transcriptionText,
+            input: "旧转写",
+            outputText: "旧扩写"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.setTranscriptionText("")
+
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+    }
+
+    @Test func diaryViewModelClearsPendingTranscriptionResultsForNewRecording() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.setTranscriptionText("编辑正文", inputSource: .editorContent)
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            inputSource: .editorContent,
+            input: "编辑正文",
+            outputText: "润色正文"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.prepareTranscriptionForNewRecording()
+
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+        #expect(viewModel.transcriptionInputSource == .defaultText)
+    }
+
+    @Test func diaryViewModelRejectsStalePendingTranscriptionAfterTextChanges() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.transcribedText = "旧转写"
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "旧转写",
+            outputText: "旧润色"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.transcribedText = "新转写"
+
+        #expect(!viewModel.applyAIResult(result))
+        #expect(viewModel.transcribedText == "新转写")
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+        #expect(viewModel.errorMessage == "转写内容已变化，请重新生成AI结果")
+    }
+
+    @Test func diaryViewModelDoesNotPromoteFailureResultToPending() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let result = AIActionResult.failure(
+            actionType: .summary,
+            applicationTarget: .diarySummary,
+            input: "内容",
+            message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
+        )
+
+        viewModel.recordAIActionResult(result)
+
+        #expect(viewModel.aiActionHistory.first == result)
+        #expect(viewModel.pendingAIResult == nil)
+    }
+
+    @Test func diaryViewModelClearsStalePendingResultAfterFailureForSameTarget() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let success = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "旧转写",
+            outputText: "旧润色"
+        )
+        let failure = AIActionResult.failure(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            input: "新转写",
+            message: "网络错误"
+        )
+
+        viewModel.recordAIActionResult(success)
+        viewModel.recordAIActionResult(failure)
+
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+        #expect(viewModel.aiActionHistory.first == failure)
+    }
+
+    @Test func diaryViewModelDiscardsPendingAIResultFromHistory() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let result = AIActionResult.success(
+            actionType: .expand,
+            applicationTarget: .transcriptionText,
+            input: "短句",
+            outputText: "扩写后的内容"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.discardAIResult(result)
+
+        #expect(viewModel.pendingAIResult == nil)
+        #expect(viewModel.aiActionHistory.isEmpty)
+    }
+
     @Test func diaryDraftComposerInsertsTranscriptionAfterExistingContent() async throws {
         let result = DiaryDraftComposer.apply(
             transcription: "今天完成了语音记录",
@@ -472,6 +832,631 @@ struct EasyNoteTests {
         #expect(DiaryEntryQuery(sortOption: .titleDesc).apply(to: entries).map(\.title) == ["Beta", "alpha"])
     }
 
+    @Test func diaryReviewProjectionAggregatesMonthlyCountsFavoritesMoodsAndTags() async throws {
+        let calendar = makeGregorianCalendar()
+        let june1 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 1, hour: 9)))
+        let june2 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 2, hour: 9)))
+        let may31 = try #require(calendar.date(from: DateComponents(year: 2026, month: 5, day: 31, hour: 9)))
+        let entries = [
+            makeDiary(title: "六月工作", tags: ["work", "review"], mood: "4", creationDate: june1, isFavorite: true),
+            makeDiary(title: "六月生活", tags: ["life", "review"], mood: "3", creationDate: june2),
+            makeDiary(title: "五月记录", tags: ["work"], mood: "4", creationDate: may31, isFavorite: true)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: june2)
+        let juneSummary = try #require(projection.monthlySummaries.first)
+
+        #expect(projection.totalEntryCount == 3)
+        #expect(projection.totalFavoriteCount == 2)
+        #expect(projection.totalDistinctTagCount == 3)
+        #expect(calendar.component(.month, from: juneSummary.monthStart) == 6)
+        #expect(juneSummary.entryCount == 2)
+        #expect(juneSummary.favoriteCount == 1)
+        let juneMoodCounts = Dictionary(uniqueKeysWithValues: juneSummary.moodDistribution.map { ($0.mood, $0.count) })
+        #expect(juneMoodCounts["一般"] == 1)
+        #expect(juneMoodCounts["不错"] == 1)
+        #expect(juneSummary.topTags == [
+            DiaryReviewProjection.TagCount(tag: "review", count: 2),
+            DiaryReviewProjection.TagCount(tag: "life", count: 1),
+            DiaryReviewProjection.TagCount(tag: "work", count: 1)
+        ])
+    }
+
+    @Test func diaryReviewProjectionSortsTopTagsByCountThenLocalizedName() async throws {
+        let date = try #require(makeGregorianCalendar().date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "A", tags: ["beta", "alpha"], creationDate: date),
+            makeDiary(title: "B", tags: ["gamma", "beta"], creationDate: date),
+            makeDiary(title: "C", tags: ["alpha", "gamma"], creationDate: date),
+            makeDiary(title: "D", tags: ["gamma"], creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: makeGregorianCalendar(), now: date, topLimit: 2)
+
+        #expect(projection.overallTopTags == [
+            DiaryReviewProjection.TagCount(tag: "gamma", count: 3),
+            DiaryReviewProjection.TagCount(tag: "alpha", count: 2)
+        ])
+    }
+
+    @Test func diaryReviewProjectionTracksDistinctTagsBeyondTopLimit() async throws {
+        let calendar = makeGregorianCalendar()
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "A", tags: ["alpha"], creationDate: date),
+            makeDiary(title: "B", tags: ["beta"], creationDate: date),
+            makeDiary(title: "C", tags: ["gamma"], creationDate: date),
+            makeDiary(title: "D", tags: ["delta"], creationDate: date),
+            makeDiary(title: "E", tags: ["epsilon"], creationDate: date),
+            makeDiary(title: "F", tags: ["zeta"], creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: date, topLimit: 2)
+
+        #expect(projection.totalDistinctTagCount == 6)
+        #expect(projection.overallTopTags.count == 2)
+    }
+
+    @Test func diaryReviewProjectionCountsMoodDistributionAndRecentFavorites() async throws {
+        let calendar = makeGregorianCalendar()
+        let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let later = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
+        let entries = [
+            makeDiary(title: "旧收藏", mood: "5", creationDate: earlier, isFavorite: true),
+            makeDiary(title: "新收藏", mood: "4", creationDate: later, isFavorite: true),
+            makeDiary(title: "普通", mood: "5", creationDate: later)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: later)
+
+        #expect(projection.overallMoodDistribution == [
+            DiaryReviewProjection.MoodCount(mood: "很棒", count: 2),
+            DiaryReviewProjection.MoodCount(mood: "不错", count: 1)
+        ])
+        #expect(projection.recentFavorites.map(\.title) == ["新收藏", "旧收藏"])
+    }
+
+    @Test func diaryReviewProjectionNormalizesNumericAndLabelMoods() async throws {
+        let calendar = makeGregorianCalendar()
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
+        let entries = [
+            makeDiary(title: "数字心情", mood: "4", creationDate: date),
+            makeDiary(title: "标签心情", mood: "不错", creationDate: date),
+            makeDiary(title: "带空格数字", mood: " 4 ", creationDate: date),
+            makeDiary(title: "自定义心情", mood: "专注", creationDate: date)
+        ]
+
+        let projection = DiaryReviewProjection.build(from: entries, calendar: calendar, now: date)
+
+        #expect(projection.overallMoodDistribution == [
+            DiaryReviewProjection.MoodCount(mood: "不错", count: 3),
+            DiaryReviewProjection.MoodCount(mood: "专注", count: 1)
+        ])
+    }
+
+    @Test func diaryReviewProjectionReturnsEmptyProjectionForNoEntries() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
+
+        let projection = DiaryReviewProjection.build(from: [], calendar: calendar, now: now)
+
+        #expect(projection.totalEntryCount == 0)
+        #expect(projection.totalFavoriteCount == 0)
+        #expect(projection.totalDistinctTagCount == 0)
+        #expect(projection.monthlySummaries.isEmpty)
+        #expect(projection.overallTopTags.isEmpty)
+        #expect(projection.overallMoodDistribution.isEmpty)
+        #expect(projection.recentFavorites.isEmpty)
+        #expect(projection.windowSummaries.allSatisfy { $0.entryCount == 0 && $0.favoriteCount == 0 })
+    }
+
+    @Test func diaryReviewProjectionWindowsIncludeTodayAndExcludeOutsideRange() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 12)))
+        let today = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 23, minute: 59)))
+        let sixDaysAgo = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 6, hour: 8)))
+        let sevenDaysAgo = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 5, hour: 8)))
+        let may31 = try #require(calendar.date(from: DateComponents(year: 2026, month: 5, day: 31, hour: 23)))
+        let entries = [
+            makeDiary(title: "今天", creationDate: today),
+            makeDiary(title: "六天前", creationDate: sixDaysAgo),
+            makeDiary(title: "七天前", creationDate: sevenDaysAgo),
+            makeDiary(title: "五月末", creationDate: may31)
+        ]
+
+        #expect(DiaryReviewProjection.entries(for: .recent7Days, in: entries, calendar: calendar, now: now).map(\.title) == ["今天", "六天前"])
+        #expect(DiaryReviewProjection.entries(for: .recent30Days, in: entries, calendar: calendar, now: now).map(\.title) == ["今天", "六天前", "七天前", "五月末"])
+        #expect(DiaryReviewProjection.entries(for: .currentMonth, in: entries, calendar: calendar, now: now).map(\.title) == ["今天", "六天前", "七天前"])
+    }
+
+    @Test func backupV1RoundTripsThroughJSON() async throws {
+        let service = BackupService()
+        let exportedAt = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let diaryID = UUID()
+        let audioID = UUID()
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: exportedAt,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "语音日记",
+                    content: "今天记录了一段语音",
+                    mood: "4",
+                    tags: ["生活"],
+                    creationDate: exportedAt,
+                    lastModified: exportedAt,
+                    isFavorite: true,
+                    aiSummary: "摘要",
+                    audioAssetId: audioID
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: [
+                BackupAudioAsset(
+                    id: audioID,
+                    originalFilename: "recording.caf",
+                    pathExtension: "caf",
+                    byteCount: 3,
+                    data: Data([0x01, 0x02, 0x03])
+                )
+            ]
+        )
+
+        let decoded = try service.decodeAndValidateBackup(from: service.encodeBackup(backup))
+
+        #expect(decoded == backup)
+    }
+
+    @Test func backupRoundTripPreservesFractionalSecondDates() async throws {
+        let service = BackupService()
+        let date = Date(timeIntervalSince1970: 1_781_694_000.456)
+        let diaryID = UUID()
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: date,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "精确时间",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: date,
+                    lastModified: date,
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: nil
+                )
+            ],
+            todoItems: [
+                BackupTodoItem(
+                    id: UUID(),
+                    title: "同秒待办",
+                    isCompleted: false,
+                    priority: .medium,
+                    deadline: date,
+                    notes: nil,
+                    isRecurring: false,
+                    recurringInterval: nil,
+                    creationDate: date
+                )
+            ],
+            chatSessions: [],
+            sessionMessages: [
+                BackupSessionMessage(
+                    id: UUID(),
+                    content: "同秒消息",
+                    isUser: true,
+                    timestamp: date,
+                    relatedEntryIds: []
+                )
+            ],
+            audioAssets: []
+        )
+
+        let decoded = try service.decodeAndValidateBackup(from: service.encodeBackup(backup))
+
+        #expect(abs(decoded.exportedAt.timeIntervalSince1970 - date.timeIntervalSince1970) < 0.001)
+        #expect(abs((decoded.diaryEntries.first?.creationDate.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
+        #expect(abs((decoded.todoItems.first?.deadline?.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
+        #expect(abs((decoded.sessionMessages.first?.timestamp.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
+    }
+
+    @Test func backupExportIncludesCoreModelsAndAudioAsset() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let audioURL = directory.appendingPathComponent("recording.caf")
+        try Data([0x0A, 0x0B]).write(to: audioURL)
+
+        let diary = makeDiary(title: "语音日记", content: "正文", tags: ["语音"], isFavorite: true)
+        diary.audioURL = audioURL
+        let todo = makeTodo(title: "备份待办", deadline: Date())
+        let message = SessionMessage(content: "用户消息", isUser: true)
+        let session = ChatSession(title: "备份会话")
+        session.addMessage(message)
+
+        context.insert(diary)
+        context.insert(todo)
+        context.insert(message)
+        context.insert(session)
+        try context.save()
+
+        let backup = try BackupService(documentsDirectory: directory).exportBackup(from: context)
+
+        #expect(backup.diaryEntries.map(\.title) == ["语音日记"])
+        #expect(backup.todoItems.map(\.title) == ["备份待办"])
+        #expect(backup.chatSessions.map(\.title) == ["备份会话"])
+        #expect(backup.sessionMessages.map(\.content) == ["用户消息"])
+        #expect(backup.audioAssets.count == 1)
+        #expect(backup.audioAssets.first?.data == Data([0x0A, 0x0B]))
+        #expect(backup.diaryEntries.first?.audioAssetId == backup.audioAssets.first?.id)
+    }
+
+    @Test func backupExportExcludesOrphanedChatMessages() async throws {
+        let context = try makeModelContext()
+        let visibleMessage = SessionMessage(content: "可见消息", isUser: true)
+        let orphanedMessage = SessionMessage(content: "孤立消息", isUser: false)
+        let session = ChatSession(title: "可见会话")
+        session.addMessage(visibleMessage)
+
+        context.insert(visibleMessage)
+        context.insert(orphanedMessage)
+        context.insert(session)
+        try context.save()
+
+        let backup = try BackupService().exportBackup(from: context)
+
+        #expect(backup.chatSessions.map(\.messageIds) == [[visibleMessage.id]])
+        #expect(backup.sessionMessages.map(\.content) == ["可见消息"])
+    }
+
+    @Test func backupExportSkipsMissingAudioWithoutDroppingDiary() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let diary = makeDiary(title: "缺失录音")
+        diary.audioURL = directory.appendingPathComponent("missing.caf")
+        context.insert(diary)
+        try context.save()
+
+        let backup = try BackupService(documentsDirectory: directory).exportBackup(from: context)
+
+        #expect(backup.diaryEntries.map(\.title) == ["缺失录音"])
+        #expect(backup.diaryEntries.first?.audioAssetId == nil)
+        #expect(backup.audioAssets.isEmpty)
+    }
+
+    @Test func backupImportRejectsUnsupportedVersionWithoutWriting() async throws {
+        let context = try makeModelContext()
+        let existing = makeDiary(title: "本地日记")
+        context.insert(existing)
+        try context.save()
+
+        let backup = EasyNoteBackupV1(
+            version: 99,
+            exportedAt: Date(),
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: UUID(),
+                    title: "不应导入",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: Date(),
+                    lastModified: Date(),
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: nil
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: []
+        )
+
+        do {
+            _ = try BackupService().importBackup(backup, into: context)
+            Issue.record("Expected unsupported backup version to fail")
+        } catch BackupServiceError.unsupportedVersion(99) {
+            #expect(true)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        let entries = try context.fetch(FetchDescriptor<DiaryEntry>())
+        #expect(entries.map(\.title) == ["本地日记"])
+    }
+
+    @Test func backupImportDataRejectsInvalidBase64WithoutWriting() async throws {
+        let context = try makeModelContext()
+        let existing = makeTodo(title: "本地待办")
+        context.insert(existing)
+        try context.save()
+
+        let assetID = UUID().uuidString
+        let invalidJSON = """
+        {
+          "audioAssets": [
+            {
+              "byteCount": 3,
+              "data": "not-base64",
+              "id": "\(assetID)",
+              "originalFilename": "recording.caf",
+              "pathExtension": "caf"
+            }
+          ],
+          "chatSessions": [],
+          "diaryEntries": [],
+          "exportedAt": "2026-06-17T10:00:00Z",
+          "sessionMessages": [],
+          "todoItems": [],
+          "version": 1
+        }
+        """
+
+        do {
+            _ = try BackupService().importBackupData(Data(invalidJSON.utf8), into: context)
+            Issue.record("Expected invalid base64 to fail")
+        } catch {
+            #expect(true)
+        }
+
+        let todos = try context.fetch(FetchDescriptor<TodoItem>())
+        #expect(todos.map(\.title) == ["本地待办"])
+    }
+
+    @Test func backupImportUpsertsSameIDAndPreservesUnmentionedLocalRecords() async throws {
+        let context = try makeModelContext()
+        let diaryID = UUID()
+        let localDiary = DiaryEntry(id: diaryID, title: "旧标题")
+        let localTodo = makeTodo(title: "保留的本地待办")
+        context.insert(localDiary)
+        context.insert(localTodo)
+        try context.save()
+
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let importedTodoID = UUID()
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "新标题",
+                    content: "导入正文",
+                    mood: "5",
+                    tags: ["导入"],
+                    creationDate: backupDate,
+                    lastModified: backupDate,
+                    isFavorite: true,
+                    aiSummary: "导入摘要",
+                    audioAssetId: nil
+                )
+            ],
+            todoItems: [
+                BackupTodoItem(
+                    id: importedTodoID,
+                    title: "导入待办",
+                    isCompleted: true,
+                    priority: .high,
+                    deadline: nil,
+                    notes: "导入备注",
+                    isRecurring: false,
+                    recurringInterval: nil,
+                    creationDate: backupDate
+                )
+            ],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: []
+        )
+
+        _ = try BackupService().importBackup(backup, into: context)
+
+        let diaries = try context.fetch(FetchDescriptor<DiaryEntry>())
+        let todos = try context.fetch(FetchDescriptor<TodoItem>())
+
+        #expect(diaries.count == 1)
+        #expect(diaries.first?.title == "新标题")
+        #expect(diaries.first?.content == "导入正文")
+        #expect(Set(todos.map(\.title)) == Set(["保留的本地待办", "导入待办"]))
+    }
+
+    @Test func backupImportRestoresAudioAssetToLocalFile() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let audioID = UUID()
+        let diaryID = UUID()
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: diaryID,
+                    title: "恢复录音",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: backupDate,
+                    lastModified: backupDate,
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: audioID
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: [
+                BackupAudioAsset(
+                    id: audioID,
+                    originalFilename: "recording.caf",
+                    pathExtension: "caf",
+                    byteCount: 3,
+                    data: Data([0x07, 0x08, 0x09])
+                )
+            ]
+        )
+
+        _ = try BackupService(documentsDirectory: directory).importBackup(backup, into: context)
+
+        let diary = try #require(try context.fetch(FetchDescriptor<DiaryEntry>()).first)
+        let restoredURL = try #require(diary.audioURL)
+
+        #expect(restoredURL.lastPathComponent == "restored_recording_\(audioID.uuidString).caf")
+        #expect(FileManager.default.fileExists(atPath: restoredURL.path))
+        #expect(try Data(contentsOf: restoredURL) == Data([0x07, 0x08, 0x09]))
+    }
+
+    @Test func backupImportDoesNotDeleteExistingRestoredAudioWhenReimporting() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let audioID = UUID()
+        let existingURL = directory.appendingPathComponent("restored_recording_\(audioID.uuidString).caf")
+        try Data([0x01]).write(to: existingURL)
+
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [
+                BackupDiaryEntry(
+                    id: UUID(),
+                    title: "重复导入录音",
+                    content: "",
+                    mood: nil,
+                    tags: [],
+                    creationDate: backupDate,
+                    lastModified: backupDate,
+                    isFavorite: false,
+                    aiSummary: nil,
+                    audioAssetId: audioID
+                )
+            ],
+            todoItems: [],
+            chatSessions: [],
+            sessionMessages: [],
+            audioAssets: [
+                BackupAudioAsset(
+                    id: audioID,
+                    originalFilename: "recording.caf",
+                    pathExtension: "caf",
+                    byteCount: 1,
+                    data: Data([0x02])
+                )
+            ]
+        )
+
+        _ = try BackupService(documentsDirectory: directory).importBackup(backup, into: context)
+        let diary = try #require(try context.fetch(FetchDescriptor<DiaryEntry>()).first)
+        let newURL = try #require(diary.audioURL)
+
+        #expect(FileManager.default.fileExists(atPath: existingURL.path))
+        #expect(try Data(contentsOf: existingURL) == Data([0x01]))
+        #expect(newURL != existingURL)
+        #expect(FileManager.default.fileExists(atPath: newURL.path))
+        #expect(try Data(contentsOf: newURL) == Data([0x02]))
+    }
+
+    @Test func backupImportAllowsBlankSessionTitlesAlreadyCreatedByApp() async throws {
+        let context = try makeModelContext()
+        let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: backupDate,
+            diaryEntries: [],
+            todoItems: [],
+            chatSessions: [
+                BackupChatSession(
+                    id: UUID(),
+                    title: "   ",
+                    creationDate: backupDate,
+                    lastModifiedDate: backupDate,
+                    messageIds: []
+                )
+            ],
+            sessionMessages: [],
+            audioAssets: []
+        )
+
+        _ = try BackupService().importBackup(backup, into: context)
+
+        let session = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
+        #expect(session.title == "   ")
+    }
+
+    @Test func backupExportAllowsWhitespaceDiaryTitlesAlreadyCreatedByApp() async throws {
+        let context = try makeModelContext()
+        let diary = makeDiary(title: "   ")
+        context.insert(diary)
+        try context.save()
+
+        let backup = try BackupService().exportBackup(from: context)
+
+        #expect(backup.diaryEntries.map(\.title) == ["   "])
+    }
+
+    @Test func backupImportPreservesLocalMessagesMissingFromOlderBackup() async throws {
+        let context = try makeModelContext()
+        let calendar = Calendar.current
+        let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
+        let later = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10, second: 1)))
+        let sessionID = UUID()
+        let importedMessageID = UUID()
+        let localMessage = SessionMessage(id: UUID(), content: "本地新增消息", isUser: false, timestamp: later)
+        let session = ChatSession(id: sessionID, title: "会话")
+        session.addMessage(localMessage)
+        session.lastModifiedDate = later
+        context.insert(localMessage)
+        context.insert(session)
+        try context.save()
+
+        let backup = EasyNoteBackupV1(
+            version: BackupService.supportedVersion,
+            exportedAt: earlier,
+            diaryEntries: [],
+            todoItems: [],
+            chatSessions: [
+                BackupChatSession(
+                    id: sessionID,
+                    title: "会话",
+                    creationDate: earlier,
+                    lastModifiedDate: earlier,
+                    messageIds: [importedMessageID]
+                )
+            ],
+            sessionMessages: [
+                BackupSessionMessage(
+                    id: importedMessageID,
+                    content: "备份消息",
+                    isUser: true,
+                    timestamp: earlier,
+                    relatedEntryIds: []
+                )
+            ],
+            audioAssets: []
+        )
+
+        _ = try BackupService().importBackup(backup, into: context)
+
+        let importedSession = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
+        #expect(importedSession.messages.count == 2)
+        #expect(Set(importedSession.messages.map(\.content)) == Set(["备份消息", "本地新增消息"]))
+        #expect(importedSession.lastModifiedDate == later)
+    }
+
     private func makeDiary(
         title: String,
         content: String = "",
@@ -504,6 +1489,31 @@ struct EasyNoteTests {
             isRecurring: isRecurring,
             recurringInterval: recurringInterval
         )
+    }
+
+    private func makeModelContext() throws -> ModelContext {
+        let schema = Schema([
+            DiaryEntry.self,
+            TodoItem.self,
+            ChatSession.self,
+            SessionMessage.self
+        ])
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        return ModelContext(container)
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func makeGregorianCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
     }
 
     private func publisherFailure<Output>(_ publisher: AnyPublisher<Output, OpenAIError>) async -> OpenAIError? {

@@ -12,6 +12,7 @@ class ChatSessionViewModel: ObservableObject {
     @Published var currentSession: ChatSession?
     @Published var isLoadingMessages = false
     @Published var errorMessage: String?
+    private var cancellables = Set<AnyCancellable>()
     
     // MARK: - 初始化方法
     
@@ -33,6 +34,13 @@ class ChatSessionViewModel: ObservableObject {
         }
         // 加载所有会话
         loadSessions()
+
+        NotificationCenter.default.publisher(for: .easyNoteBackupDidImport)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.loadSessions()
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - 会话管理

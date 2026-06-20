@@ -62,6 +62,10 @@ struct DiaryDetailView: View {
                             }
                         }
                     
+                    if let pendingSummaryResult {
+                        pendingAISummarySection(pendingSummaryResult)
+                    }
+
                     // AI摘要区域（如果有）
                     if let summary = entry.aiSummary, !summary.isEmpty {
                         aiSummarySection(summary)
@@ -74,6 +78,10 @@ struct DiaryDetailView: View {
                             }
                     } else {
                         generateAISummaryButton
+                    }
+
+                    if !recentAISummaryResults.isEmpty {
+                        recentAISummaryHistorySection
                     }
                     
                     // 元数据区域（标签和心情）
@@ -440,6 +448,79 @@ struct DiaryDetailView: View {
                 )
         }
     }
+
+    private func pendingAISummarySection(_ result: AIActionResult) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("待确认AI摘要", systemImage: "wand.and.stars")
+                .font(.headline)
+                .foregroundColor(.purple)
+
+            Text(result.outputText)
+                .font(.body)
+                .italic()
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.purple.opacity(0.08))
+                .cornerRadius(12)
+
+            HStack(spacing: 10) {
+                Button {
+                    if viewModel.applyAIResult(result) {
+                        refreshTrigger.toggle()
+                    }
+                } label: {
+                    Label("应用", systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    UIPasteboard.general.string = result.outputText
+                    showCopyToast()
+                } label: {
+                    Label("复制", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    viewModel.discardAIResult(result)
+                } label: {
+                    Label("丢弃", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+            }
+            .font(.caption)
+        }
+    }
+
+    private var recentAISummaryHistorySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("最近AI摘要结果")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            ForEach(recentAISummaryResults) { result in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(result.actionType.displayName)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        Spacer()
+                        Text(result.isSuccess ? "成功" : "失败")
+                            .font(.caption2)
+                            .foregroundColor(result.isSuccess ? .green : .red)
+                    }
+
+                    Text(result.isSuccess ? result.outputText : (result.failureMessage ?? "AI操作失败"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                .padding(10)
+                .background(Color(UIColor.secondarySystemBackground))
+                .cornerRadius(10)
+            }
+        }
+    }
     
     private var generateAISummaryButton: some View {
         Button {
@@ -477,6 +558,14 @@ struct DiaryDetailView: View {
                 }
             }
         )
+    }
+
+    private var pendingSummaryResult: AIActionResult? {
+        viewModel.pendingAIResult(for: .diarySummary, sourceEntityId: entry.id)
+    }
+
+    private var recentAISummaryResults: [AIActionResult] {
+        viewModel.recentAIResults(for: .diarySummary, sourceEntityId: entry.id)
     }
     
     private var metadataSection: some View {

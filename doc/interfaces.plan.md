@@ -24,6 +24,24 @@ Model changes require a migration or compatibility note before implementation.
 
 Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
 
+## Local Backup Boundary
+
+`BackupService` owns local export and import for the public, local-first MVP.
+
+Backup v1 uses a single JSON file with `.easynotebackup` extension and root type `EasyNoteBackupV1`:
+
+- `version`: currently `1`
+- `exportedAt`
+- `diaryEntries`
+- `todoItems`
+- `chatSessions`
+- `sessionMessages`
+- `audioAssets`
+
+Diary backup records reference voice recordings through `audioAssetId`. Audio assets contain the original filename, supported extension, byte count, and base64-encoded file data. Only local `.caf` and `.m4a` recording files are exported.
+
+Only messages referenced by exported chat sessions are included in `sessionMessages`; fetchable orphaned messages from deleted sessions are not exported. Import validates the full backup before writing SwiftData. Unsupported versions, duplicate IDs, missing message/audio references, unsupported audio extensions, or malformed base64 data must fail without writing model changes. Same-ID model records are updated, missing same-type records are inserted, and local records absent from the backup are preserved. When an older backup is imported over a session with newer local messages, those local messages remain attached and the session modified time stays at the latest imported, existing, or preserved message timestamp. Restored audio files are written under the app Documents directory as `restored_recording_<uuid>.<ext>`.
+
 ## DeepSeek Chat-Completions Boundary
 
 `OpenAIService` sends OpenAI-compatible requests to:
@@ -50,6 +68,16 @@ Current response contract expects `choices[0].message.content`. Malformed or fai
 - Completely malformed recommendations return the stable default recommendations/todos.
 
 The parser is pure and must not read API keys, send network requests, or inspect provider transport metadata.
+
+## AI Result Confirmation Boundary
+
+`AIActionResult` records current-session AI outcomes without changing SwiftData schema. Results include an action type (`summary`, `refine`, `expand`, `analyze`, or `recommendation`), an application target, optional source entity id, input source, input fingerprint, input preview, output text, timestamp, success state, and optional failure message.
+
+Text-generating diary and transcription actions must not mutate persisted diary fields or `transcribedText` until the user applies the pending result. Copy is UI-only; discard removes the pending result from current-session history without mutating diary data. Recommendation results are reviewable/copyable history entries and are not directly applied through this boundary. Empty API keys still fail closed before network requests and may record a failure result, but must not create a successful pending result.
+
+Pending text results are tracked by application target plus source entity id. Diary summary results must be bound to the `DiaryEntry.id` that produced them, and views must only render/apply summary results for that source entry. Applying diary summary or transcription results must verify that the current source text still matches the recorded input fingerprint. Transcription results launched from editor content must validate against the current editor text, not only the copied `transcribedText` buffer. Failed actions clear stale pending results for the same target/source scope.
+
+Resetting or replacing the transcription buffer, or starting a new recording attempt, clears pending transcription AI results. Pending transcription results hide insert/replace and follow-up AI action controls until the user applies or discards the pending result. Accepted transcription `.refine` results update `transcribedText` first and then run the existing refined-content analysis path so mood/tag suggestions remain tied to text the user explicitly accepted. Expand and summary transcription results do not trigger this analysis. Once an editor-content result is accepted into the transcription buffer, follow-up AI actions validate against that accepted buffer text rather than the original editor body.
 
 ## Speech Boundary
 

@@ -13,6 +13,7 @@
 - Do not let views build raw HTTP requests.
 - Do not leak provider response shapes outside the service boundary.
 - Do not add parser-specific regex or fallback branching here; keep content parsing in `AIResponseParser`.
+- Do not own AI result history or apply/discard behavior; that confirmation state belongs to ViewModels and views.
 
 ## Behavior Notes
 

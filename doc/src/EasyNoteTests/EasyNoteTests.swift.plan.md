@@ -13,6 +13,7 @@
 
 - Current tests cover todo recurrence date calculation.
 - Current tests cover chat-session title summary and basic integrity behavior.
+- Current tests cover AI action result success/failure records, input matching, per-target/source pending state, stale pending cleanup after failures, source-bound diary summary application, stale result rejection, and explicit diary/transcription application behavior.
 
 ## Tests
 

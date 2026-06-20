@@ -9,6 +9,7 @@ class ExploreViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var lastUpdated: Date?
     @Published var errorMessage: String?
+    @Published var aiActionHistory: [AIActionResult] = []
     
     // 服务
     private let openAIService: OpenAIService
@@ -116,12 +117,20 @@ class ExploreViewModel: ObservableObject {
                 case .finished:
                     break
                 case .failure(let error):
+                    self?.recordAIActionFailure(input: contentWithCurrentDate, error: error)
                     self?.handleAPIError(error)
                 }
                 self?.isLoading = false
             }, receiveValue: { [weak self] result in
-                self?.processRecommendationResponse(result)
-                self?.saveRecommendations()
+                guard let self else { return }
+                self.processRecommendationResponse(result)
+                self.recordAIActionResult(.success(
+                    actionType: .recommendation,
+                    applicationTarget: .recommendationList,
+                    input: contentWithCurrentDate,
+                    outputText: Self.recommendationOutputText(from: result)
+                ))
+                self.saveRecommendations()
             })
             .store(in: &cancellables)
     }
@@ -225,26 +234,55 @@ class ExploreViewModel: ObservableObject {
     
     /// 处理API错误
     private func handleAPIError(_ error: Error) {
-        // 提供更具体的错误信息
-        if let networkError = error as? URLError {
-            switch networkError.code {
-            case .notConnectedToInternet:
-                errorMessage = "网络连接已断开，请检查您的网络设置后重试"
-            case .timedOut:
-                errorMessage = "请求超时，服务器可能暂时不可用"
-            case .cannotConnectToHost:
-                errorMessage = "无法连接到服务器，请稍后重试"
-            default:
-                errorMessage = "网络错误: \(networkError.localizedDescription)"
-            }
-        } else {
-            errorMessage = "生成推荐时出错: \(error.localizedDescription)"
-        }
-        
+        errorMessage = Self.recommendationErrorMessage(for: error)
+
         // 如果当前没有推荐，生成默认推荐
         if recommendations.isEmpty {
             generateDefaultRecommendations()
         }
+    }
+
+    private func recordAIActionFailure(input: String, error: Error) {
+        let message = Self.recommendationErrorMessage(for: error)
+
+        recordAIActionResult(.failure(
+            actionType: .recommendation,
+            applicationTarget: .recommendationList,
+            input: input,
+            message: message
+        ))
+    }
+
+    private static func recommendationErrorMessage(for error: Error) -> String {
+        if let networkError = error as? URLError {
+            switch networkError.code {
+            case .notConnectedToInternet:
+                return "网络连接已断开，请检查您的网络设置后重试"
+            case .timedOut:
+                return "请求超时，服务器可能暂时不可用"
+            case .cannotConnectToHost:
+                return "无法连接到服务器，请稍后重试"
+            default:
+                return "网络错误: \(networkError.localizedDescription)"
+            }
+        } else {
+            return "生成推荐时出错: \(error.localizedDescription)"
+        }
+    }
+
+    private func recordAIActionResult(_ result: AIActionResult) {
+        aiActionHistory.insert(result, at: 0)
+    }
+
+    private static func recommendationOutputText(from response: (recommendations: [String], todos: [String])) -> String {
+        var sections: [String] = []
+        if !response.recommendations.isEmpty {
+            sections.append("推荐活动：\n" + response.recommendations.map { "- \($0)" }.joined(separator: "\n"))
+        }
+        if !response.todos.isEmpty {
+            sections.append("待办建议：\n" + response.todos.map { "- \($0)" }.joined(separator: "\n"))
+        }
+        return sections.joined(separator: "\n\n")
     }
     
     func updateModelContext(_ newContext: ModelContext) {

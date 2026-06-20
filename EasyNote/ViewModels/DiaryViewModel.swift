@@ -21,10 +21,13 @@ class DiaryViewModel: ObservableObject {
     @Published var currentEntry: DiaryEntry?
     @Published var isRecording = false
     @Published var transcribedText = ""
+    @Published private(set) var transcriptionInputSource: AIActionResult.InputSource = .defaultText
     @Published var recordingState: RecordingState = .idle
     @Published var speechPermissionStatus: SpeechPermissionStatus = .notDetermined
     @Published var microphonePermissionStatus: MicrophonePermissionStatus = .notDetermined
     @Published var isProcessingAI = false
+    @Published var aiActionHistory: [AIActionResult] = []
+    @Published var pendingAIResults: [AIActionResult] = []
     @Published var isSyncing = false
     @Published var errorMessage: String?
     @Published var toastMessage: String?
@@ -33,6 +36,7 @@ class DiaryViewModel: ObservableObject {
     
     // 取消令牌
     private var cancellables = Set<AnyCancellable>()
+    var refinedContentAnalysisHandler: ((String) -> Void)?
     
     // 模型上下文
     private var modelContext: ModelContext
@@ -97,6 +101,13 @@ class DiaryViewModel: ObservableObject {
                     self?.isSyncing = isSyncing
                 }
                 .store(in: &cancellables)
+
+            NotificationCenter.default.publisher(for: .easyNoteBackupDidImport)
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    self?.loadEntries()
+                }
+                .store(in: &cancellables)
             
             // 加载日记条目
             loadDiaryEntries()
@@ -143,6 +154,7 @@ class DiaryViewModel: ObservableObject {
         }
 
         do {
+            prepareTranscriptionForNewRecording()
             try speechService.startRecording()
             return true
         } catch {
@@ -151,6 +163,11 @@ class DiaryViewModel: ObservableObject {
             self.showToast(message: error.localizedDescription)
             return false
         }
+    }
+
+    func prepareTranscriptionForNewRecording() {
+        pendingAIResults.removeAll { $0.applicationTarget == .transcriptionText }
+        transcriptionInputSource = .defaultText
     }
     
     func stopRecording() {
@@ -166,7 +183,7 @@ class DiaryViewModel: ObservableObject {
         let (audioURL, transcription) = speechService.saveRecordingWithTranscription()
 
         if !transcription.isEmpty {
-            transcribedText = transcription
+            setTranscriptionText(transcription)
         }
 
         return VoiceRecordingDraft(audioURL: audioURL, transcription: transcription)
@@ -232,7 +249,7 @@ class DiaryViewModel: ObservableObject {
         )
 
         if nextContent != content {
-            transcribedText = ""
+            setTranscriptionText("")
         }
 
         return nextContent
@@ -314,7 +331,7 @@ class DiaryViewModel: ObservableObject {
         // 保存原始识别文本到transcribedText，而不是直接修改entry.content
         if !recording.transcription.isEmpty {
             // 将识别文本保存到transcribedText供用户预览
-            self.transcribedText = recording.transcription
+            self.setTranscriptionText(recording.transcription)
             
             // 不再自动润色文本，由用户手动触发
             // if !transcription.isEmpty && !openAIService.apiKey.isEmpty {
@@ -340,45 +357,224 @@ class DiaryViewModel: ObservableObject {
     func getOpenAIService() -> OpenAIService {
         return openAIService
     }
+
+    func setTranscriptionText(
+        _ text: String,
+        inputSource: AIActionResult.InputSource = .defaultText,
+        clearsPendingResults: Bool = true
+    ) {
+        if clearsPendingResults {
+            pendingAIResults.removeAll { $0.applicationTarget == .transcriptionText }
+        }
+        transcribedText = text
+        transcriptionInputSource = inputSource
+    }
+
+    func recordAIActionResult(_ result: AIActionResult) {
+        aiActionHistory.insert(result, at: 0)
+
+        if result.canApply {
+            pendingAIResults.removeAll { hasSamePendingScope($0, as: result) }
+            pendingAIResults.insert(result, at: 0)
+        } else {
+            pendingAIResults.removeAll { hasSamePendingScope($0, as: result) }
+        }
+    }
+
+    var pendingAIResult: AIActionResult? {
+        pendingAIResults.sorted { $0.timestamp > $1.timestamp }.first
+    }
+
+    func pendingAIResult(
+        for target: AIActionResult.ApplicationTarget,
+        sourceEntityId: UUID? = nil
+    ) -> AIActionResult? {
+        pendingAIResults.first {
+            $0.applicationTarget == target
+                && (sourceEntityId == nil || $0.sourceEntityId == sourceEntityId)
+        }
+    }
+
+    func recentAIResults(
+        for target: AIActionResult.ApplicationTarget,
+        sourceEntityId: UUID? = nil,
+        limit: Int = 3
+    ) -> [AIActionResult] {
+        let pendingIds = Set(pendingAIResults.map(\.id))
+        return Array(aiActionHistory
+            .filter {
+                $0.applicationTarget == target
+                    && !pendingIds.contains($0.id)
+                    && (sourceEntityId == nil || $0.sourceEntityId == sourceEntityId)
+            }
+            .prefix(limit))
+    }
+
+    func discardAIResult(_ result: AIActionResult) {
+        pendingAIResults.removeAll { $0.id == result.id }
+        aiActionHistory.removeAll { $0.id == result.id }
+    }
+
+    @discardableResult
+    func applyAIResult(_ result: AIActionResult, currentEditorContent: String? = nil) -> Bool {
+        guard result.canApply else {
+            errorMessage = result.failureMessage ?? "没有可应用的AI结果"
+            return false
+        }
+
+        switch result.applicationTarget {
+        case .diarySummary:
+            guard let entry = diaryEntry(for: result) else {
+                errorMessage = "没有正在编辑的日记"
+                return false
+            }
+            guard result.matchesInput(entry.content) else {
+                pendingAIResults.removeAll { $0.id == result.id }
+                errorMessage = "日记内容已变化，请重新生成AI摘要"
+                return false
+            }
+            entry.aiSummary = result.outputText
+            entry.lastModified = Date()
+            guard saveContext() else {
+                return false
+            }
+        case .transcriptionText:
+            let sourceText = transcriptionValidationText(for: result, currentEditorContent: currentEditorContent)
+            guard result.matchesInput(sourceText) else {
+                pendingAIResults.removeAll { $0.id == result.id }
+                errorMessage = result.inputSource == .editorContent
+                    ? "当前编辑内容已变化，请重新生成AI结果"
+                    : "转写内容已变化，请重新生成AI结果"
+                return false
+            }
+            setTranscriptionText(result.outputText, clearsPendingResults: false)
+            if result.actionType == .refine {
+                analyzeAcceptedRefinedContent(result.outputText)
+            }
+        case .none, .recommendationList:
+            errorMessage = "该AI结果不能直接应用"
+            return false
+        }
+
+        pendingAIResults.removeAll { $0.id == result.id }
+        return true
+    }
+
+    private func hasSamePendingScope(_ lhs: AIActionResult, as rhs: AIActionResult) -> Bool {
+        lhs.applicationTarget == rhs.applicationTarget && lhs.sourceEntityId == rhs.sourceEntityId
+    }
+
+    private func diaryEntry(for result: AIActionResult) -> DiaryEntry? {
+        guard let sourceEntityId = result.sourceEntityId else {
+            return currentEntry
+        }
+
+        if currentEntry?.id == sourceEntityId {
+            return currentEntry
+        }
+
+        return diaryEntries.first { $0.id == sourceEntityId }
+    }
+
+    private func transcriptionValidationText(for result: AIActionResult, currentEditorContent: String?) -> String {
+        if result.inputSource == .editorContent, let currentEditorContent {
+            return currentEditorContent
+        }
+
+        return transcribedText
+    }
+
+    private func analyzeAcceptedRefinedContent(_ content: String) {
+        if let refinedContentAnalysisHandler {
+            refinedContentAnalysisHandler(content)
+        } else {
+            analyzeRefinedContent(content)
+        }
+    }
+
+    private func recordAIActionFailure(
+        actionType: AIActionResult.ActionType,
+        applicationTarget: AIActionResult.ApplicationTarget,
+        sourceEntityId: UUID? = nil,
+        inputSource: AIActionResult.InputSource = .defaultText,
+        input: String,
+        message: String
+    ) {
+        errorMessage = message
+        recordAIActionResult(.failure(
+            actionType: actionType,
+            applicationTarget: applicationTarget,
+            sourceEntityId: sourceEntityId,
+            inputSource: inputSource,
+            input: input,
+            message: message
+        ))
+    }
     
     func generateAISummary() {
         guard let entry = currentEntry, !entry.content.isEmpty else {
             errorMessage = "无法生成摘要：日记内容为空"
             return
         }
+        let sourceEntryId = entry.id
+        let summaryInput = entry.content
         
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
-            errorMessage = "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            recordAIActionFailure(
+                actionType: .summary,
+                applicationTarget: .diarySummary,
+                sourceEntityId: sourceEntryId,
+                input: summaryInput,
+                message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            )
             return
         }
         
         isProcessingAI = true
         
-        openAIService.generateSummary(from: entry.content)
+        openAIService.generateSummary(from: summaryInput)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
                     self?.isProcessingAI = false
                     if case .failure(let error) = completion {
-                        self?.errorMessage = "生成摘要失败: \(error.localizedDescription)"
+                        self?.recordAIActionFailure(
+                            actionType: .summary,
+                            applicationTarget: .diarySummary,
+                            sourceEntityId: sourceEntryId,
+                            input: summaryInput,
+                            message: "生成摘要失败: \(error.localizedDescription)"
+                        )
                     }
                 },
                 receiveValue: { [weak self] summary in
-                    guard let self = self, let entry = self.currentEntry else { return }
-                    entry.aiSummary = summary
-                    entry.lastModified = Date()
-                    _ = self.saveContext()
+                    guard let self = self else { return }
+                    self.recordAIActionResult(.success(
+                        actionType: .summary,
+                        applicationTarget: .diarySummary,
+                        sourceEntityId: sourceEntryId,
+                        input: summaryInput,
+                        outputText: summary
+                    ))
                 }
             )
             .store(in: &cancellables)
     }
     
     // 使用AI润色语音识别的文本
-    func refineTranscribedText(_ text: String) {
+    func refineTranscribedText(_ text: String, inputSource: AIActionResult.InputSource? = nil) {
+        let resolvedInputSource = inputSource ?? transcriptionInputSource
+
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
-            errorMessage = "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            recordAIActionFailure(
+                actionType: .refine,
+                applicationTarget: .transcriptionText,
+                inputSource: resolvedInputSource,
+                input: text,
+                message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            )
             return
         }
         
@@ -390,7 +586,13 @@ class DiaryViewModel: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     self?.isProcessingAI = false
                     if case .failure(let error) = completion {
-                        self?.errorMessage = "优化文本失败: \(error.localizedDescription)"
+                        self?.recordAIActionFailure(
+                            actionType: .refine,
+                            applicationTarget: .transcriptionText,
+                            inputSource: resolvedInputSource,
+                            input: text,
+                            message: "优化文本失败: \(error.localizedDescription)"
+                        )
                     }
                 },
                 receiveValue: { [weak self] refinedText in
@@ -402,12 +604,13 @@ class DiaryViewModel: ObservableObject {
                         .replacingOccurrences(of: "^[\"']", with: "", options: .regularExpression)
                         .replacingOccurrences(of: "[\"']$", with: "", options: .regularExpression)
                     
-                    // 只更新视图模型的转录文本，不直接修改条目内容
-                    self.transcribedText = cleanedText
-                    self.isProcessingAI = false
-                    
-                    // AI润色完成后，分析内容获取心情和标签建议
-                    self.analyzeRefinedContent(cleanedText)
+                    self.recordAIActionResult(.success(
+                        actionType: .refine,
+                        applicationTarget: .transcriptionText,
+                        inputSource: resolvedInputSource,
+                        input: text,
+                        outputText: cleanedText
+                    ))
                 }
             )
             .store(in: &cancellables)
@@ -419,7 +622,12 @@ class DiaryViewModel: ObservableObject {
         
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
-            errorMessage = "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            recordAIActionFailure(
+                actionType: .analyze,
+                applicationTarget: .none,
+                input: content,
+                message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            )
             return
         }
         
@@ -439,11 +647,23 @@ class DiaryViewModel: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     self?.isProcessingAI = false
                     if case .failure(let error) = completion {
-                        print("分析日记内容失败: \(error.localizedDescription)")
+                        self?.recordAIActionFailure(
+                            actionType: .analyze,
+                            applicationTarget: .none,
+                            input: content,
+                            message: "分析日记内容失败: \(error.localizedDescription)"
+                        )
                     }
                 },
                 receiveValue: { [weak self] result in
-                    self?.isProcessingAI = false
+                    guard let self else { return }
+                    self.isProcessingAI = false
+                    self.recordAIActionResult(.success(
+                        actionType: .analyze,
+                        applicationTarget: .none,
+                        input: content,
+                        outputText: "心情：\(result.moods.joined(separator: "、"))\n标签：\(result.tags.joined(separator: "、"))"
+                    ))
                     
                     // 发送通知以更新UI
                     NotificationCenter.default.post(
@@ -677,10 +897,18 @@ class DiaryViewModel: ObservableObject {
     }
     
     // 为TranscriptionDisplayView添加所需方法
-    func expandTranscribedText(_ text: String) {
+    func expandTranscribedText(_ text: String, inputSource: AIActionResult.InputSource? = nil) {
+        let resolvedInputSource = inputSource ?? transcriptionInputSource
+
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
-            errorMessage = "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            recordAIActionFailure(
+                actionType: .expand,
+                applicationTarget: .transcriptionText,
+                inputSource: resolvedInputSource,
+                input: text,
+                message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            )
             return
         }
         
@@ -693,22 +921,42 @@ class DiaryViewModel: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     self?.isProcessingAI = false
                     if case .failure(let error) = completion {
-                        self?.errorMessage = "扩展文本失败: \(error.localizedDescription)"
+                        self?.recordAIActionFailure(
+                            actionType: .expand,
+                            applicationTarget: .transcriptionText,
+                            inputSource: resolvedInputSource,
+                            input: text,
+                            message: "扩展文本失败: \(error.localizedDescription)"
+                        )
                     }
                 },
                 receiveValue: { [weak self] expandedText in
                     guard let self = self else { return }
-                    self.transcribedText = expandedText
+                    self.recordAIActionResult(.success(
+                        actionType: .expand,
+                        applicationTarget: .transcriptionText,
+                        inputSource: resolvedInputSource,
+                        input: text,
+                        outputText: expandedText
+                    ))
                 }
             )
             .store(in: &cancellables)
     }
     
     // 总结转写文本
-    func summarizeTranscribedText(_ text: String) {
+    func summarizeTranscribedText(_ text: String, inputSource: AIActionResult.InputSource? = nil) {
+        let resolvedInputSource = inputSource ?? transcriptionInputSource
+
         // 验证API密钥是否已设置
         guard !openAIService.apiKey.isEmpty else {
-            errorMessage = "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            recordAIActionFailure(
+                actionType: .summary,
+                applicationTarget: .transcriptionText,
+                inputSource: resolvedInputSource,
+                input: text,
+                message: "请在设置中添加DeepSeek API密钥后再使用AI功能"
+            )
             return
         }
         
@@ -721,12 +969,24 @@ class DiaryViewModel: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     self?.isProcessingAI = false
                     if case .failure(let error) = completion {
-                        self?.errorMessage = "总结文本失败: \(error.localizedDescription)"
+                        self?.recordAIActionFailure(
+                            actionType: .summary,
+                            applicationTarget: .transcriptionText,
+                            inputSource: resolvedInputSource,
+                            input: text,
+                            message: "总结文本失败: \(error.localizedDescription)"
+                        )
                     }
                 },
                 receiveValue: { [weak self] summarizedText in
                     guard let self = self else { return }
-                    self.transcribedText = summarizedText
+                    self.recordAIActionResult(.success(
+                        actionType: .summary,
+                        applicationTarget: .transcriptionText,
+                        inputSource: resolvedInputSource,
+                        input: text,
+                        outputText: summarizedText
+                    ))
                 }
             )
             .store(in: &cancellables)

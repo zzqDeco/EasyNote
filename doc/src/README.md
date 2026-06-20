@@ -9,11 +9,13 @@ Source notes are required for public contracts, cross-module boundaries, persist
 ## App Entry And Models
 
 - [EasyNoteApp](EasyNote/EasyNoteApp.swift.plan.md)
+- [AIActionResult](EasyNote/Models/AIActionResult.swift.plan.md)
 - [Models Overview](EasyNote/Models/README.plan.md)
 
 ## Services
 
 - [AIResponseParser](EasyNote/Services/AIResponseParser.swift.plan.md)
+- [BackupService](EasyNote/Services/BackupService.swift.plan.md)
 - [OpenAIService](EasyNote/Services/OpenAIService.swift.plan.md)
 - [SpeechRecognitionService](EasyNote/Services/SpeechRecognitionService.swift.plan.md)
 - [CloudKitService](EasyNote/Services/CloudKitService.swift.plan.md)
