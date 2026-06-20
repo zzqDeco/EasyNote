@@ -15,12 +15,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [ui-ci-stabilization.plan.md](ui-ci-stabilization.plan.md) | Add UI-test launch isolation and a manual hosted UI smoke workflow | Active |
+| [cloudkit-sync-preflight.plan.md](cloudkit-sync-preflight.plan.md) | Make future CloudKit enablement prerequisites explicit without enabling real sync | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [ui-ci-stabilization.plan.md](ui-ci-stabilization.plan.md) | Add UI-test launch isolation and a manual hosted UI smoke workflow | Delivered |
 | [service-injection-seams.plan.md](service-injection-seams.plan.md) | Add narrow service protocols and initializer injection seams for ViewModels and Settings | Delivered |
 | [ai-workflow-history.plan.md](ai-workflow-history.plan.md) | Add current-session AI result history with apply/copy/discard confirmation | Delivered |
 | [diary-review-insights.plan.md](diary-review-insights.plan.md) | Add local diary review projections and read-only insights UI | Delivered |

@@ -42,6 +42,7 @@ Current service interactions are routed through narrow protocols for AI, speech 
 - `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
 - `SpeechRecognitionService` owns microphone/speech permissions, recording state, and transcription updates.
 - `CloudKitService` owns CloudKit interactions, but Debug currently defaults to simulation mode.
+- `CloudKitSyncPreflight` owns the pure readiness checklist for future real CloudKit enablement without sending network requests or changing app storage.
 
 Services may publish state for the UI, but provider-specific response shapes and side effects should not leak into views.
 

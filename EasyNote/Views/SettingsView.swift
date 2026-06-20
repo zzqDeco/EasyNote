@@ -40,10 +40,16 @@ struct SettingsView: View {
     @State private var backupErrorMessage: String?
 
     private let backupService: any BackupServiceProviding
+    private let cloudKitPreflightReport: CloudKitPreflightReport
 
-    init(themeManager: ThemeManager, backupService: any BackupServiceProviding = BackupService()) {
+    init(
+        themeManager: ThemeManager,
+        backupService: any BackupServiceProviding = BackupService(),
+        cloudKitPreflightReport: CloudKitPreflightReport = CloudKitSyncPreflight.currentProjectReport()
+    ) {
         self._themeManager = ObservedObject(wrappedValue: themeManager)
         self.backupService = backupService
+        self.cloudKitPreflightReport = cloudKitPreflightReport
     }
     
     var body: some View {
@@ -126,6 +132,49 @@ struct SettingsView: View {
                     Text("数据备份")
                 } footer: {
                     Text("备份包含日记、待办、聊天会话和本地录音文件。导入会覆盖相同ID的数据，但不会删除备份中不存在的本地数据。")
+                }
+
+                Section {
+                    HStack {
+                        Label("同步状态", systemImage: cloudKitPreflightStatusIcon)
+                            .foregroundColor(cloudKitPreflightStatusColor)
+
+                        Spacer()
+
+                        Text(cloudKitPreflightStatusText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Text(cloudKitPreflightReport.summary)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Text("容器：\(cloudKitPreflightReport.containerIdentifier)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    ForEach(cloudKitPreflightReport.checks) { check in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(check.title, systemImage: iconName(for: check.severity))
+                                .foregroundColor(color(for: check.severity))
+
+                            Text(check.detail)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            if check.severity != .passed {
+                                Text(check.remediation)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } header: {
+                    Text("iCloud 同步预检")
+                } footer: {
+                    Text("当前仅展示真实同步启用前置条件，不会开启 CloudKit 或改变本地 SwiftData 存储。")
                 }
                 
                 Section(header: Text("关于")) {
@@ -248,6 +297,47 @@ struct SettingsView: View {
 
     private func importPreviewText(_ summary: BackupSummary) -> String {
         "日记 \(summary.diaryCount) 篇，待办 \(summary.todoCount) 个，会话 \(summary.chatSessionCount) 个，消息 \(summary.messageCount) 条，录音 \(summary.audioAssetCount) 个"
+    }
+
+    private var cloudKitPreflightStatusText: String {
+        switch cloudKitPreflightReport.overallSeverity {
+        case .passed:
+            return "通过"
+        case .warning:
+            return "需注意"
+        case .blocked:
+            return "未就绪"
+        }
+    }
+
+    private var cloudKitPreflightStatusIcon: String {
+        iconName(for: cloudKitPreflightReport.overallSeverity)
+    }
+
+    private var cloudKitPreflightStatusColor: Color {
+        color(for: cloudKitPreflightReport.overallSeverity)
+    }
+
+    private func iconName(for severity: CloudKitPreflightSeverity) -> String {
+        switch severity {
+        case .passed:
+            return "checkmark.circle.fill"
+        case .warning:
+            return "exclamationmark.triangle.fill"
+        case .blocked:
+            return "xmark.octagon.fill"
+        }
+    }
+
+    private func color(for severity: CloudKitPreflightSeverity) -> Color {
+        switch severity {
+        case .passed:
+            return .green
+        case .warning:
+            return .orange
+        case .blocked:
+            return .red
+        }
     }
 }
 
