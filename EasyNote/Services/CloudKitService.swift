@@ -572,6 +572,8 @@ class CloudKitService: ObservableObject {
     }
 }
 
+extension CloudKitService: CloudKitDiarySyncProviding {}
+
 // SwiftUI视图扩展，用于显示iCloud状态
 struct CloudKitStatusView: View {
     @ObservedObject private var cloudKitService = CloudKitService.shared

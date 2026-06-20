@@ -19,6 +19,7 @@
 - The key input uses `SecureField` and shows only configured/unconfigured status, never the full key.
 - The AI section uses explicit `Section { } header: { } footer: { }` syntax for Xcode 16.4 compatibility.
 - The backup section exports `.easynotebackup` files and previews import counts before writing.
+- Backup operations are consumed through `BackupServiceProviding`; the production default remains `BackupService`.
 - Successful import posts `easyNoteBackupDidImport` so active ViewModels reload SwiftData-backed lists.
 
 ## Tests

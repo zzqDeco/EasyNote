@@ -23,9 +23,10 @@
 - `DiaryViewModel` runs refined-content analysis after the user applies an accepted transcription `.refine` result, preserving mood/tag suggestions without analyzing discarded output.
 - `DiaryViewModel` clears pending transcription AI results when the transcription buffer is reset or replaced, or when a new recording attempt starts; accepted editor-content results become the active transcription buffer for follow-up AI actions.
 - `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, existing-entry replacement, and deletion do not leave unreachable files.
+- `DiaryViewModel` consumes AI, speech, and CloudKit behavior through service protocols with production defaults, so tests can inject fakes without invoking provider, microphone, or cloud paths.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
 - `TodoViewModel` owns focused todo CRUD, recurrence, and todo list state.
-- `ExploreViewModel` owns recommendation generation, cached recommendation state, current-session recommendation AI history, and shared user-facing recommendation error mapping.
+- `ExploreViewModel` owns recommendation generation, cached recommendation state, current-session recommendation AI history, and shared user-facing recommendation error mapping through the AI service protocol.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
 - `ChatSessionViewModel` uses an in-memory fallback context only when no context is injected.
 - `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
@@ -35,4 +36,4 @@
 ## Tests
 
 - Current unit tests cover pure model behavior and AI result apply helpers.
-- Future ViewModel tests should introduce protocol-based service seams before asserting network, speech, or CloudKit behavior.
+- ViewModel tests should use protocol-based service fakes before asserting network, speech, or CloudKit-adjacent behavior.

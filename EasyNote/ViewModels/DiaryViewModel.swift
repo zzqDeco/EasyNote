@@ -12,9 +12,9 @@ import SwiftUI
 
 class DiaryViewModel: ObservableObject {
     // 服务
-    private let speechService = SpeechRecognitionService()
-    private let openAIService: OpenAIService
-    private let cloudKitService: CloudKitService
+    private let speechService: any SpeechRecognitionProviding
+    private let openAIService: any OpenAIServiceProviding
+    private let cloudKitService: any CloudKitDiarySyncProviding
     
     // 数据状态
     @Published var diaryEntries: [DiaryEntry] = []
@@ -43,7 +43,16 @@ class DiaryViewModel: ObservableObject {
     
     // MARK: - 初始化方法
     
-    init(modelContext: ModelContext?) {
+    init(
+        modelContext: ModelContext?,
+        speechService: any SpeechRecognitionProviding = SpeechRecognitionService(),
+        openAIService: any OpenAIServiceProviding = OpenAIService(),
+        cloudKitService: any CloudKitDiarySyncProviding = CloudKitService()
+    ) {
+        self.speechService = speechService
+        self.openAIService = openAIService
+        self.cloudKitService = cloudKitService
+
         if let context = modelContext {
             self.modelContext = context
         } else {
@@ -63,34 +72,27 @@ class DiaryViewModel: ObservableObject {
         
         // 在预览环境中使用轻量级服务
         if isPreviewEnvironment {
-            self.openAIService = OpenAIService()
-            self.cloudKitService = CloudKitService()
-            
             // 在预览中不绑定服务状态，避免不必要的处理
             print("DiaryViewModel: 在预览环境中使用轻量级服务")
         } else {
-            // 正常环境中的完整初始化
-            self.openAIService = OpenAIService()
-            self.cloudKitService = CloudKitService()
-            
             // 绑定语音服务状态
-            speechService.$transcribedText
+            speechService.transcribedTextPublisher
                 .assign(to: &$transcribedText)
             
-            speechService.$recordingState
+            speechService.recordingStatePublisher
                 .assign(to: &$recordingState)
             
-            speechService.$isRecording
+            speechService.isRecordingPublisher
                 .assign(to: &$isRecording)
 
-            speechService.$speechPermissionStatus
+            speechService.speechPermissionStatusPublisher
                 .assign(to: &$speechPermissionStatus)
 
-            speechService.$microphonePermissionStatus
+            speechService.microphonePermissionStatusPublisher
                 .assign(to: &$microphonePermissionStatus)
             
             // 绑定AI处理状态
-            openAIService.$isProcessing
+            openAIService.isProcessingPublisher
                 .assign(to: &$isProcessingAI)
             
             // 通过NotificationCenter观察CloudKitService的同步状态变化
@@ -354,7 +356,7 @@ class DiaryViewModel: ObservableObject {
     // MARK: - AI功能
     
     // 获取OpenAIService实例
-    func getOpenAIService() -> OpenAIService {
+    func getOpenAIService() -> any OpenAIServiceProviding {
         return openAIService
     }
 
