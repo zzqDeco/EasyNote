@@ -17,6 +17,7 @@
 - It discovers an available iPhone simulator dynamically and passes the simulator UDID to `xcodebuild test -only-testing:EasyNoteTests`.
 - `CODE_SIGNING_ALLOWED=NO` is used for simulator test builds.
 - UI tests are retained in the repository but are not part of the first blocking CI gate.
+- Manual hosted UI smoke runs through `.github/workflows/ui-smoke.yml` instead of this required workflow.
 
 ## Tests
 

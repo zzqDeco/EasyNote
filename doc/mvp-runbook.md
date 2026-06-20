@@ -106,6 +106,7 @@ Every PR must run the same review loop before merge readiness.
 ## CI Recovery
 
 EasyNote CI runs on `macos-15` and blocks on `EasyNoteTests`.
+The separate `UI Smoke` workflow is manual and non-blocking; use it when validating hosted UI runner stability.
 
 Use:
 
@@ -113,6 +114,12 @@ Use:
 gh pr checks <pr-number> --watch
 gh run view <run-id> --json status,conclusion,jobs,url
 gh run view <run-id> --log
+```
+
+Manual hosted UI smoke:
+
+```bash
+gh workflow run "UI Smoke" --ref <branch>
 ```
 
 For failed GitHub Actions jobs, rerun failed jobs only:

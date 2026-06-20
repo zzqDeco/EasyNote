@@ -1,0 +1,98 @@
+name: UI Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-smoke:
+    name: Xcode UI smoke tests
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+
+      - name: List Xcode project
+        run: xcodebuild -list -project EasyNote.xcodeproj
+
+      - name: Select iPhone simulator
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          devices = json.loads(
+              subprocess.check_output(
+                  ["xcrun", "simctl", "list", "devices", "available", "-j"],
+                  text=True,
+              )
+          ).get("devices", {})
+
+          deployment_target = (18, 2)
+
+          def normalized(version):
+              return tuple(version) + (0,) * (3 - len(version))
+
+          def parse_ios_runtime_version(identifier):
+              marker = "iOS-"
+              if marker not in identifier:
+                  return None
+              raw_version = identifier.split(marker, 1)[1]
+              try:
+                  return tuple(int(part) for part in raw_version.split("-"))
+              except ValueError:
+                  return None
+
+          candidates = []
+          for runtime, runtime_devices in devices.items():
+              version = parse_ios_runtime_version(runtime)
+              if version is None:
+                  continue
+              if normalized(version) < normalized(deployment_target):
+                  continue
+              for device in runtime_devices:
+                  if device.get("isAvailable", True) and device.get("name", "").startswith("iPhone"):
+                      candidates.append((normalized(version), runtime, device))
+
+          candidates.sort(key=lambda item: item[0], reverse=True)
+          selected_runtime = None
+          selected = None
+          if candidates:
+              _, selected_runtime, selected = candidates[0]
+
+          if not selected:
+              print("No deployment-compatible iPhone simulator found", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"Selected simulator: {selected['name']} ({selected['udid']}) from {selected_runtime}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"SIMULATOR_UDID={selected['udid']}\n")
+          PY
+
+      - name: Run UI smoke tests
+        run: |
+          xcodebuild test \
+            -project EasyNote.xcodeproj \
+            -scheme EasyNote \
+            -only-testing:EasyNoteUITests/EasyNoteUITests/testLaunches \
+            -only-testing:EasyNoteUITests/EasyNoteUITests/testPrimaryTabNavigationSmoke \
+            -destination "id=${SIMULATOR_UDID}" \
+            CODE_SIGNING_ALLOWED=NO
