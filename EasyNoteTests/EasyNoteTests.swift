@@ -1481,6 +1481,60 @@ struct EasyNoteTests {
         #expect(importedSession.lastModifiedDate == later)
     }
 
+    @Test func cloudKitPreflightBlocksCurrentLocalFirstConfiguration() async throws {
+        let report = CloudKitSyncPreflight.evaluate(.currentProject)
+
+        #expect(report.isReadyForRealSync == false)
+        #expect(report.overallSeverity == .blocked)
+        #expect(report.check(withID: "container-id")?.severity == .passed)
+        #expect(report.check(withID: "swiftdata-boundary")?.severity == .passed)
+        #expect(report.check(withID: "icloud-entitlement")?.severity == .blocked)
+        #expect(report.check(withID: "schema-deployment")?.severity == .blocked)
+        #expect(report.check(withID: "record-identity")?.severity == .blocked)
+        #expect(report.check(withID: "manual-validation")?.severity == .blocked)
+    }
+
+    @Test func cloudKitPreflightPassesServiceManagedReadyConfiguration() async throws {
+        let configuration = CloudKitSyncPreflight.Configuration(
+            expectedContainerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier,
+            serviceContainerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier,
+            entitlementContainerIdentifiers: [CloudKitSyncPreflight.defaultContainerIdentifier],
+            hasCloudKitServiceEntitlement: true,
+            debugSimulationMode: false,
+            swiftDataAutomaticSyncEnabled: false,
+            schemaIsDeployed: true,
+            conflictPolicyIsDocumented: true,
+            recordIdentityRoundTripIsImplemented: true,
+            manualValidationIsComplete: true
+        )
+
+        let report = CloudKitSyncPreflight.evaluate(configuration)
+
+        #expect(report.isReadyForRealSync)
+        #expect(report.overallSeverity == .passed)
+        #expect(report.checks.allSatisfy { $0.severity == .passed })
+    }
+
+    @Test func cloudKitPreflightBlocksMismatchedContainer() async throws {
+        let configuration = CloudKitSyncPreflight.Configuration(
+            expectedContainerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier,
+            serviceContainerIdentifier: "iCloud.io.github.zzqDeco.OtherApp",
+            entitlementContainerIdentifiers: [CloudKitSyncPreflight.defaultContainerIdentifier],
+            hasCloudKitServiceEntitlement: true,
+            debugSimulationMode: false,
+            swiftDataAutomaticSyncEnabled: false,
+            schemaIsDeployed: true,
+            conflictPolicyIsDocumented: true,
+            recordIdentityRoundTripIsImplemented: true,
+            manualValidationIsComplete: true
+        )
+
+        let report = CloudKitSyncPreflight.evaluate(configuration)
+
+        #expect(report.isReadyForRealSync == false)
+        #expect(report.check(withID: "container-id")?.severity == .blocked)
+    }
+
     private func makeDiary(
         title: String,
         content: String = "",

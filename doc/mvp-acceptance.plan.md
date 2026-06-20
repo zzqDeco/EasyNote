@@ -65,6 +65,7 @@ Before treating a branch as a usable app build, manually verify:
 - switch todo segments for today, overdue, upcoming, no-date, recurring, and completed groups
 - create a todo from a recommendation and confirm it appears in the expected todo group
 - configure and clear the DeepSeek API key in Settings
+- open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible
 - generate a diary AI summary with a configured key and confirm the diary summary is unchanged until Apply is tapped
 - generate a transcription refine, expand, or summary result and confirm transcription text is unchanged until Apply is tapped

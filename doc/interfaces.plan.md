@@ -105,7 +105,16 @@ Draft recording files are owned by diary save flows after capture. Unsaved new-e
 `CloudKitService` owns CloudKit account checks, audio file sync, diary sync, and quota/user-id helpers. Debug mode currently sets simulation mode and reports iCloud unavailable for free-developer-account workflows.
 `DiaryViewModel` consumes the current diary sync entry points through `CloudKitDiarySyncProviding`; real sync behavior remains owned by `CloudKitService`.
 
-Real CloudKit enablement requires a dedicated plan covering entitlement, container, schema, merge, conflict, and validation behavior.
+`CloudKitSyncPreflight` owns the readiness contract for future real sync enablement. The current project report is intentionally blocked:
+
+- app entitlements do not declare iCloud/CloudKit services or the target container
+- Debug builds still force simulation mode
+- SwiftData automatic CloudKit sync remains disabled through `cloudKitDatabase: .none`
+- CloudKit Dashboard schema deployment is not verified
+- downloaded records do not yet prove stable `recordName` to `DiaryEntry.id` round-trip
+- real account/device manual validation is not complete
+
+The current service-managed target container is `iCloud.io.github.zzqDeco.EasyNote`. Future enablement must keep `DiaryEntry.id.uuidString` as the CloudKit record name, preserve local UUIDs on download, use `DiaryEntry.lastModified` as the conflict precedence boundary, and validate upload, download, conflict, offline failure, and recovery paths. If a future PR chooses SwiftData automatic CloudKit sync instead, it must be treated as a separate migration plan because the current app-level `ModelConfiguration` deliberately disables automatic sync.
 
 ## GitHub Workflow Boundary
 
