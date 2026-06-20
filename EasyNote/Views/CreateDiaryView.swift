@@ -103,12 +103,12 @@ struct CreateDiaryView: View {
             setupKeyboardObservers()
             
             // 清空已使用的转写内容，避免重复显示
-            viewModel.transcribedText = ""
+            viewModel.setTranscriptionText("")
         }
         .onDisappear {
             removeKeyboardObservers()
             cleanupDraftRecordingIfNeeded()
-            viewModel.transcribedText = ""
+            viewModel.setTranscriptionText("")
         }
         // 监听主题色变化，强制视图刷新
         .id("theme-\(themeManager.accentColor.description)")
@@ -615,7 +615,7 @@ struct CreateDiaryView: View {
         didSaveEntry = true
         
         // 清空转写文本
-        viewModel.transcribedText = ""
+        viewModel.setTranscriptionText("")
         
         // 关闭视图
         isPresented = false
@@ -744,10 +744,10 @@ struct CreateDiaryView: View {
     
     private func handleRefinementAction() {
         // 将当前编辑的内容复制到transcribedText中处理
-        viewModel.transcribedText = content
+        viewModel.setTranscriptionText(content, inputSource: .editorContent)
         
         // 触发AI润色处理
-        viewModel.refineTranscribedText(content)
+        viewModel.refineTranscribedText(content, inputSource: .editorContent)
         
         // 显示转写界面，以便用户查看处理结果
         withAnimation(.easeInOut(duration: 0.3)) {

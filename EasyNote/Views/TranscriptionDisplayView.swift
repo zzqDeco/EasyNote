@@ -62,10 +62,18 @@ struct TranscriptionDisplayView: View {
             } else if viewModel.isProcessingAI {
                 processingView
             }
+
+            if let pendingResult {
+                pendingAIResultView(pendingResult)
+            }
             
             // 操作按钮 - 仅当转写内容稳定且不在处理中时显示
-            if canUseTranscriptionActions && showOptions {
+            if canUseTranscriptionActions && pendingResult == nil && showOptions {
                 actionButtonsView
+            }
+
+            if !recentAIResults.isEmpty {
+                recentAIHistoryView
             }
         }
         .padding()
@@ -220,6 +228,82 @@ struct TranscriptionDisplayView: View {
         .padding(.top, 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
+
+    private func pendingAIResultView(_ result: AIActionResult) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("待确认AI\(result.actionType.displayName)结果", systemImage: "wand.and.stars")
+                .font(.subheadline)
+                .foregroundColor(.purple)
+
+            Text(result.outputText)
+                .font(.body)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(UIColor.systemBackground))
+                .cornerRadius(10)
+
+            HStack(spacing: 10) {
+                Button {
+                    _ = viewModel.applyAIResult(result, currentEditorContent: content)
+                } label: {
+                    Label("应用", systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    UIPasteboard.general.string = result.outputText
+                } label: {
+                    Label("复制", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    viewModel.discardAIResult(result)
+                } label: {
+                    Label("丢弃", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+            }
+            .font(.caption)
+        }
+        .padding(12)
+        .background(Color.purple.opacity(0.08))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.purple.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private var recentAIHistoryView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("最近AI结果")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            ForEach(recentAIResults) { result in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(result.actionType.displayName)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        Spacer()
+                        Text(result.isSuccess ? "成功" : "失败")
+                            .font(.caption2)
+                            .foregroundColor(result.isSuccess ? .green : .red)
+                    }
+
+                    Text(result.isSuccess ? result.outputText : (result.failureMessage ?? "AI操作失败"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                .padding(8)
+                .background(Color(UIColor.systemBackground))
+                .cornerRadius(8)
+            }
+        }
+    }
     
     private func actionButton(icon: String, text: String, color: Color) -> some View {
         VStack(spacing: 5) {
@@ -282,6 +366,14 @@ struct TranscriptionDisplayView: View {
         !viewModel.transcribedText.isEmpty
             && !viewModel.isProcessingAI
             && viewModel.recordingState.allowsTranscriptionActions
+    }
+
+    private var pendingResult: AIActionResult? {
+        viewModel.pendingAIResult(for: .transcriptionText)
+    }
+
+    private var recentAIResults: [AIActionResult] {
+        viewModel.recentAIResults(for: .transcriptionText)
     }
 
     private func statusView(message: String) -> some View {

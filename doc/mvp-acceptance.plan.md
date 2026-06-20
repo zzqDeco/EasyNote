@@ -33,6 +33,8 @@ Current focused tests cover:
 - `TodoItem.RecurringInterval.nextDate`
 - `ChatSession.generateSummary`
 - `ChatSession` and `SessionMessage` basic integrity
+- `AIActionResult` success/failure state and input preview generation
+- diary AI result application helpers that only mutate summary or transcription text after explicit confirmation
 
 When diary, todo, chat, or AI parsing behavior changes, add focused tests before relying on manual verification.
 
@@ -63,6 +65,11 @@ Before treating a branch as a usable app build, manually verify:
 - create a todo from a recommendation and confirm it appears in the expected todo group
 - configure and clear the DeepSeek API key in Settings
 - start AI actions with an empty key and confirm the failure is user-visible
+- generate a diary AI summary with a configured key and confirm the diary summary is unchanged until Apply is tapped
+- generate a transcription refine, expand, or summary result and confirm transcription text is unchanged until Apply is tapped
+- copy a pending AI result and confirm no diary or transcription field changes
+- discard a pending AI result and confirm no diary or transcription field changes
+- open recent AI results in diary, transcription, or explore flows and confirm successful and failed outcomes are reviewable in the current session
 - record speech on a real device or compatible simulator, stop recording, confirm transcription appears before it is applied
 - save a new diary while recording is active and confirm the entry keeps the captured audio URL
 - cancel a new diary after stopping a recording and confirm the unsaved local recording is not retained by any diary entry
