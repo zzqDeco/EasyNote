@@ -21,7 +21,7 @@
 - `DiaryViewModel` rejects pending diary summary or transcription results when the source text fingerprint no longer matches the current text, including editor-content AI results whose source must be the current editor body rather than a copied transcription buffer.
 - `DiaryViewModel` snapshots diary summary input before sending the AI request and uses that same snapshot for the result fingerprint.
 - `DiaryViewModel` runs refined-content analysis after the user applies an accepted transcription `.refine` result, preserving mood/tag suggestions without analyzing discarded output.
-- `DiaryViewModel` clears pending transcription AI results when the transcription buffer is reset or replaced, and accepted editor-content results become the active transcription buffer for follow-up AI actions.
+- `DiaryViewModel` clears pending transcription AI results when the transcription buffer is reset or replaced, or when a new recording attempt starts; accepted editor-content results become the active transcription buffer for follow-up AI actions.
 - `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, existing-entry replacement, and deletion do not leave unreachable files.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
 - `TodoViewModel` owns focused todo CRUD, recurrence, and todo list state.

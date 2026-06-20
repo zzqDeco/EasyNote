@@ -130,8 +130,6 @@ class DiaryViewModel: ObservableObject {
     
     @discardableResult
     func startRecording() -> Bool {
-        transcriptionInputSource = .defaultText
-
         if speechPermissionStatus == .notDetermined || microphonePermissionStatus == .notDetermined {
             speechService.requestPermissions { [weak self] isGranted in
                 guard let self else { return }
@@ -156,6 +154,7 @@ class DiaryViewModel: ObservableObject {
         }
 
         do {
+            prepareTranscriptionForNewRecording()
             try speechService.startRecording()
             return true
         } catch {
@@ -164,6 +163,11 @@ class DiaryViewModel: ObservableObject {
             self.showToast(message: error.localizedDescription)
             return false
         }
+    }
+
+    func prepareTranscriptionForNewRecording() {
+        pendingAIResults.removeAll { $0.applicationTarget == .transcriptionText }
+        transcriptionInputSource = .defaultText
     }
     
     func stopRecording() {

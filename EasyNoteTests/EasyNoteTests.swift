@@ -538,6 +538,24 @@ struct EasyNoteTests {
         #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
     }
 
+    @Test func diaryViewModelClearsPendingTranscriptionResultsForNewRecording() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.setTranscriptionText("编辑正文", inputSource: .editorContent)
+        let result = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            inputSource: .editorContent,
+            input: "编辑正文",
+            outputText: "润色正文"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.prepareTranscriptionForNewRecording()
+
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
+        #expect(viewModel.transcriptionInputSource == .defaultText)
+    }
+
     @Test func diaryViewModelRejectsStalePendingTranscriptionAfterTextChanges() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.transcribedText = "旧转写"
