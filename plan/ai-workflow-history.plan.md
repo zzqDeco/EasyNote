@@ -26,6 +26,7 @@ Non-goals:
 - Track pending diary and transcription results per application target/source scope, and bind diary summary results to the source `DiaryEntry.id` so navigation cannot apply a summary to the wrong diary.
 - Store a deterministic input fingerprint with text-generating results and reject Apply when diary or transcription source text has changed.
 - Record whether transcription AI input came from the transcription buffer or an editor-content copy, and validate editor-content results against the current editor body before Apply.
+- Hide insert/replace and follow-up AI action controls while a transcription AI result is pending, and clear pending transcription results when the buffer is reset.
 - Snapshot diary summary input before sending the AI request so returned summaries are fingerprinted against the text that was actually sent.
 - Clear stale pending results when a later AI action fails in the same target/source scope.
 - Reuse the same user-facing recommendation error mapping for Explore error state and recommendation AI history.
@@ -45,7 +46,7 @@ Non-goals:
 - Unit tests cover `AIActionResult` success/failure factories and input preview truncation.
 - Unit tests cover applying pending summary updates `DiaryEntry.aiSummary` only after explicit apply.
 - Unit tests cover pending results per application target/source scope, stale pending cleanup after failures, stale result rejection, and applying a diary summary to the source diary after `currentEntry` changes.
-- Unit tests cover applying pending transcription results updates `transcribedText` only after explicit apply, including editor-content stale-result rejection.
+- Unit tests cover applying pending transcription results updates `transcribedText` only after explicit apply, including editor-content stale-result rejection, chained results after accepted editor content, and reset cleanup.
 - Existing empty-key OpenAIService test remains the fail-closed network boundary.
 - Local validation:
   - `git diff --check`

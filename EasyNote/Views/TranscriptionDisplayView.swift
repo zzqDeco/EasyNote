@@ -68,7 +68,7 @@ struct TranscriptionDisplayView: View {
             }
             
             // 操作按钮 - 仅当转写内容稳定且不在处理中时显示
-            if canUseTranscriptionActions && showOptions {
+            if canUseTranscriptionActions && pendingResult == nil && showOptions {
                 actionButtonsView
             }
 

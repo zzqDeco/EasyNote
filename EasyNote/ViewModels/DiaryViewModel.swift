@@ -354,7 +354,14 @@ class DiaryViewModel: ObservableObject {
         return openAIService
     }
 
-    func setTranscriptionText(_ text: String, inputSource: AIActionResult.InputSource = .defaultText) {
+    func setTranscriptionText(
+        _ text: String,
+        inputSource: AIActionResult.InputSource = .defaultText,
+        clearsPendingResults: Bool = true
+    ) {
+        if clearsPendingResults {
+            pendingAIResults.removeAll { $0.applicationTarget == .transcriptionText }
+        }
         transcribedText = text
         transcriptionInputSource = inputSource
     }
@@ -436,7 +443,7 @@ class DiaryViewModel: ObservableObject {
                     : "转写内容已变化，请重新生成AI结果"
                 return false
             }
-            setTranscriptionText(result.outputText, inputSource: result.inputSource)
+            setTranscriptionText(result.outputText, clearsPendingResults: false)
             if result.actionType == .refine {
                 analyzeAcceptedRefinedContent(result.outputText)
             }

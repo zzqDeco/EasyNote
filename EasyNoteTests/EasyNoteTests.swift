@@ -473,8 +473,35 @@ struct EasyNoteTests {
 
         #expect(viewModel.applyAIResult(result, currentEditorContent: "编辑正文"))
         #expect(viewModel.transcribedText == "润色正文")
-        #expect(viewModel.transcriptionInputSource == .editorContent)
+        #expect(viewModel.transcriptionInputSource == .defaultText)
         #expect(probe.content == "润色正文")
+    }
+
+    @Test func diaryViewModelAppliesChainedResultAfterEditorContentResult() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        viewModel.refinedContentAnalysisHandler = { _ in }
+        viewModel.setTranscriptionText("编辑正文", inputSource: .editorContent)
+        let firstResult = AIActionResult.success(
+            actionType: .refine,
+            applicationTarget: .transcriptionText,
+            inputSource: .editorContent,
+            input: "编辑正文",
+            outputText: "润色正文"
+        )
+
+        viewModel.recordAIActionResult(firstResult)
+        #expect(viewModel.applyAIResult(firstResult, currentEditorContent: "编辑正文"))
+
+        let chainedResult = AIActionResult.success(
+            actionType: .expand,
+            applicationTarget: .transcriptionText,
+            input: "润色正文",
+            outputText: "扩写正文"
+        )
+        viewModel.recordAIActionResult(chainedResult)
+
+        #expect(viewModel.applyAIResult(chainedResult, currentEditorContent: "编辑正文"))
+        #expect(viewModel.transcribedText == "扩写正文")
     }
 
     @Test func diaryViewModelRejectsEditorContentAIResultAfterEditorChanges() async throws {
@@ -494,6 +521,21 @@ struct EasyNoteTests {
         #expect(viewModel.transcribedText == "旧正文")
         #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
         #expect(viewModel.errorMessage == "当前编辑内容已变化，请重新生成AI结果")
+    }
+
+    @Test func diaryViewModelClearsPendingTranscriptionResultsWhenBufferResets() async throws {
+        let viewModel = DiaryViewModel(modelContext: try makeModelContext())
+        let result = AIActionResult.success(
+            actionType: .expand,
+            applicationTarget: .transcriptionText,
+            input: "旧转写",
+            outputText: "旧扩写"
+        )
+
+        viewModel.recordAIActionResult(result)
+        viewModel.setTranscriptionText("")
+
+        #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
     }
 
     @Test func diaryViewModelRejectsStalePendingTranscriptionAfterTextChanges() async throws {
