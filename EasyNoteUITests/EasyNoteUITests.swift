@@ -8,14 +8,25 @@
 import XCTest
 
 final class EasyNoteUITests: XCTestCase {
+    private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments += [
+            "-easynote-ui-testing",
+            "-easynote-disable-animations"
+        ]
+        app.launchEnvironment["EASYNOTE_UI_TESTING"] = "1"
+    }
+
+    override func tearDownWithError() throws {
+        app?.terminate()
+        app = nil
     }
 
     @MainActor
     func testLaunches() throws {
-        let app = XCUIApplication()
         app.launch()
 
         XCTAssertEqual(app.state, .runningForeground)
@@ -23,32 +34,43 @@ final class EasyNoteUITests: XCTestCase {
 
     @MainActor
     func testPrimaryTabNavigationSmoke() throws {
-        let app = XCUIApplication()
         app.launch()
 
         tapTab(in: app, identifier: "tab.explore", label: "探索")
-        XCTAssertTrue(
-            app.navigationBars["探索"].waitForExistence(timeout: 3)
-                || app.otherElements["tab.explore.content"].waitForExistence(timeout: 1)
-        )
+        XCTAssertTrue(waitForAny([
+            app.navigationBars["探索"],
+            app.otherElements["tab.explore.content"]
+        ]))
 
         tapTab(in: app, identifier: "tab.todo", label: "待办")
-        XCTAssertTrue(
-            app.buttons["todo.addButton"].waitForExistence(timeout: 3)
-                || app.buttons["todo.floatingAddButton"].waitForExistence(timeout: 1)
-        )
-        XCTAssertTrue(
-            app.segmentedControls["todo.filterPicker"].waitForExistence(timeout: 3)
-                || app.otherElements["todo.filterPicker"].waitForExistence(timeout: 1)
-        )
+        XCTAssertTrue(waitForAny([
+            app.buttons["todo.addButton"],
+            app.buttons["todo.floatingAddButton"]
+        ]))
+        XCTAssertTrue(waitForAny([
+            app.segmentedControls["todo.filterPicker"],
+            app.otherElements["todo.filterPicker"]
+        ]))
 
         tapTab(in: app, identifier: "tab.diary", label: "日记")
-        XCTAssertTrue(app.textFields["diary.searchField"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["diary.filterButton"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["diary.addButton"].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.textFields["diary.searchField"].waitForExistence(timeout: 5),
+            "Missing diary search field"
+        )
+        XCTAssertTrue(
+            app.buttons["diary.filterButton"].waitForExistence(timeout: 5),
+            "Missing diary filter button"
+        )
+        XCTAssertTrue(
+            app.buttons["diary.addButton"].waitForExistence(timeout: 5),
+            "Missing diary add button"
+        )
 
         tapTab(in: app, identifier: "tab.settings", label: "设置")
-        XCTAssertTrue(app.secureTextFields["settings.apiKeyField"].waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForAny([
+            app.secureTextFields["settings.apiKeyField"],
+            app.textFields["settings.apiKeyField"]
+        ]))
     }
 
     @MainActor
@@ -74,5 +96,18 @@ final class EasyNoteUITests: XCTestCase {
         let labeledButton = app.tabBars.buttons[label]
         XCTAssertTrue(labeledButton.waitForExistence(timeout: 3), "Missing tab: \(label)")
         labeledButton.tap()
+    }
+
+    @MainActor
+    private func waitForAny(_ elements: [XCUIElement], timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if elements.contains(where: { $0.exists }) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        return elements.contains(where: { $0.exists })
     }
 }

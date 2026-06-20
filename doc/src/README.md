@@ -34,3 +34,4 @@ Source notes are required for public contracts, cross-module boundaries, persist
 - [Unit Tests](EasyNoteTests/EasyNoteTests.swift.plan.md)
 - [UI Tests](EasyNoteUITests/EasyNoteUITests.swift.plan.md)
 - [GitHub CI Workflow](.github/workflows/ci.yml.plan.md)
+- [GitHub UI Smoke Workflow](.github/workflows/ui-smoke.yml.plan.md)

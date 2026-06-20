@@ -45,9 +45,10 @@ Current UI tests cover:
 - app launch into the foreground through `EasyNoteUITests.testLaunches`
 - non-destructive primary tab navigation through explore, todo, diary, and settings
 - stable accessibility identifiers for primary tab buttons, diary search/filter/add controls, todo focus controls, and Settings API key controls
+- UI-test launch isolation through an in-memory SwiftData store, reset local defaults, and disabled animations
 - launch performance smoke from the generated UI test target
 
-The first blocking CI gate runs unit tests only. Hosted UI test execution is not yet stable enough for the minimum gate; UI smoke tests stay in the repository for local/manual verification and a future UI CI plan.
+The first blocking CI gate runs unit tests only. Hosted UI smoke is available through the manual `UI Smoke` GitHub Actions workflow, but it is not yet a required PR check.
 
 ## Manual Smoke
 

@@ -9,11 +9,22 @@ import SwiftUI
 import SwiftData
 import Speech
 import AVFoundation
+import UIKit
 
 @main
 struct EasyNoteApp: App {
     // 添加应用生命周期状态对象
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        if EasyNoteLaunchOptions.shouldDisableAnimations {
+            UIView.setAnimationsEnabled(false)
+        }
+
+        if EasyNoteLaunchOptions.isUITesting {
+            EasyNoteLaunchOptions.resetUserDefaultsForUITests()
+        }
+    }
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -23,21 +34,26 @@ struct EasyNoteApp: App {
             SessionMessage.self
         ])
         
-        // 创建一个唯一的存储URL，确保数据保存在应用的Documents目录下
-        let storeURL = URL.documentsDirectory.appending(path: "EasyNote.store")
-        
-        // 配置本地存储，避免 SwiftData 自动接管 CloudKit 同步
-        let modelConfiguration = ModelConfiguration(
-            "EasyNote",
-            schema: schema,
-            url: storeURL,
-            allowsSave: true,
-            cloudKitDatabase: .none
-        )
+        let modelConfiguration: ModelConfiguration
+        if EasyNoteLaunchOptions.isUITesting {
+            modelConfiguration = ModelConfiguration(isStoredInMemoryOnly: true)
+        } else {
+            // 创建一个唯一的存储URL，确保数据保存在应用的Documents目录下
+            let storeURL = URL.documentsDirectory.appending(path: "EasyNote.store")
+
+            // 配置本地存储，避免 SwiftData 自动接管 CloudKit 同步
+            modelConfiguration = ModelConfiguration(
+                "EasyNote",
+                schema: schema,
+                url: storeURL,
+                allowsSave: true,
+                cloudKitDatabase: .none
+            )
+            print("SwiftData数据库路径: \(storeURL.path())")
+        }
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            print("SwiftData数据库路径: \(storeURL.path())")
             return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
@@ -74,5 +90,30 @@ struct EasyNoteApp: App {
                 }
             }
         }
+    }
+}
+
+private enum EasyNoteLaunchOptions {
+    static let uiTestingArgument = "-easynote-ui-testing"
+    static let disableAnimationsArgument = "-easynote-disable-animations"
+
+    static var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains(uiTestingArgument)
+            || ProcessInfo.processInfo.environment["EASYNOTE_UI_TESTING"] == "1"
+    }
+
+    static var shouldDisableAnimations: Bool {
+        ProcessInfo.processInfo.arguments.contains(disableAnimationsArgument)
+    }
+
+    static func resetUserDefaultsForUITests() {
+        let defaults = UserDefaults.standard
+        [
+            "openai_api_key",
+            "cached_recommendations",
+            "recommendations_last_updated",
+            "darkModeEnabled",
+            "accentColorName"
+        ].forEach { defaults.removeObject(forKey: $0) }
     }
 }

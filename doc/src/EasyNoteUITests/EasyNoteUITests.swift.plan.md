@@ -15,9 +15,11 @@
 
 - `testLaunches` starts the app and asserts that it reaches the foreground.
 - `testPrimaryTabNavigationSmoke` switches across explore, todo, diary, and settings without creating, editing, deleting, recording audio, calling the network, or requiring a configured API key.
+- UI tests launch with `-easynote-ui-testing`, `-easynote-disable-animations`, and `EASYNOTE_UI_TESTING=1` so the app uses isolated in-memory data and deterministic local defaults.
 - Launch performance remains template-level smoke coverage and should be tightened only after CI runtime is stable.
 
 ## Tests
 
-- Not part of the first blocking GitHub Actions gate because hosted UI test runner startup is not stable yet.
+- Not part of the first blocking GitHub Actions gate because hosted UI test runner startup is not stable enough for required PR checks.
+- The manual `UI Smoke` workflow runs the launch and primary-tab navigation tests on GitHub-hosted macOS runners.
 - Run locally only when the installed simulator runtime matches the selected Xcode SDK.

@@ -15,12 +15,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [service-injection-seams.plan.md](service-injection-seams.plan.md) | Add narrow service protocols and initializer injection seams for ViewModels and Settings | Active |
+| [ui-ci-stabilization.plan.md](ui-ci-stabilization.plan.md) | Add UI-test launch isolation and a manual hosted UI smoke workflow | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [service-injection-seams.plan.md](service-injection-seams.plan.md) | Add narrow service protocols and initializer injection seams for ViewModels and Settings | Delivered |
 | [ai-workflow-history.plan.md](ai-workflow-history.plan.md) | Add current-session AI result history with apply/copy/discard confirmation | Delivered |
 | [diary-review-insights.plan.md](diary-review-insights.plan.md) | Add local diary review projections and read-only insights UI | Delivered |
 | [local-export-backup.plan.md](local-export-backup.plan.md) | Add local JSON backup and restore with voice recording assets | Delivered |
