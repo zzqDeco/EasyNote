@@ -15,12 +15,12 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [cloudkit-sync-preflight.plan.md](cloudkit-sync-preflight.plan.md) | Make future CloudKit enablement prerequisites explicit without enabling real sync | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [cloudkit-sync-preflight.plan.md](cloudkit-sync-preflight.plan.md) | Make future CloudKit enablement prerequisites explicit without enabling real sync | Delivered |
 | [ui-ci-stabilization.plan.md](ui-ci-stabilization.plan.md) | Add UI-test launch isolation and a manual hosted UI smoke workflow | Delivered |
 | [service-injection-seams.plan.md](service-injection-seams.plan.md) | Add narrow service protocols and initializer injection seams for ViewModels and Settings | Delivered |
 | [ai-workflow-history.plan.md](ai-workflow-history.plan.md) | Add current-session AI result history with apply/copy/discard confirmation | Delivered |

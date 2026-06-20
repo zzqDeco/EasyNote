@@ -1,5 +1,10 @@
 # CloudKit Sync Preflight
 
+## Delivered Status
+
+- Delivered to `dev` in PR #17 and promoted as part of the maintainability and sync-preflight promotion.
+- Current-state CloudKit behavior remains owned by `doc/architecture.plan.md`, `doc/interfaces.plan.md`, `doc/mvp-acceptance.plan.md`, and the source notes under `doc/src/`.
+
 ## Summary
 
 - Engineer the prerequisites for future CloudKit sync without enabling real iCloud synchronization in this slice.
