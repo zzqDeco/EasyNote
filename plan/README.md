@@ -13,14 +13,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 ## Active References
 
-| Document | Purpose | Status |
-|---|---|---|
-| [ai-workflow-history.plan.md](ai-workflow-history.plan.md) | Add current-session AI result history with apply/copy/discard confirmation | Active |
+No active implementation plans.
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [ai-workflow-history.plan.md](ai-workflow-history.plan.md) | Add current-session AI result history with apply/copy/discard confirmation | Delivered |
 | [diary-review-insights.plan.md](diary-review-insights.plan.md) | Add local diary review projections and read-only insights UI | Delivered |
 | [local-export-backup.plan.md](local-export-backup.plan.md) | Add local JSON backup and restore with voice recording assets | Delivered |
 | [mvp-runbook.plan.md](mvp-runbook.plan.md) | Capture the MVP development, validation, review, and promotion workflow | Delivered |
