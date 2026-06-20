@@ -96,7 +96,7 @@ func createCloudKitService() -> any ObservableObject {
         print("使用预览版CloudKitService")
         return CloudKitServicePreview()
     } else {
-        return CloudKitService(containerIdentifier: "iCloud.io.github.zzqDeco.EasyNote")
+        return CloudKitService(containerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier)
     }
 }
 #endif
@@ -122,7 +122,7 @@ class CloudKitService: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     
-    init(containerIdentifier: String = "iCloud.io.github.zzqDeco.EasyNote") {
+    init(containerIdentifier: String = CloudKitSyncPreflight.defaultContainerIdentifier) {
         // 在初始化时检测是否应该使用模拟模式（适用于免费开发者账号）
         #if DEBUG
         // 调试模式下，默认使用模拟模式
@@ -571,6 +571,8 @@ class CloudKitService: ObservableObject {
         return subject.eraseToAnyPublisher()
     }
 }
+
+extension CloudKitService: CloudKitDiarySyncProviding {}
 
 // SwiftUI视图扩展，用于显示iCloud状态
 struct CloudKitStatusView: View {

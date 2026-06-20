@@ -34,6 +34,7 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - Diary review insights are projected through a pure `DiaryReviewProjection` helper from the full diary entry set, independent of active diary search and filters. It reports distinct tag totals separately from capped top-tag trends and normalizes legacy numeric mood values before aggregation.
 
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
+Current service interactions are routed through narrow protocols for AI, speech recognition, CloudKit diary sync, and backup import/export so ViewModels and Settings can be tested with fakes without changing production defaults.
 
 ## Service Layer
 
@@ -41,6 +42,7 @@ Future refactors should separate pure business logic and service protocols from 
 - `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
 - `SpeechRecognitionService` owns microphone/speech permissions, recording state, and transcription updates.
 - `CloudKitService` owns CloudKit interactions, but Debug currently defaults to simulation mode.
+- `CloudKitSyncPreflight` owns the pure readiness checklist for future real CloudKit enablement without sending network requests or changing app storage.
 
 Services may publish state for the UI, but provider-specific response shapes and side effects should not leak into views.
 

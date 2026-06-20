@@ -16,7 +16,9 @@ Source notes are required for public contracts, cross-module boundaries, persist
 
 - [AIResponseParser](EasyNote/Services/AIResponseParser.swift.plan.md)
 - [BackupService](EasyNote/Services/BackupService.swift.plan.md)
+- [CloudKitSyncPreflight](EasyNote/Services/CloudKitSyncPreflight.swift.plan.md)
 - [OpenAIService](EasyNote/Services/OpenAIService.swift.plan.md)
+- [ServiceProtocols](EasyNote/Services/ServiceProtocols.swift.plan.md)
 - [SpeechRecognitionService](EasyNote/Services/SpeechRecognitionService.swift.plan.md)
 - [CloudKitService](EasyNote/Services/CloudKitService.swift.plan.md)
 
@@ -33,3 +35,4 @@ Source notes are required for public contracts, cross-module boundaries, persist
 - [Unit Tests](EasyNoteTests/EasyNoteTests.swift.plan.md)
 - [UI Tests](EasyNoteUITests/EasyNoteUITests.swift.plan.md)
 - [GitHub CI Workflow](.github/workflows/ci.yml.plan.md)
+- [GitHub UI Smoke Workflow](.github/workflows/ui-smoke.yml.plan.md)

@@ -12,7 +12,7 @@ class ExploreViewModel: ObservableObject {
     @Published var aiActionHistory: [AIActionResult] = []
     
     // 服务
-    private let openAIService: OpenAIService
+    private let openAIService: any OpenAIServiceProviding
     
     // 模型上下文
     private var modelContext: ModelContext
@@ -21,9 +21,12 @@ class ExploreViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     // 初始化方法
-    init(modelContext: ModelContext?) {
-        self.openAIService = OpenAIService()
-        
+    init(
+        modelContext: ModelContext?,
+        openAIService: any OpenAIServiceProviding = OpenAIService()
+    ) {
+        self.openAIService = openAIService
+
         if let context = modelContext {
             self.modelContext = context
         } else {

@@ -297,6 +297,12 @@ class OpenAIService: ObservableObject {
     }
 }
 
+extension OpenAIService: OpenAIServiceProviding {
+    var isProcessingPublisher: AnyPublisher<Bool, Never> {
+        $isProcessing.eraseToAnyPublisher()
+    }
+}
+
 // OpenAI API响应模型
 struct OpenAIResponse: Decodable {
     let id: String
