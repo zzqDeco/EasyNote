@@ -12,12 +12,7 @@ final class EasyNoteUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        app = XCUIApplication()
-        app.launchArguments += [
-            "-easynote-ui-testing",
-            "-easynote-disable-animations"
-        ]
-        app.launchEnvironment["EASYNOTE_UI_TESTING"] = "1"
+        app = XCUIApplication.easyNoteUITestApp()
     }
 
     override func tearDownWithError() throws {
@@ -78,7 +73,7 @@ final class EasyNoteUITests: XCTestCase {
         if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
             // This measures how long it takes to launch your application.
             measure(metrics: [XCTApplicationLaunchMetric()]) {
-                XCUIApplication().launch()
+                XCUIApplication.easyNoteUITestApp().launch()
             }
         }
     }
@@ -109,5 +104,17 @@ final class EasyNoteUITests: XCTestCase {
         }
 
         return elements.contains(where: { $0.exists })
+    }
+}
+
+extension XCUIApplication {
+    static func easyNoteUITestApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-easynote-ui-testing",
+            "-easynote-disable-animations"
+        ]
+        app.launchEnvironment["EASYNOTE_UI_TESTING"] = "1"
+        return app
     }
 }

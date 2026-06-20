@@ -14,7 +14,7 @@
 ## Behavior Notes
 
 - The workflow runs only through `workflow_dispatch`.
-- It uses `macos-15`, lists the Xcode project, discovers an available iPhone simulator, and runs the two stable UI smoke tests.
+- It uses `macos-15`, lists the Xcode project, discovers the newest available iPhone simulator compatible with the app deployment target, and runs the two stable UI smoke tests.
 - UI-test process isolation is provided by `EasyNoteUITests` launch arguments and `EasyNoteApp` test-mode handling.
 
 ## Tests

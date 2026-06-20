@@ -46,20 +46,43 @@ jobs:
               )
           ).get("devices", {})
 
-          selected = None
-          for runtime in sorted(devices):
-              for device in devices[runtime]:
+          deployment_target = (18, 2)
+
+          def normalized(version):
+              return tuple(version) + (0,) * (3 - len(version))
+
+          def parse_ios_runtime_version(identifier):
+              marker = "iOS-"
+              if marker not in identifier:
+                  return None
+              raw_version = identifier.split(marker, 1)[1]
+              try:
+                  return tuple(int(part) for part in raw_version.split("-"))
+              except ValueError:
+                  return None
+
+          candidates = []
+          for runtime, runtime_devices in devices.items():
+              version = parse_ios_runtime_version(runtime)
+              if version is None:
+                  continue
+              if normalized(version) < normalized(deployment_target):
+                  continue
+              for device in runtime_devices:
                   if device.get("isAvailable", True) and device.get("name", "").startswith("iPhone"):
-                      selected = device
-                      break
-              if selected:
-                  break
+                      candidates.append((normalized(version), runtime, device))
+
+          candidates.sort(key=lambda item: item[0], reverse=True)
+          selected_runtime = None
+          selected = None
+          if candidates:
+              _, selected_runtime, selected = candidates[0]
 
           if not selected:
-              print("No available iPhone simulator found", file=sys.stderr)
+              print("No deployment-compatible iPhone simulator found", file=sys.stderr)
               sys.exit(1)
 
-          print(f"Selected simulator: {selected['name']} ({selected['udid']})")
+          print(f"Selected simulator: {selected['name']} ({selected['udid']}) from {selected_runtime}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
               env_file.write(f"SIMULATOR_UDID={selected['udid']}\n")
           PY

@@ -20,9 +20,9 @@ Non-goals:
 
 ## Implementation
 
-- `EasyNoteUITests` launches the app with `-easynote-ui-testing` and `-easynote-disable-animations`.
+- `EasyNoteUITests` launches the app through a shared `XCUIApplication.easyNoteUITestApp()` helper with `-easynote-ui-testing` and `-easynote-disable-animations`, including launch performance and screenshot launch coverage.
 - `EasyNoteApp` uses an in-memory SwiftData configuration in UI-test mode and clears only UI-test local defaults.
-- `.github/workflows/ui-smoke.yml` is `workflow_dispatch` only and runs `testLaunches` plus `testPrimaryTabNavigationSmoke`.
+- `.github/workflows/ui-smoke.yml` is `workflow_dispatch` only, selects the newest available deployment-compatible iPhone simulator, and runs `testLaunches` plus `testPrimaryTabNavigationSmoke`.
 - The existing `CI` workflow remains unchanged as the required unit-test gate.
 
 ## Test Plan
