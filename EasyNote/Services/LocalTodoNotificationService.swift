@@ -120,17 +120,17 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
 
                 let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
                 let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-                self.notificationCenter.add(request) { [weak self] _ in
-                    self?.notificationQueue.async {
-                        guard let self else { return }
+                let addCompletion = DispatchSemaphore(value: 0)
+                self.notificationCenter.add(request) { _ in
+                    addCompletion.signal()
+                }
+                addCompletion.wait()
 
-                        guard self.isCurrentScheduleVersion(scheduleVersion, for: todoID),
-                              self.defaults.bool(forKey: Self.enabledDefaultsKey),
-                              deadline > Date() else {
-                            self.removeNotificationRequests(forTodoID: todoID)
-                            return
-                        }
-                    }
+                guard self.isCurrentScheduleVersion(scheduleVersion, for: todoID),
+                      self.defaults.bool(forKey: Self.enabledDefaultsKey),
+                      deadline > Date() else {
+                    self.removeNotificationRequests(forTodoID: todoID)
+                    return
                 }
             }
         }
