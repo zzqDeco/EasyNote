@@ -102,7 +102,7 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
                     return
                 }
 
-                self.notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
+                self.removeNotificationRequests(forTodoID: todoID)
 
                 let content = UNMutableNotificationContent()
                 content.title = title.isEmpty ? "待办提醒" : title
