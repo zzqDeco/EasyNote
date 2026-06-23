@@ -10,15 +10,20 @@ class TodoViewModel: ObservableObject {
     
     // 模型上下文
     private var modelContext: ModelContext
+    private let notificationScheduler: any TodoNotificationSchedulingProviding
     private var cancellables = Set<AnyCancellable>()
     
     // 初始化方法
-    init(modelContext: ModelContext?) {
+    init(
+        modelContext: ModelContext?,
+        notificationScheduler: any TodoNotificationSchedulingProviding = LocalTodoNotificationService.shared
+    ) {
         if let context = modelContext {
             self.modelContext = context
         } else {
             self.modelContext = Self.makeFallbackContext()
         }
+        self.notificationScheduler = notificationScheduler
         
         // 加载待办列表
         loadTodoItems()
@@ -39,6 +44,7 @@ class TodoViewModel: ObservableObject {
         
         do {
             todoItems = try modelContext.fetch(descriptor)
+            notificationScheduler.reconcileNotifications(for: todoItems)
             print("从数据库加载了 \(todoItems.count) 个待办事项")
         } catch {
             print("加载待办事项失败: \(error)")
@@ -78,6 +84,8 @@ class TodoViewModel: ObservableObject {
                 }
             }
 
+            reconcileTodoNotifications()
+
             return true
         }
 
@@ -92,7 +100,12 @@ class TodoViewModel: ObservableObject {
             todoItems[i].isCompleted = false
         }
         // 保存更改到数据库
-        return saveContext()
+        guard saveContext() else {
+            return false
+        }
+
+        reconcileTodoNotifications()
+        return true
     }
     
     /// 删除指定ID的待办事项
@@ -110,6 +123,8 @@ class TodoViewModel: ObservableObject {
                 _ = withAnimation {
                     todoItems.remove(at: index)
                 }
+                notificationScheduler.cancelNotification(forTodoID: id)
+                reconcileTodoNotifications()
                 completion?()
                 return true
             }
@@ -147,6 +162,8 @@ class TodoViewModel: ObservableObject {
             todoItems.append(todo)
         }
 
+        reconcileTodoNotifications()
+
         return true
     }
     
@@ -181,6 +198,8 @@ class TodoViewModel: ObservableObject {
                 return false
             }
 
+            reconcileTodoNotifications()
+
             return true
         }
 
@@ -211,6 +230,10 @@ class TodoViewModel: ObservableObject {
             print("保存待办事项失败: \(error)")
             return false
         }
+    }
+
+    private func reconcileTodoNotifications() {
+        notificationScheduler.reconcileNotifications(for: todoItems)
     }
     
     private static func makeFallbackContext() -> ModelContext {

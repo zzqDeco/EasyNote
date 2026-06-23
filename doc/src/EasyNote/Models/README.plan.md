@@ -19,6 +19,7 @@
 - `TodoItem` owns recurrence through `RecurringInterval.rawValue` stored as `String`.
 - `TodoRecurrencePlanner` owns pure next-todo creation rules for completed recurring todos.
 - `TodoFilter` owns pure todo category projection for the focused todo view.
+- `TodoNotificationPlanner` derives local reminder eligibility and stable notification identifiers from existing `TodoItem` fields without changing SwiftData schema.
 - `ChatSession` owns session messages and generates short titles from the latest user message.
 - `SessionMessage.relatedEntryIds` stores diary UUID strings instead of SwiftData relationships.
 - `TabSelectionManager` is transient UI coordination and not a persisted domain object.

@@ -139,6 +139,145 @@ struct EasyNoteTests {
         #expect(TodoFilter.recurring.apply(to: [nextTodo], calendar: calendar, now: now).map(\.title) == ["循环任务"])
         #expect(TodoFilter.completed.apply(to: [nextTodo], calendar: calendar, now: now).isEmpty)
     }
+
+    @Test func todoNotificationPlannerSchedulesFutureIncompleteTodo() async throws {
+        let calendar = Calendar.current
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 13)))
+        let todo = makeTodo(title: "提醒我", deadline: deadline)
+
+        #expect(TodoNotificationPlanner.shouldScheduleNotification(for: todo, now: now))
+        #expect(TodoNotificationPlanner.notificationIdentifier(for: todo.id) == "easynote.todo.\(todo.id.uuidString)")
+    }
+
+    @Test func todoNotificationPlannerSkipsIneligibleTodos() async throws {
+        let calendar = Calendar.current
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let past = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 11)))
+        let future = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 13)))
+
+        #expect(!TodoNotificationPlanner.shouldScheduleNotification(for: makeTodo(title: "无截止时间"), now: now))
+        #expect(!TodoNotificationPlanner.shouldScheduleNotification(for: makeTodo(title: "已完成", isCompleted: true, deadline: future), now: now))
+        #expect(!TodoNotificationPlanner.shouldScheduleNotification(for: makeTodo(title: "已过期", deadline: past), now: now))
+    }
+
+    @Test func todoNotificationPlannerRetainsNearestPendingSlots() async throws {
+        let calendar = Calendar.current
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let futureTodos = try (0..<70).reversed().map { offset in
+            let deadline = try #require(calendar.date(byAdding: .minute, value: offset + 1, to: now))
+            return makeTodo(title: "提醒 \(offset)", deadline: deadline)
+        }
+        let ineligibleTodos = [
+            makeTodo(title: "无截止时间"),
+            makeTodo(title: "已完成", isCompleted: true, deadline: try #require(calendar.date(byAdding: .minute, value: 1, to: now))),
+            makeTodo(title: "已过期", deadline: try #require(calendar.date(byAdding: .minute, value: -1, to: now)))
+        ]
+
+        let retained = TodoNotificationPlanner.retainedNotificationTodos(
+            from: futureTodos + ineligibleTodos,
+            now: now
+        )
+
+        #expect(retained.count == TodoNotificationPlanner.maxPendingNotificationRequests)
+        #expect(Array(retained.map(\.title).prefix(3)) == ["提醒 0", "提醒 1", "提醒 2"])
+        #expect(Array(retained.map(\.title).suffix(3)) == ["提醒 61", "提醒 62", "提醒 63"])
+        #expect(!retained.map(\.title).contains("提醒 64"))
+        #expect(!retained.map(\.title).contains("无截止时间"))
+        #expect(!retained.map(\.title).contains("已完成"))
+        #expect(!retained.map(\.title).contains("已过期"))
+    }
+
+    @Test func todoViewModelSynchronizesNotificationAfterAddingTodo() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        scheduler.reset()
+
+        let deadline = Date().addingTimeInterval(3600)
+
+        #expect(viewModel.addTodoItem(title: "带提醒的待办", deadline: deadline))
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
+        #expect(scheduler.canceledTodoIDs.isEmpty)
+    }
+
+    @Test func todoViewModelSynchronizesNotificationAfterEditingTodo() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let todo = makeTodo(title: "原待办")
+
+        #expect(viewModel.addTodoItem(todo))
+        scheduler.reset()
+
+        let deadline = Date().addingTimeInterval(7200)
+
+        #expect(viewModel.updateTodoItem(
+            id: todo.id,
+            title: "改后的待办",
+            priority: .high,
+            deadline: deadline,
+            notes: "需要提醒"
+        ))
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
+        #expect(viewModel.todoItems.first?.title == "改后的待办")
+    }
+
+    @Test func todoViewModelReconcilesNotificationsAfterCompletingTodo() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let todo = makeTodo(title: "完成后取消", deadline: Date().addingTimeInterval(3600))
+
+        #expect(viewModel.addTodoItem(todo))
+        scheduler.reset()
+
+        #expect(viewModel.toggleTodoCompletion(for: todo.id))
+        #expect(scheduler.canceledTodoIDs.isEmpty)
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
+    }
+
+    @Test func todoViewModelReconcilesOriginalAndNextRecurringTodo() async throws {
+        let calendar = Calendar.current
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 1, to: Date()))
+        let recurringTodo = makeTodo(
+            title: "循环提醒",
+            deadline: deadline,
+            isRecurring: true,
+            recurringInterval: TodoItem.RecurringInterval.daily.rawValue
+        )
+
+        #expect(viewModel.addTodoItem(recurringTodo))
+        scheduler.reset()
+
+        #expect(viewModel.toggleTodoCompletion(for: recurringTodo.id))
+
+        let nextTodo = try #require(viewModel.todoItems.first { $0.id != recurringTodo.id })
+        #expect(scheduler.canceledTodoIDs.isEmpty)
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
+        #expect(nextTodo.id != recurringTodo.id)
+        #expect(nextTodo.title == recurringTodo.title)
+        #expect(nextTodo.deadline == TodoItem.RecurringInterval.daily.nextDate(from: deadline))
+    }
+
+    @Test func todoViewModelCancelsDeletedNotificationAndReconcilesRemainingTodos() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let deletedTodo = makeTodo(title: "删除", deadline: Date().addingTimeInterval(3600))
+        let retainedTodo = makeTodo(title: "保留", deadline: Date().addingTimeInterval(7200))
+
+        #expect(viewModel.addTodoItem(deletedTodo))
+        #expect(viewModel.addTodoItem(retainedTodo))
+        scheduler.reset()
+
+        #expect(viewModel.deleteTodoItem(withID: deletedTodo.id))
+        #expect(scheduler.canceledTodoIDs == [deletedTodo.id])
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
+    }
     
     @Test func chatSessionSummaryUsesLatestUserMessage() async throws {
         let session = ChatSession(title: "新会话")
@@ -1615,6 +1754,48 @@ struct EasyNoteTests {
 
     private final class CancellableBox {
         var cancellable: AnyCancellable?
+    }
+
+    private final class FakeTodoNotificationScheduler: TodoNotificationSchedulingProviding {
+        private let authorizationStatusSubject = CurrentValueSubject<TodoNotificationAuthorizationStatus, Never>(.authorized)
+        private(set) var synchronizedTodos: [TodoItem] = []
+        private(set) var reconciledTodoIDs: [[UUID]] = []
+        private(set) var canceledTodoIDs: [UUID] = []
+        private(set) var didCancelAll = false
+        var requestAuthorizationResult = true
+
+        var authorizationStatusPublisher: AnyPublisher<TodoNotificationAuthorizationStatus, Never> {
+            authorizationStatusSubject.eraseToAnyPublisher()
+        }
+
+        func refreshAuthorizationStatus() {}
+
+        func requestAuthorization(completion: @escaping (Bool) -> Void) {
+            completion(requestAuthorizationResult)
+        }
+
+        func synchronizeNotification(for todo: TodoItem) {
+            synchronizedTodos.append(todo)
+        }
+
+        func reconcileNotifications(for todos: [TodoItem]) {
+            reconciledTodoIDs.append(todos.map(\.id))
+        }
+
+        func cancelNotification(forTodoID id: UUID) {
+            canceledTodoIDs.append(id)
+        }
+
+        func cancelAllTodoNotifications() {
+            didCancelAll = true
+        }
+
+        func reset() {
+            synchronizedTodos = []
+            reconciledTodoIDs = []
+            canceledTodoIDs = []
+            didCancelAll = false
+        }
     }
 
     private final class FakeOpenAIService: OpenAIServiceProviding {

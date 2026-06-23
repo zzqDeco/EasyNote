@@ -64,6 +64,9 @@ Before treating a branch as a usable app build, manually verify:
 - create a recurring todo and complete it once
 - switch todo segments for today, overdue, upcoming, no-date, recurring, and completed groups
 - create a todo from a recommendation and confirm it appears in the expected todo group
+- enable todo reminders in Settings, grant notification permission, and confirm a future-deadline todo schedules without changing todo data
+- complete or delete a reminded todo and confirm its pending reminder is canceled
+- disable todo reminders in Settings and confirm pending EasyNote todo reminders are canceled without deleting todos
 - configure and clear the DeepSeek API key in Settings
 - open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible
