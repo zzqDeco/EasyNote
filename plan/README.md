@@ -15,6 +15,7 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
+| [todo-local-notifications.plan.md](todo-local-notifications.plan.md) | Add local todo reminder notifications without changing SwiftData schema | Active |
 
 ## Delivered Or Recent References
 

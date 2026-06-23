@@ -51,3 +51,14 @@ extension BackupServiceProviding {
         try exportBackup(from: modelContext, exportedAt: Date())
     }
 }
+
+protocol TodoNotificationSchedulingProviding: AnyObject {
+    var authorizationStatusPublisher: AnyPublisher<TodoNotificationAuthorizationStatus, Never> { get }
+
+    func refreshAuthorizationStatus()
+    func requestAuthorization(completion: @escaping (Bool) -> Void)
+    func synchronizeNotification(for todo: TodoItem)
+    func reconcileNotifications(for todos: [TodoItem])
+    func cancelNotification(forTodoID id: UUID)
+    func cancelAllTodoNotifications()
+}

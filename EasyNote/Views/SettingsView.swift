@@ -30,6 +30,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject var themeManager: ThemeManager
     @AppStorage("openai_api_key") private var apiKey = ""
+    @AppStorage(LocalTodoNotificationService.enabledDefaultsKey) private var todoNotificationsEnabled = false
     @State private var backupDocument = EasyNoteBackupDocument()
     @State private var isExportingBackup = false
     @State private var isImportingBackup = false
@@ -38,17 +39,23 @@ struct SettingsView: View {
     @State private var showImportConfirmation = false
     @State private var backupMessage: String?
     @State private var backupErrorMessage: String?
+    @State private var todoNotificationAuthorizationStatus: TodoNotificationAuthorizationStatus = .notDetermined
+    @State private var todoNotificationMessage: String?
+    @State private var todoNotificationErrorMessage: String?
 
     private let backupService: any BackupServiceProviding
+    private let todoNotificationScheduler: any TodoNotificationSchedulingProviding
     private let cloudKitPreflightReport: CloudKitPreflightReport
 
     init(
         themeManager: ThemeManager,
         backupService: any BackupServiceProviding = BackupService(),
+        todoNotificationScheduler: any TodoNotificationSchedulingProviding = LocalTodoNotificationService.shared,
         cloudKitPreflightReport: CloudKitPreflightReport = CloudKitSyncPreflight.currentProjectReport()
     ) {
         self._themeManager = ObservedObject(wrappedValue: themeManager)
         self.backupService = backupService
+        self.todoNotificationScheduler = todoNotificationScheduler
         self.cloudKitPreflightReport = cloudKitPreflightReport
     }
     
@@ -100,6 +107,49 @@ struct SettingsView: View {
                     Text("AI")
                 } footer: {
                     Text("API密钥仅保存在本机UserDefaults中，仓库不包含默认密钥。")
+                }
+
+                Section {
+                    Toggle("待办提醒", isOn: Binding(
+                        get: { todoNotificationsEnabled },
+                        set: { setTodoNotificationsEnabled($0) }
+                    ))
+                    .accessibilityIdentifier("settings.todoNotificationsToggle")
+
+                    HStack {
+                        Label("通知权限", systemImage: todoNotificationStatusIcon)
+                            .foregroundColor(todoNotificationStatusColor)
+
+                        Spacer()
+
+                        Text(todoNotificationStatusText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Button {
+                        requestTodoNotificationAuthorization()
+                    } label: {
+                        Label("请求通知权限", systemImage: "bell.badge")
+                    }
+                    .disabled(todoNotificationAuthorizationStatus.allowsScheduling)
+                    .accessibilityIdentifier("settings.requestTodoNotificationPermissionButton")
+
+                    if let todoNotificationMessage {
+                        Text(todoNotificationMessage)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    if let todoNotificationErrorMessage {
+                        Text(todoNotificationErrorMessage)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                } header: {
+                    Text("待办提醒")
+                } footer: {
+                    Text("开启后，仅为未完成且有未来截止时间的待办安排本地通知。关闭会取消本应用创建的待办提醒，不会修改待办数据。")
                 }
 
                 Section {
@@ -193,6 +243,12 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
+            .onAppear {
+                todoNotificationScheduler.refreshAuthorizationStatus()
+            }
+            .onReceive(todoNotificationScheduler.authorizationStatusPublisher) { status in
+                todoNotificationAuthorizationStatus = status
+            }
             .fileExporter(
                 isPresented: $isExportingBackup,
                 document: backupDocument,
@@ -297,6 +353,98 @@ struct SettingsView: View {
 
     private func importPreviewText(_ summary: BackupSummary) -> String {
         "日记 \(summary.diaryCount) 篇，待办 \(summary.todoCount) 个，会话 \(summary.chatSessionCount) 个，消息 \(summary.messageCount) 条，录音 \(summary.audioAssetCount) 个"
+    }
+
+    private func setTodoNotificationsEnabled(_ enabled: Bool) {
+        todoNotificationMessage = nil
+        todoNotificationErrorMessage = nil
+
+        guard enabled else {
+            todoNotificationsEnabled = false
+            todoNotificationScheduler.cancelAllTodoNotifications()
+            todoNotificationMessage = "已关闭待办提醒"
+            return
+        }
+
+        todoNotificationsEnabled = true
+        todoNotificationScheduler.requestAuthorization { granted in
+            guard granted else {
+                todoNotificationsEnabled = false
+                todoNotificationScheduler.cancelAllTodoNotifications()
+                todoNotificationErrorMessage = "未授予通知权限，待办提醒未开启"
+                return
+            }
+
+            reconcileTodoNotifications()
+        }
+    }
+
+    private func requestTodoNotificationAuthorization() {
+        todoNotificationMessage = nil
+        todoNotificationErrorMessage = nil
+
+        todoNotificationScheduler.requestAuthorization { granted in
+            if granted {
+                todoNotificationMessage = "通知权限已开启"
+                if todoNotificationsEnabled {
+                    reconcileTodoNotifications()
+                }
+            } else {
+                todoNotificationErrorMessage = "未授予通知权限，请在系统设置中允许通知"
+            }
+        }
+    }
+
+    private func reconcileTodoNotifications() {
+        do {
+            let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
+            let todos = try modelContext.fetch(descriptor)
+            let eligibleCount = todos.filter { TodoNotificationPlanner.shouldScheduleNotification(for: $0) }.count
+            todoNotificationScheduler.reconcileNotifications(for: todos)
+            todoNotificationMessage = "已同步 \(eligibleCount) 个待办提醒"
+            todoNotificationErrorMessage = nil
+        } catch {
+            todoNotificationErrorMessage = "同步待办提醒失败: \(error.localizedDescription)"
+        }
+    }
+
+    private var todoNotificationStatusText: String {
+        switch todoNotificationAuthorizationStatus {
+        case .notDetermined:
+            return "未请求"
+        case .denied:
+            return "已拒绝"
+        case .authorized:
+            return "已允许"
+        case .provisional:
+            return "临时允许"
+        case .ephemeral:
+            return "本次允许"
+        case .unknown:
+            return "未知"
+        }
+    }
+
+    private var todoNotificationStatusIcon: String {
+        switch todoNotificationAuthorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return "bell.badge.fill"
+        case .denied:
+            return "bell.slash.fill"
+        case .notDetermined, .unknown:
+            return "bell"
+        }
+    }
+
+    private var todoNotificationStatusColor: Color {
+        switch todoNotificationAuthorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return .green
+        case .denied:
+            return .red
+        case .notDetermined, .unknown:
+            return .secondary
+        }
     }
 
     private var cloudKitPreflightStatusText: String {

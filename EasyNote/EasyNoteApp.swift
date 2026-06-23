@@ -113,7 +113,8 @@ private enum EasyNoteLaunchOptions {
             "cached_recommendations",
             "recommendations_last_updated",
             "darkModeEnabled",
-            "accentColorName"
+            "accentColorName",
+            LocalTodoNotificationService.enabledDefaultsKey
         ].forEach { defaults.removeObject(forKey: $0) }
     }
 }

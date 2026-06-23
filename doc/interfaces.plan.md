@@ -7,6 +7,7 @@ This document records the current contracts that cross module boundaries in Easy
 - `openai_api_key`: stored in `UserDefaults` through the Settings screen and read by `OpenAIService`.
 - `darkModeEnabled`: stored with `@AppStorage` in `ThemeManager`.
 - `accentColorName`: stored with `@AppStorage` in `ThemeManager`.
+- `todo_notifications_enabled`: stored with `@AppStorage` in Settings and read by `LocalTodoNotificationService`.
 
 The repository must not contain default API keys. Empty `openai_api_key` disables AI calls with a user-visible error.
 
@@ -23,6 +24,19 @@ The repository must not contain default API keys. Empty `openai_api_key` disable
 Model changes require a migration or compatibility note before implementation.
 
 Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
+
+## Todo Notification Boundary
+
+Todo reminder notifications are derived from existing todo fields and do not add SwiftData schema:
+
+- global enablement is controlled by `todo_notifications_enabled`
+- a todo is eligible only when it is incomplete and has a future `deadline`
+- notification identifiers use `TodoItem.id` through the stable `easynote.todo.<uuid>` prefix
+- completing or deleting a todo cancels its notification
+- editing, creating, restoring, or uncompleting a todo synchronizes the notification to the current todo state
+- completing a recurring todo cancels the original notification and synchronizes the generated next todo
+
+`TodoNotificationPlanner` owns pure eligibility and identifier rules. `LocalTodoNotificationService` owns `UNUserNotificationCenter`, authorization status publishing, permission requests, pending notification writes, and cancellation. `TodoViewModel` consumes this behavior through `TodoNotificationSchedulingProviding` and should only schedule or cancel after SwiftData saves succeed. UI tests must not depend on live notification permission prompts; focused unit tests should use fake schedulers.
 
 ## Local Backup Boundary
 

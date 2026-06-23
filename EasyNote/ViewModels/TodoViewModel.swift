@@ -10,15 +10,20 @@ class TodoViewModel: ObservableObject {
     
     // 模型上下文
     private var modelContext: ModelContext
+    private let notificationScheduler: any TodoNotificationSchedulingProviding
     private var cancellables = Set<AnyCancellable>()
     
     // 初始化方法
-    init(modelContext: ModelContext?) {
+    init(
+        modelContext: ModelContext?,
+        notificationScheduler: any TodoNotificationSchedulingProviding = LocalTodoNotificationService.shared
+    ) {
         if let context = modelContext {
             self.modelContext = context
         } else {
             self.modelContext = Self.makeFallbackContext()
         }
+        self.notificationScheduler = notificationScheduler
         
         // 加载待办列表
         loadTodoItems()
@@ -39,6 +44,7 @@ class TodoViewModel: ObservableObject {
         
         do {
             todoItems = try modelContext.fetch(descriptor)
+            notificationScheduler.reconcileNotifications(for: todoItems)
             print("从数据库加载了 \(todoItems.count) 个待办事项")
         } catch {
             print("加载待办事项失败: \(error)")
@@ -78,6 +84,16 @@ class TodoViewModel: ObservableObject {
                 }
             }
 
+            if item.isCompleted {
+                notificationScheduler.cancelNotification(forTodoID: item.id)
+            } else {
+                notificationScheduler.synchronizeNotification(for: item)
+            }
+
+            if let newTodo {
+                notificationScheduler.synchronizeNotification(for: newTodo)
+            }
+
             return true
         }
 
@@ -110,6 +126,7 @@ class TodoViewModel: ObservableObject {
                 _ = withAnimation {
                     todoItems.remove(at: index)
                 }
+                notificationScheduler.cancelNotification(forTodoID: id)
                 completion?()
                 return true
             }
@@ -147,6 +164,8 @@ class TodoViewModel: ObservableObject {
             todoItems.append(todo)
         }
 
+        notificationScheduler.synchronizeNotification(for: todo)
+
         return true
     }
     
@@ -180,6 +199,8 @@ class TodoViewModel: ObservableObject {
                 todoItems[index].recurringInterval = oldRecurringInterval
                 return false
             }
+
+            notificationScheduler.synchronizeNotification(for: todoItems[index])
 
             return true
         }
