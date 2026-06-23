@@ -84,15 +84,7 @@ class TodoViewModel: ObservableObject {
                 }
             }
 
-            if item.isCompleted {
-                notificationScheduler.cancelNotification(forTodoID: item.id)
-            } else {
-                notificationScheduler.synchronizeNotification(for: item)
-            }
-
-            if let newTodo {
-                notificationScheduler.synchronizeNotification(for: newTodo)
-            }
+            reconcileTodoNotifications()
 
             return true
         }
@@ -108,7 +100,12 @@ class TodoViewModel: ObservableObject {
             todoItems[i].isCompleted = false
         }
         // 保存更改到数据库
-        return saveContext()
+        guard saveContext() else {
+            return false
+        }
+
+        reconcileTodoNotifications()
+        return true
     }
     
     /// 删除指定ID的待办事项
@@ -127,6 +124,7 @@ class TodoViewModel: ObservableObject {
                     todoItems.remove(at: index)
                 }
                 notificationScheduler.cancelNotification(forTodoID: id)
+                reconcileTodoNotifications()
                 completion?()
                 return true
             }
@@ -164,7 +162,7 @@ class TodoViewModel: ObservableObject {
             todoItems.append(todo)
         }
 
-        notificationScheduler.synchronizeNotification(for: todo)
+        reconcileTodoNotifications()
 
         return true
     }
@@ -200,7 +198,7 @@ class TodoViewModel: ObservableObject {
                 return false
             }
 
-            notificationScheduler.synchronizeNotification(for: todoItems[index])
+            reconcileTodoNotifications()
 
             return true
         }
@@ -232,6 +230,10 @@ class TodoViewModel: ObservableObject {
             print("保存待办事项失败: \(error)")
             return false
         }
+    }
+
+    private func reconcileTodoNotifications() {
+        notificationScheduler.reconcileNotifications(for: todoItems)
     }
     
     private static func makeFallbackContext() -> ModelContext {

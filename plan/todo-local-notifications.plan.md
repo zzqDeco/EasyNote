@@ -29,7 +29,7 @@ Non-goals:
 - Reconcile at most 64 retained reminder slots, prioritizing nearest future deadlines so the app does not claim more pending local reminders than iOS reliably retains.
 - Add `TodoNotificationSchedulingProviding` to the existing service protocol boundary.
 - `LocalTodoNotificationService` owns `UNUserNotificationCenter`, authorization status publishing, request authorization, pending reminder writes, and todo reminder cancellation.
-- `TodoViewModel` synchronizes reminders only after SwiftData saves succeed. Failed saves must not schedule or cancel reminders for uncommitted state.
+- `TodoViewModel` reconciles reminders only after SwiftData saves succeed. Failed saves must not schedule or cancel reminders for uncommitted state.
 - `SettingsView` owns only user-facing controls: enable/disable, request permission, status text, and full todo reconciliation when notifications are enabled.
 
 ## Test Plan
@@ -39,9 +39,10 @@ Non-goals:
   - completed, no-deadline, and past-deadline todos are not eligible.
   - more than 64 eligible todos retain the nearest-deadline reminder slots.
   - adding a todo synchronizes its notification after a successful save.
-  - editing a todo synchronizes the same todo notification after a successful save.
-  - completing a todo cancels its notification.
-  - completing a recurring todo cancels the original notification and synchronizes the generated next todo.
+  - editing a todo reconciles reminder slots after a successful save.
+  - completing a todo reconciles reminder slots after a successful save.
+  - completing a recurring todo reconciles both the completed original and generated next todo.
+  - deleting a todo cancels the removed identifier and reconciles remaining reminders.
 - Local checks:
   - `git diff --check`
   - `xcodebuild -list -project EasyNote.xcodeproj`

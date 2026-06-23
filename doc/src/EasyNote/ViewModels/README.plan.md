@@ -32,7 +32,7 @@
 - `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
 - Todo filtering belongs to the pure `TodoFilter` helper, not to `ExploreViewModel`.
 - Todo recurrence planning belongs to `TodoRecurrencePlanner` and is invoked from `TodoViewModel`.
-- Todo reminder scheduling belongs to `TodoNotificationSchedulingProviding`; `TodoViewModel` synchronizes or cancels reminders only after SwiftData saves succeed.
+- Todo reminder scheduling belongs to `TodoNotificationSchedulingProviding`; `TodoViewModel` reconciles reminders only after SwiftData saves succeed, and deletion also cancels the removed todo identifier before reconciling the remaining list.
 
 ## Tests
 

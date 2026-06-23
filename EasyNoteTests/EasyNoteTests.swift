@@ -197,7 +197,7 @@ struct EasyNoteTests {
         let deadline = Date().addingTimeInterval(3600)
 
         #expect(viewModel.addTodoItem(title: "带提醒的待办", deadline: deadline))
-        #expect(scheduler.synchronizedTodos.map(\.title) == ["带提醒的待办"])
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
         #expect(scheduler.canceledTodoIDs.isEmpty)
     }
 
@@ -219,11 +219,11 @@ struct EasyNoteTests {
             deadline: deadline,
             notes: "需要提醒"
         ))
-        #expect(scheduler.synchronizedTodos.map(\.id) == [todo.id])
-        #expect(scheduler.synchronizedTodos.first?.title == "改后的待办")
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
+        #expect(viewModel.todoItems.first?.title == "改后的待办")
     }
 
-    @Test func todoViewModelCancelsNotificationAfterCompletingTodo() async throws {
+    @Test func todoViewModelReconcilesNotificationsAfterCompletingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
         let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
@@ -233,11 +233,11 @@ struct EasyNoteTests {
         scheduler.reset()
 
         #expect(viewModel.toggleTodoCompletion(for: todo.id))
-        #expect(scheduler.canceledTodoIDs == [todo.id])
-        #expect(scheduler.synchronizedTodos.isEmpty)
+        #expect(scheduler.canceledTodoIDs.isEmpty)
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
 
-    @Test func todoViewModelCancelsOriginalAndSynchronizesNextRecurringTodo() async throws {
+    @Test func todoViewModelReconcilesOriginalAndNextRecurringTodo() async throws {
         let calendar = Calendar.current
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -255,12 +255,28 @@ struct EasyNoteTests {
 
         #expect(viewModel.toggleTodoCompletion(for: recurringTodo.id))
 
-        let nextTodo = try #require(scheduler.synchronizedTodos.first)
-        #expect(scheduler.canceledTodoIDs == [recurringTodo.id])
-        #expect(scheduler.synchronizedTodos.count == 1)
+        let nextTodo = try #require(viewModel.todoItems.first { $0.id != recurringTodo.id })
+        #expect(scheduler.canceledTodoIDs.isEmpty)
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
         #expect(nextTodo.id != recurringTodo.id)
         #expect(nextTodo.title == recurringTodo.title)
         #expect(nextTodo.deadline == TodoItem.RecurringInterval.daily.nextDate(from: deadline))
+    }
+
+    @Test func todoViewModelCancelsDeletedNotificationAndReconcilesRemainingTodos() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let deletedTodo = makeTodo(title: "删除", deadline: Date().addingTimeInterval(3600))
+        let retainedTodo = makeTodo(title: "保留", deadline: Date().addingTimeInterval(7200))
+
+        #expect(viewModel.addTodoItem(deletedTodo))
+        #expect(viewModel.addTodoItem(retainedTodo))
+        scheduler.reset()
+
+        #expect(viewModel.deleteTodoItem(withID: deletedTodo.id))
+        #expect(scheduler.canceledTodoIDs == [deletedTodo.id])
+        #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
     
     @Test func chatSessionSummaryUsesLatestUserMessage() async throws {

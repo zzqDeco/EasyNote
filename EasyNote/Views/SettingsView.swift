@@ -28,6 +28,7 @@ struct EasyNoteBackupDocument: FileDocument {
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var themeManager: ThemeManager
     @AppStorage("openai_api_key") private var apiKey = ""
     @AppStorage(LocalTodoNotificationService.enabledDefaultsKey) private var todoNotificationsEnabled = false
@@ -254,6 +255,11 @@ struct SettingsView: View {
                    !previousStatus.allowsScheduling,
                    status.allowsScheduling {
                     reconcileTodoNotifications()
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    todoNotificationScheduler.refreshAuthorizationStatus()
                 }
             }
             .fileExporter(
