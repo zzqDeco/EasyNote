@@ -137,7 +137,14 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
     }
 
     func reconcileNotifications(for todos: [TodoItem]) {
-        todos.forEach { synchronizeNotification(for: $0) }
+        let retainedTodos = TodoNotificationPlanner.retainedNotificationTodos(from: todos)
+        let retainedIDs = Set(retainedTodos.map(\.id))
+
+        todos
+            .filter { !retainedIDs.contains($0.id) }
+            .forEach { cancelNotification(forTodoID: $0.id) }
+
+        retainedTodos.forEach { synchronizeNotification(for: $0) }
     }
 
     func cancelNotification(forTodoID id: UUID) {

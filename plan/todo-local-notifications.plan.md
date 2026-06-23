@@ -26,6 +26,7 @@ Non-goals:
   - incomplete todo
   - non-nil future deadline
 - Use stable notification identifiers derived from `TodoItem.id`, so edits replace the same pending reminder and deletes/completion can cancel it.
+- Reconcile at most 64 retained reminder slots, prioritizing nearest future deadlines so the app does not claim more pending local reminders than iOS reliably retains.
 - Add `TodoNotificationSchedulingProviding` to the existing service protocol boundary.
 - `LocalTodoNotificationService` owns `UNUserNotificationCenter`, authorization status publishing, request authorization, pending reminder writes, and todo reminder cancellation.
 - `TodoViewModel` synchronizes reminders only after SwiftData saves succeed. Failed saves must not schedule or cancel reminders for uncommitted state.
@@ -36,6 +37,7 @@ Non-goals:
 - Unit tests:
   - eligible future incomplete todo produces a stable notification identifier.
   - completed, no-deadline, and past-deadline todos are not eligible.
+  - more than 64 eligible todos retain the nearest-deadline reminder slots.
   - adding a todo synchronizes its notification after a successful save.
   - editing a todo synchronizes the same todo notification after a successful save.
   - completing a todo cancels its notification.

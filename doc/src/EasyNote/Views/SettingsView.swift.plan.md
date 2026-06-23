@@ -27,6 +27,7 @@
 - Successful import posts `easyNoteBackupDidImport` so active ViewModels reload SwiftData-backed lists.
 - Todo reminder operations are consumed through `TodoNotificationSchedulingProviding`; enabling reminders requests permission and reconciles current todos, while disabling reminders cancels EasyNote todo notifications without changing todo data.
 - If system notification permission becomes schedulable while the app-level reminder toggle is still enabled, Settings reconciles current todos so reminders are recreated without waiting for a todo edit.
+- Reconciliation messages report retained reminder slots, not just the raw eligible todo count.
 - The CloudKit preflight section renders a supplied `CloudKitPreflightReport`; the production default is `CloudKitSyncPreflight.currentProjectReport()`.
 
 ## Tests

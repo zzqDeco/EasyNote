@@ -35,8 +35,9 @@ Todo reminder notifications are derived from existing todo fields and do not add
 - completing or deleting a todo cancels its notification
 - editing, creating, restoring, or uncompleting a todo synchronizes the notification to the current todo state
 - completing a recurring todo cancels the original notification and synchronizes the generated next todo
+- reconciliation retains at most 64 pending todo reminders, prioritizing the nearest future deadlines and canceling non-retained reminder identifiers
 
-`TodoNotificationPlanner` owns pure eligibility and identifier rules. `LocalTodoNotificationService` owns `UNUserNotificationCenter`, authorization status publishing, permission requests, pending notification writes, and cancellation. `TodoViewModel` consumes this behavior through `TodoNotificationSchedulingProviding` and should only schedule or cancel after SwiftData saves succeed. UI tests must not depend on live notification permission prompts; focused unit tests should use fake schedulers.
+`TodoNotificationPlanner` owns pure eligibility, identifier, and retained-slot selection rules. `LocalTodoNotificationService` owns `UNUserNotificationCenter`, authorization status publishing, permission requests, pending notification writes, and cancellation. `TodoViewModel` consumes this behavior through `TodoNotificationSchedulingProviding` and should only schedule or cancel after SwiftData saves succeed. UI tests must not depend on live notification permission prompts; focused unit tests should use fake schedulers.
 
 ## Local Backup Boundary
 

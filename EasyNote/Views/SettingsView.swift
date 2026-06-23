@@ -406,9 +406,15 @@ struct SettingsView: View {
         do {
             let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
             let todos = try modelContext.fetch(descriptor)
-            let eligibleCount = todos.filter { TodoNotificationPlanner.shouldScheduleNotification(for: $0) }.count
+            let now = Date()
+            let eligibleCount = todos.filter { TodoNotificationPlanner.shouldScheduleNotification(for: $0, now: now) }.count
+            let retainedCount = TodoNotificationPlanner.retainedNotificationTodos(from: todos, now: now).count
             todoNotificationScheduler.reconcileNotifications(for: todos)
-            todoNotificationMessage = "已同步 \(eligibleCount) 个待办提醒"
+            if eligibleCount > retainedCount {
+                todoNotificationMessage = "已同步最近 \(retainedCount) 个待办提醒（共 \(eligibleCount) 个符合条件）"
+            } else {
+                todoNotificationMessage = "已同步 \(retainedCount) 个待办提醒"
+            }
             todoNotificationErrorMessage = nil
         } catch {
             todoNotificationErrorMessage = "同步待办提醒失败: \(error.localizedDescription)"

@@ -22,6 +22,7 @@
 - When authorization is unavailable, the service removes the stable identifier instead of leaving stale pending requests behind.
 - The service installs itself as `UNUserNotificationCenterDelegate` and opts EasyNote todo reminders into foreground banner/sound presentation.
 - Disabling reminders or making a todo ineligible cancels the stable todo notification identifier.
+- Reconciliation schedules only the retained reminder slots selected by `TodoNotificationPlanner` and cancels non-retained todo reminder identifiers.
 - Bulk cancellation is limited to identifiers with the EasyNote todo reminder prefix and is guarded by a cancellation generation so stale enumeration callbacks cannot remove newly rescheduled reminders.
 
 ## Tests

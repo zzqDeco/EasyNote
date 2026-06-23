@@ -161,6 +161,33 @@ struct EasyNoteTests {
         #expect(!TodoNotificationPlanner.shouldScheduleNotification(for: makeTodo(title: "已过期", deadline: past), now: now))
     }
 
+    @Test func todoNotificationPlannerRetainsNearestPendingSlots() async throws {
+        let calendar = Calendar.current
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let futureTodos = try (0..<70).reversed().map { offset in
+            let deadline = try #require(calendar.date(byAdding: .minute, value: offset + 1, to: now))
+            return makeTodo(title: "提醒 \(offset)", deadline: deadline)
+        }
+        let ineligibleTodos = [
+            makeTodo(title: "无截止时间"),
+            makeTodo(title: "已完成", isCompleted: true, deadline: try #require(calendar.date(byAdding: .minute, value: 1, to: now))),
+            makeTodo(title: "已过期", deadline: try #require(calendar.date(byAdding: .minute, value: -1, to: now)))
+        ]
+
+        let retained = TodoNotificationPlanner.retainedNotificationTodos(
+            from: futureTodos + ineligibleTodos,
+            now: now
+        )
+
+        #expect(retained.count == TodoNotificationPlanner.maxPendingNotificationRequests)
+        #expect(Array(retained.map(\.title).prefix(3)) == ["提醒 0", "提醒 1", "提醒 2"])
+        #expect(Array(retained.map(\.title).suffix(3)) == ["提醒 61", "提醒 62", "提醒 63"])
+        #expect(!retained.map(\.title).contains("提醒 64"))
+        #expect(!retained.map(\.title).contains("无截止时间"))
+        #expect(!retained.map(\.title).contains("已完成"))
+        #expect(!retained.map(\.title).contains("已过期"))
+    }
+
     @Test func todoViewModelSynchronizesNotificationAfterAddingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
