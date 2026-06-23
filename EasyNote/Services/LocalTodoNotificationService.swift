@@ -30,6 +30,7 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
     private let notificationQueue = DispatchQueue(label: "EasyNote.TodoNotifications")
     private let scheduleVersionLock = NSLock()
     private var scheduleVersions: [UUID: Int] = [:]
+    private var bulkCancellationVersion = 0
 
     var authorizationStatusPublisher: AnyPublisher<TodoNotificationAuthorizationStatus, Never> {
         authorizationStatusSubject.eraseToAnyPublisher()
@@ -75,6 +76,7 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         let todoID = todo.id
         let title = todo.title
         let notes = todo.notes
+        invalidateBulkCancellation()
         let scheduleVersion = nextScheduleVersion(for: todoID)
 
         notificationCenter.getNotificationSettings { [weak self] settings in
@@ -118,7 +120,18 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
 
                 let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
                 let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-                self.notificationCenter.add(request)
+                self.notificationCenter.add(request) { [weak self] _ in
+                    self?.notificationQueue.async {
+                        guard let self else { return }
+
+                        guard self.isCurrentScheduleVersion(scheduleVersion, for: todoID),
+                              self.defaults.bool(forKey: Self.enabledDefaultsKey),
+                              deadline > Date() else {
+                            self.removeNotificationRequests(forTodoID: todoID)
+                            return
+                        }
+                    }
+                }
             }
         }
     }
@@ -136,8 +149,9 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
 
     func cancelAllTodoNotifications() {
         invalidateAllSchedules()
+        let cancellationVersion = nextBulkCancellationVersion()
         notificationQueue.async { [weak self] in
-            self?.removeAllTodoNotificationRequests()
+            self?.removeAllTodoNotificationRequests(cancellationVersion: cancellationVersion)
         }
     }
 
@@ -175,6 +189,28 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         }
     }
 
+    private func nextBulkCancellationVersion() -> Int {
+        scheduleVersionLock.lock()
+        defer { scheduleVersionLock.unlock() }
+
+        bulkCancellationVersion += 1
+        return bulkCancellationVersion
+    }
+
+    private func invalidateBulkCancellation() {
+        scheduleVersionLock.lock()
+        defer { scheduleVersionLock.unlock() }
+
+        bulkCancellationVersion += 1
+    }
+
+    private func isCurrentBulkCancellationVersion(_ version: Int) -> Bool {
+        scheduleVersionLock.lock()
+        defer { scheduleVersionLock.unlock() }
+
+        return bulkCancellationVersion == version
+    }
+
     private func isCurrentScheduleVersion(_ version: Int, for id: UUID) -> Bool {
         scheduleVersionLock.lock()
         defer { scheduleVersionLock.unlock() }
@@ -188,13 +224,20 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         notificationCenter.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
-    private func removeAllTodoNotificationRequests() {
+    private func removeAllTodoNotificationRequests(cancellationVersion: Int) {
         notificationCenter.getPendingNotificationRequests { [weak self] requests in
             let identifiers = requests
                 .map(\.identifier)
                 .filter { $0.hasPrefix(TodoNotificationPlanner.notificationIdentifierPrefix) }
 
-            self?.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
+            self?.notificationQueue.async {
+                guard let self,
+                      self.isCurrentBulkCancellationVersion(cancellationVersion) else {
+                    return
+                }
+
+                self.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
+            }
         }
 
         notificationCenter.getDeliveredNotifications { [weak self] notifications in
@@ -202,7 +245,14 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
                 .map(\.request.identifier)
                 .filter { $0.hasPrefix(TodoNotificationPlanner.notificationIdentifierPrefix) }
 
-            self?.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
+            self?.notificationQueue.async {
+                guard let self,
+                      self.isCurrentBulkCancellationVersion(cancellationVersion) else {
+                    return
+                }
+
+                self.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
+            }
         }
     }
 

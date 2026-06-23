@@ -247,7 +247,14 @@ struct SettingsView: View {
                 todoNotificationScheduler.refreshAuthorizationStatus()
             }
             .onReceive(todoNotificationScheduler.authorizationStatusPublisher) { status in
+                let previousStatus = todoNotificationAuthorizationStatus
                 todoNotificationAuthorizationStatus = status
+
+                if todoNotificationsEnabled,
+                   !previousStatus.allowsScheduling,
+                   status.allowsScheduling {
+                    reconcileTodoNotifications()
+                }
             }
             .fileExporter(
                 isPresented: $isExportingBackup,
