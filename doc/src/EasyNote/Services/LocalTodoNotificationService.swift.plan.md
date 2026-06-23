@@ -16,6 +16,9 @@
 
 - Global enablement is read from `todo_notifications_enabled`.
 - Scheduling first checks current system notification settings, then writes a one-shot calendar notification for eligible todos.
+- Scheduling uses per-todo versions and a serial notification queue so async authorization callbacks cannot re-add reminders after a later cancel, completion, deletion, or global disable.
+- When authorization is unavailable, the service removes the stable identifier instead of leaving stale pending requests behind.
+- The service installs itself as `UNUserNotificationCenterDelegate` and opts EasyNote todo reminders into foreground banner/sound presentation.
 - Disabling reminders or making a todo ineligible cancels the stable todo notification identifier.
 - Bulk cancellation is limited to identifiers with the EasyNote todo reminder prefix.
 

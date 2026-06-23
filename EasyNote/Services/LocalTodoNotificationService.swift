@@ -20,13 +20,16 @@ enum TodoNotificationAuthorizationStatus: String, Equatable {
     }
 }
 
-final class LocalTodoNotificationService: TodoNotificationSchedulingProviding {
+final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingProviding, UNUserNotificationCenterDelegate {
     static let shared = LocalTodoNotificationService()
     static let enabledDefaultsKey = "todo_notifications_enabled"
 
     private let notificationCenter: UNUserNotificationCenter
     private let defaults: UserDefaults
     private let authorizationStatusSubject = CurrentValueSubject<TodoNotificationAuthorizationStatus, Never>(.notDetermined)
+    private let notificationQueue = DispatchQueue(label: "EasyNote.TodoNotifications")
+    private let scheduleVersionLock = NSLock()
+    private var scheduleVersions: [UUID: Int] = [:]
 
     var authorizationStatusPublisher: AnyPublisher<TodoNotificationAuthorizationStatus, Never> {
         authorizationStatusSubject.eraseToAnyPublisher()
@@ -38,6 +41,8 @@ final class LocalTodoNotificationService: TodoNotificationSchedulingProviding {
     ) {
         self.notificationCenter = notificationCenter
         self.defaults = defaults
+        super.init()
+        self.notificationCenter.delegate = self
         refreshAuthorizationStatus()
     }
 
@@ -70,6 +75,7 @@ final class LocalTodoNotificationService: TodoNotificationSchedulingProviding {
         let todoID = todo.id
         let title = todo.title
         let notes = todo.notes
+        let scheduleVersion = nextScheduleVersion(for: todoID)
 
         notificationCenter.getNotificationSettings { [weak self] settings in
             guard let self else { return }
@@ -79,28 +85,41 @@ final class LocalTodoNotificationService: TodoNotificationSchedulingProviding {
                 self.authorizationStatusSubject.send(status)
             }
 
-            guard status.allowsScheduling else {
-                return
+            self.notificationQueue.async {
+                guard self.isCurrentScheduleVersion(scheduleVersion, for: todoID) else {
+                    return
+                }
+
+                let identifier = TodoNotificationPlanner.notificationIdentifier(for: todoID)
+
+                guard self.defaults.bool(forKey: Self.enabledDefaultsKey), deadline > Date() else {
+                    self.removeNotificationRequests(forTodoID: todoID)
+                    return
+                }
+
+                guard status.allowsScheduling else {
+                    self.removeNotificationRequests(forTodoID: todoID)
+                    return
+                }
+
+                self.notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
+
+                let content = UNMutableNotificationContent()
+                content.title = title.isEmpty ? "待办提醒" : title
+                content.body = notes.flatMap { $0.isEmpty ? nil : $0 } ?? "待办事项已到截止时间"
+                content.sound = .default
+                content.userInfo = ["todoID": todoID.uuidString]
+
+                var dateComponents = Calendar.current.dateComponents(
+                    [.year, .month, .day, .hour, .minute, .second],
+                    from: deadline
+                )
+                dateComponents.timeZone = Calendar.current.timeZone
+
+                let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                self.notificationCenter.add(request)
             }
-
-            let identifier = TodoNotificationPlanner.notificationIdentifier(for: todoID)
-            self.notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
-
-            let content = UNMutableNotificationContent()
-            content.title = title.isEmpty ? "待办提醒" : title
-            content.body = notes.flatMap { $0.isEmpty ? nil : $0 } ?? "待办事项已到截止时间"
-            content.sound = .default
-            content.userInfo = ["todoID": todoID.uuidString]
-
-            var dateComponents = Calendar.current.dateComponents(
-                [.year, .month, .day, .hour, .minute, .second],
-                from: deadline
-            )
-            dateComponents.timeZone = Calendar.current.timeZone
-
-            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-            self.notificationCenter.add(request)
         }
     }
 
@@ -109,12 +128,67 @@ final class LocalTodoNotificationService: TodoNotificationSchedulingProviding {
     }
 
     func cancelNotification(forTodoID id: UUID) {
+        invalidateSchedule(for: id)
+        notificationQueue.async { [weak self] in
+            self?.removeNotificationRequests(forTodoID: id)
+        }
+    }
+
+    func cancelAllTodoNotifications() {
+        invalidateAllSchedules()
+        notificationQueue.async { [weak self] in
+            self?.removeAllTodoNotificationRequests()
+        }
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        if notification.request.identifier.hasPrefix(TodoNotificationPlanner.notificationIdentifierPrefix) {
+            completionHandler([.banner, .sound, .badge])
+        } else {
+            completionHandler([])
+        }
+    }
+
+    private func nextScheduleVersion(for id: UUID) -> Int {
+        scheduleVersionLock.lock()
+        defer { scheduleVersionLock.unlock() }
+
+        let nextVersion = (scheduleVersions[id] ?? 0) + 1
+        scheduleVersions[id] = nextVersion
+        return nextVersion
+    }
+
+    private func invalidateSchedule(for id: UUID) {
+        _ = nextScheduleVersion(for: id)
+    }
+
+    private func invalidateAllSchedules() {
+        scheduleVersionLock.lock()
+        defer { scheduleVersionLock.unlock() }
+
+        for id in Array(scheduleVersions.keys) {
+            scheduleVersions[id, default: 0] += 1
+        }
+    }
+
+    private func isCurrentScheduleVersion(_ version: Int, for id: UUID) -> Bool {
+        scheduleVersionLock.lock()
+        defer { scheduleVersionLock.unlock() }
+
+        return scheduleVersions[id] == version
+    }
+
+    private func removeNotificationRequests(forTodoID id: UUID) {
         let identifier = TodoNotificationPlanner.notificationIdentifier(for: id)
         notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
         notificationCenter.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
-    func cancelAllTodoNotifications() {
+    private func removeAllTodoNotificationRequests() {
         notificationCenter.getPendingNotificationRequests { [weak self] requests in
             let identifiers = requests
                 .map(\.identifier)
