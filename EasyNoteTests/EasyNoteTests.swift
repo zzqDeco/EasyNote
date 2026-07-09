@@ -788,6 +788,10 @@ struct EasyNoteTests {
             previousMode: .systemReminderAgent,
             nextMode: .localNotification
         ))
+        #expect(TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
+            previousMode: .off,
+            nextMode: .localNotification
+        ))
         #expect(!TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
             previousMode: .systemReminderAgent,
             nextMode: .off
@@ -796,6 +800,8 @@ struct EasyNoteTests {
             previousMode: .localNotification,
             nextMode: .systemReminderAgent
         ))
+        #expect(TodoReminderModeTransitionPlanner.shouldSyncSystemReminders(nextMode: .systemReminderAgent))
+        #expect(!TodoReminderModeTransitionPlanner.shouldSyncSystemReminders(nextMode: .localNotification))
     }
     
     @Test func chatSessionSummaryUsesLatestUserMessage() async throws {

@@ -142,6 +142,8 @@ struct SettingsView: View {
                     if selectedTodoReminderMode == .systemReminderAgent {
                         systemReminderControls
                     }
+
+                    reminderModeFeedback
                 } header: {
                     Text("提醒方式")
                 } footer: {
@@ -391,6 +393,37 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var reminderModeFeedback: some View {
+        if selectedTodoReminderMode != .localNotification {
+            if let todoNotificationMessage {
+                Text(todoNotificationMessage)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if let todoNotificationErrorMessage {
+                Text(todoNotificationErrorMessage)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+        }
+
+        if selectedTodoReminderMode != .systemReminderAgent {
+            if let systemReminderMessage {
+                Text(systemReminderMessage)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if let systemReminderErrorMessage {
+                Text(systemReminderErrorMessage)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+        }
+    }
+
     private var defaultBackupFilename: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
@@ -464,6 +497,7 @@ struct SettingsView: View {
             previousMode: previousMode,
             nextMode: mode
         )
+        let shouldSyncSystemReminders = TodoReminderModeTransitionPlanner.shouldSyncSystemReminders(nextMode: mode)
 
         selectedTodoReminderMode = mode
         reminderModeStore.currentMode = mode
@@ -499,7 +533,11 @@ struct SettingsView: View {
             todoNotificationScheduler.cancelAllTodoNotifications()
             systemReminderWriter.refreshAuthorizationStatus()
             if systemReminderAuthorizationStatus.allowsWriting {
-                systemReminderMessage = "已切换到系统提醒事项模式"
+                if shouldSyncSystemReminders {
+                    syncCurrentTodosToSystemReminders()
+                } else {
+                    systemReminderMessage = "已切换到系统提醒事项模式"
+                }
             } else {
                 systemReminderMessage = "请授予提醒事项权限后同步当前待办"
             }
@@ -552,7 +590,11 @@ struct SettingsView: View {
 
         systemReminderWriter.requestAuthorization { granted in
             if granted {
-                systemReminderMessage = "提醒事项权限已开启"
+                if selectedTodoReminderMode == .systemReminderAgent {
+                    syncCurrentTodosToSystemReminders()
+                } else {
+                    systemReminderMessage = "提醒事项权限已开启"
+                }
             } else {
                 systemReminderErrorMessage = "未授予提醒事项权限，请在系统设置中允许访问提醒事项"
             }

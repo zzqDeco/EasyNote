@@ -70,11 +70,12 @@ Before treating a branch as a usable app build, manually verify:
 - complete or delete a reminded todo and confirm its pending reminder is canceled
 - disable todo reminders in Settings and confirm pending EasyNote todo reminders are canceled without deleting todos
 - switch Settings -> 提醒方式 to 系统提醒事项, grant Reminders permission, and create a future-deadline todo such as `明天 10 点提交报告`
+- switch from EasyNote 通知 to 系统提醒事项 with existing future-deadline todos and confirm current todos are written to Apple Reminders
 - confirm Apple Reminders contains one reminder with the todo title, matching due date, an earlier alarm chosen by the agent, and an `EasyNoteTodoID:<uuid>` marker in notes
 - edit the todo deadline and confirm the existing marked system reminder updates instead of duplicating
 - complete the todo and confirm the marked system reminder is completed
 - delete an EasyNote todo and confirm only the matching EasyNote-marked system reminder is removed
-- switch back to EasyNote 通知 and confirm current EasyNote-marked Apple Reminders are removed and new todos no longer write system reminders
+- switch back to EasyNote 通知, including after an intermediate off state, and confirm current EasyNote-marked Apple Reminders are removed and new todos no longer write system reminders
 - configure and clear the DeepSeek API key in Settings
 - open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible

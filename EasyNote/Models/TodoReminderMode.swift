@@ -25,7 +25,11 @@ protocol TodoReminderModeProviding: AnyObject {
 
 enum TodoReminderModeTransitionPlanner {
     static func shouldRemoveSystemReminders(previousMode: TodoReminderMode, nextMode: TodoReminderMode) -> Bool {
-        previousMode == .systemReminderAgent && nextMode == .localNotification
+        previousMode != .localNotification && nextMode == .localNotification
+    }
+
+    static func shouldSyncSystemReminders(nextMode: TodoReminderMode) -> Bool {
+        nextMode == .systemReminderAgent
     }
 }
 
