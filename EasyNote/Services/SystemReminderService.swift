@@ -105,14 +105,16 @@ final class SystemReminderService: SystemReminderWritingProviding {
 
             do {
                 let reminders = try self.fetchEasyNoteReminders(forTodoID: id)
-                guard let reminder = reminders.first else {
+                guard !reminders.isEmpty else {
                     result = .success(())
                     DispatchQueue.main.async { completion?(result) }
                     return
                 }
 
-                reminder.isCompleted = true
-                try self.eventStore.save(reminder, commit: true)
+                for reminder in reminders {
+                    reminder.isCompleted = true
+                    try self.eventStore.save(reminder, commit: true)
+                }
                 result = .success(())
             } catch let error as SystemReminderError {
                 result = .failure(error)
@@ -179,6 +181,7 @@ final class SystemReminderService: SystemReminderWritingProviding {
             reminder.notes = notesWithMarker(notes: proposal.notes, marker: proposal.marker)
             reminder.dueDateComponents = dateComponents(for: proposal.dueDate)
             reminder.priority = priorityValue(for: proposal.priority)
+            reminder.isCompleted = false
             reminder.alarms?.forEach { reminder.removeAlarm($0) }
             reminder.addAlarm(EKAlarm(absoluteDate: proposal.alarmDate))
 

@@ -554,6 +554,32 @@ struct EasyNoteTests {
         #expect(writer.appliedProposals.first?.title == "更新后的会议")
     }
 
+    @Test func todoViewModelRemovesSystemReminderWhenEditBecomesIneligible() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+        let todo = makeTodo(title: "提交报告", deadline: Date().addingTimeInterval(3600))
+
+        #expect(viewModel.addTodoItem(todo))
+        writer.reset()
+
+        #expect(viewModel.updateTodoItem(
+            id: todo.id,
+            title: "提交报告",
+            priority: .medium,
+            deadline: nil,
+            notes: nil
+        ))
+
+        #expect(writer.appliedProposals.isEmpty)
+        #expect(writer.removedTodoIDs == [todo.id])
+    }
+
     @Test func todoViewModelCompletesSystemReminderAfterCompletingTodo() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -614,6 +640,27 @@ struct EasyNoteTests {
         writer.reset()
 
         #expect(viewModel.deleteTodoItem(withID: todo.id))
+        #expect(writer.removedTodoIDs == [todo.id])
+    }
+
+    @Test func todoViewModelRemovesSystemReminderAfterDeletingTodoInLocalMode() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
+        let todo = makeTodo(title: "曾经写入系统提醒", deadline: Date().addingTimeInterval(3600))
+
+        #expect(viewModel.addTodoItem(todo))
+        scheduler.reset()
+        writer.reset()
+
+        #expect(viewModel.deleteTodoItem(withID: todo.id))
+        #expect(scheduler.canceledTodoIDs == [todo.id])
         #expect(writer.removedTodoIDs == [todo.id])
     }
 

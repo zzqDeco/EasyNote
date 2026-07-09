@@ -268,13 +268,15 @@ class TodoViewModel: ObservableObject {
     private func removeReminderOutputsAfterDeleting(todoID: UUID) {
         switch reminderModeStore.currentMode {
         case .off:
-            return
+            break
         case .localNotification:
             notificationScheduler.cancelNotification(forTodoID: todoID)
             notificationScheduler.reconcileNotifications(for: todoItems)
         case .systemReminderAgent:
-            removeSystemReminderIfNeeded(for: todoID)
+            break
         }
+
+        removeSystemReminderAfterDeleting(for: todoID)
     }
 
     private func reconcileTodoNotificationsIfNeeded() {
@@ -299,6 +301,7 @@ class TodoViewModel: ObservableObject {
         guard proposal.action == .createOrUpdate else {
             systemReminderMessage = proposal.reason
             systemReminderErrorMessage = nil
+            removeSystemReminderIfNeeded(for: todo.id)
             return
         }
 
@@ -334,13 +337,37 @@ class TodoViewModel: ObservableObject {
             return
         }
 
+        removeSystemReminder(
+            for: id,
+            reportSuccess: true,
+            reportFailure: true
+        )
+    }
+
+    private func removeSystemReminderAfterDeleting(for id: UUID) {
+        removeSystemReminder(
+            for: id,
+            reportSuccess: reminderModeStore.currentMode == .systemReminderAgent,
+            reportFailure: reminderModeStore.currentMode == .systemReminderAgent
+        )
+    }
+
+    private func removeSystemReminder(
+        for id: UUID,
+        reportSuccess: Bool,
+        reportFailure: Bool
+    ) {
         systemReminderWriter.removeReminder(forTodoID: id) { [weak self] result in
             switch result {
             case .success:
-                self?.systemReminderMessage = "系统提醒事项已移除"
-                self?.systemReminderErrorMessage = nil
+                if reportSuccess {
+                    self?.systemReminderMessage = "系统提醒事项已移除"
+                    self?.systemReminderErrorMessage = nil
+                }
             case .failure(let error):
-                self?.systemReminderErrorMessage = error.localizedDescription
+                if reportFailure {
+                    self?.systemReminderErrorMessage = error.localizedDescription
+                }
             }
         }
     }
