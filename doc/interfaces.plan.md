@@ -9,6 +9,7 @@ This document records the current contracts that cross module boundaries in Easy
 - `accentColorName`: stored with `@AppStorage` in `ThemeManager`.
 - `todo_reminder_mode`: stored by `TodoReminderModeStore` as `off`, `localNotification`, or `systemReminderAgent`.
 - `todo_notifications_enabled`: legacy-compatible local notification flag stored with `@AppStorage` in Settings and read by `LocalTodoNotificationService`.
+- `todo_system_reminders_may_exist`: a `TodoReminderModeStore` handoff marker used only to decide whether returning to local notifications should clean EasyNote-marked Apple Reminders after a prior system-reminder mode.
 
 The repository must not contain default API keys. Empty `openai_api_key` disables AI calls with a user-visible error.
 
@@ -41,15 +42,15 @@ Todo reminder notifications are derived from existing todo fields and do not add
 
 `TodoNotificationPlanner` owns pure eligibility, identifier, and retained-slot selection rules. `LocalTodoNotificationService` owns `UNUserNotificationCenter`, authorization status publishing, permission requests, pending notification writes, and cancellation. `TodoViewModel` consumes this behavior through `TodoNotificationSchedulingProviding` and should only reconcile or cancel after SwiftData saves succeed; create, edit, complete, uncomplete, recurrence, and reset paths reconcile the whole current todo list so retained notification slots are refilled. UI tests must not depend on live notification permission prompts; focused unit tests should use fake schedulers.
 
-`TodoReminderModeStore` maps a missing `todo_reminder_mode` plus `todo_notifications_enabled == true` to `.localNotification` so existing local notification settings are preserved. Setting `.localNotification` writes the legacy flag to true; setting `.off` or `.systemReminderAgent` writes it to false.
+`TodoReminderModeStore` maps a missing `todo_reminder_mode` plus `todo_notifications_enabled == true` to `.localNotification` so existing local notification settings are preserved. Setting `.localNotification` writes the legacy flag to true; setting `.off` or `.systemReminderAgent` writes it to false. Successful system reminder writes or completions mark that EasyNote-created Apple Reminders may exist; successful handoff cleanup back to local notifications clears that marker.
 
 ## System Reminders Boundary
 
 System Reminders mode lets EasyNote write eligible todos into Apple Reminders through EventKit without changing SwiftData schema. It is mutually exclusive with EasyNote local notifications:
 
 - `.off`: do not schedule local notifications and do not write new system reminders
-- `.localNotification`: reconcile EasyNote local notifications and do not write system reminders; when switching from a non-local mode, Settings attempts to remove EasyNote-marked Apple Reminders for current todos so the same todo is not owned by two alert systems
-- `.systemReminderAgent`: cancel EasyNote local todo notifications, then write/update Apple Reminders through the system reminder agent and writer; when access is already granted, Settings syncs current todos immediately so existing local notifications are replaced instead of dropped
+- `.localNotification`: reconcile EasyNote local notifications and do not write system reminders; when switching from system mode, or from off after system mode may have written reminders, Settings attempts to remove EasyNote-marked Apple Reminders for current todos so the same todo is not owned by two alert systems
+- `.systemReminderAgent`: cancel EasyNote local todo notifications, then write/update Apple Reminders through the system reminder agent and writer; when access is already granted, Settings syncs current todos immediately so existing local notifications are replaced instead of dropped. If Settings has not yet received the current Reminders authorization value, it syncs after the publisher reports writable access.
 
 `SystemReminderAgent` is pure logic. It reads only a todo, the active mode, and `SystemReminderContext` with `now` plus `Calendar`, and returns a `SystemReminderProposal`:
 

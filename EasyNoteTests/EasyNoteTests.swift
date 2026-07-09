@@ -523,17 +523,19 @@ struct EasyNoteTests {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
         let writer = FakeSystemReminderWriter()
+        let reminderModeStore = FakeTodoReminderModeStore(mode: .systemReminderAgent)
         let viewModel = TodoViewModel(
             modelContext: context,
             notificationScheduler: scheduler,
             systemReminderWriter: writer,
-            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+            reminderModeStore: reminderModeStore
         )
 
         #expect(viewModel.addTodoItem(title: "提交报告", deadline: Date().addingTimeInterval(48 * 60 * 60)))
         #expect(writer.appliedProposals.count == 1)
         #expect(writer.appliedProposals.first?.title == "提交报告")
         #expect(scheduler.reconciledTodoIDs.isEmpty)
+        #expect(reminderModeStore.systemRemindersMayExist)
     }
 
     @Test func todoViewModelDoesNotApplySystemReminderInLocalOrOffMode() async throws {
@@ -742,17 +744,19 @@ struct EasyNoteTests {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
         writer.applyResult = .failure(.notAuthorized)
+        let reminderModeStore = FakeTodoReminderModeStore(mode: .systemReminderAgent)
         let viewModel = TodoViewModel(
             modelContext: context,
             notificationScheduler: FakeTodoNotificationScheduler(),
             systemReminderWriter: writer,
-            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+            reminderModeStore: reminderModeStore
         )
 
         #expect(viewModel.addTodoItem(title: "保存成功提醒失败", deadline: Date().addingTimeInterval(3600)))
         #expect(viewModel.todoItems.count == 1)
         #expect(writer.appliedProposals.count == 1)
         #expect(viewModel.systemReminderErrorMessage == "未授予提醒事项权限")
+        #expect(!reminderModeStore.systemRemindersMayExist)
     }
 
     @Test func todoReminderModeStoreMigratesLegacyNotificationSetting() async throws {
@@ -783,22 +787,49 @@ struct EasyNoteTests {
         #expect(defaults.bool(forKey: LocalTodoNotificationService.enabledDefaultsKey))
     }
 
+    @Test func todoReminderModeStorePersistsPossibleSystemReminderOwnership() async throws {
+        let suiteName = "EasyNoteTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let store = TodoReminderModeStore(defaults: defaults)
+
+        #expect(!store.systemRemindersMayExist)
+        store.currentMode = .systemReminderAgent
+        #expect(!store.systemRemindersMayExist)
+
+        store.systemRemindersMayExist = true
+        #expect(store.systemRemindersMayExist)
+        store.systemRemindersMayExist = false
+        #expect(!store.systemRemindersMayExist)
+    }
+
     @Test func todoReminderModeTransitionPlannerClearsSystemRemindersOnlyForLocalHandoff() async throws {
         #expect(TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
             previousMode: .systemReminderAgent,
-            nextMode: .localNotification
+            nextMode: .localNotification,
+            systemRemindersMayExist: false
         ))
         #expect(TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
             previousMode: .off,
-            nextMode: .localNotification
+            nextMode: .localNotification,
+            systemRemindersMayExist: true
+        ))
+        #expect(!TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
+            previousMode: .off,
+            nextMode: .localNotification,
+            systemRemindersMayExist: false
         ))
         #expect(!TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
             previousMode: .systemReminderAgent,
-            nextMode: .off
+            nextMode: .off,
+            systemRemindersMayExist: true
         ))
         #expect(!TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
             previousMode: .localNotification,
-            nextMode: .systemReminderAgent
+            nextMode: .systemReminderAgent,
+            systemRemindersMayExist: true
         ))
         #expect(TodoReminderModeTransitionPlanner.shouldSyncSystemReminders(nextMode: .systemReminderAgent))
         #expect(!TodoReminderModeTransitionPlanner.shouldSyncSystemReminders(nextMode: .localNotification))
@@ -2378,9 +2409,11 @@ struct EasyNoteTests {
 
     private final class FakeTodoReminderModeStore: TodoReminderModeProviding {
         var currentMode: TodoReminderMode
+        var systemRemindersMayExist: Bool
 
-        init(mode: TodoReminderMode) {
+        init(mode: TodoReminderMode, systemRemindersMayExist: Bool = false) {
             self.currentMode = mode
+            self.systemRemindersMayExist = systemRemindersMayExist
         }
     }
 

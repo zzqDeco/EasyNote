@@ -316,6 +316,7 @@ class TodoViewModel: ObservableObject {
         systemReminderWriter.completeReminder(forTodoID: id) { [weak self] result in
             switch result {
             case .success:
+                self?.reminderModeStore.systemRemindersMayExist = true
                 self?.systemReminderMessage = "系统提醒事项已标记完成"
                 self?.systemReminderErrorMessage = nil
             case .failure(let error):
@@ -385,6 +386,7 @@ class TodoViewModel: ObservableObject {
             systemReminderWriter.applyProposal(proposal) { [weak self] result in
                 switch result {
                 case .success(let writeResult):
+                    self?.reminderModeStore.systemRemindersMayExist = true
                     if reportSuccess {
                         self?.systemReminderMessage = Self.systemReminderMessage(for: writeResult, proposal: proposal)
                         self?.systemReminderErrorMessage = nil
@@ -399,6 +401,7 @@ class TodoViewModel: ObservableObject {
             systemReminderWriter.completeReminder(forTodoID: id) { [weak self] result in
                 switch result {
                 case .success:
+                    self?.reminderModeStore.systemRemindersMayExist = true
                     if reportSuccess {
                         self?.systemReminderMessage = "系统提醒事项已标记完成"
                         self?.systemReminderErrorMessage = nil

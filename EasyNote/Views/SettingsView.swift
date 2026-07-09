@@ -47,6 +47,7 @@ struct SettingsView: View {
     @State private var systemReminderAuthorizationStatus: SystemReminderAuthorizationStatus = .notDetermined
     @State private var systemReminderMessage: String?
     @State private var systemReminderErrorMessage: String?
+    @State private var shouldSyncSystemRemindersAfterAuthorizationRefresh = false
 
     private let backupService: any BackupServiceProviding
     private let todoNotificationScheduler: any TodoNotificationSchedulingProviding
@@ -259,6 +260,12 @@ struct SettingsView: View {
             }
             .onReceive(systemReminderWriter.authorizationStatusPublisher) { status in
                 systemReminderAuthorizationStatus = status
+                if shouldSyncSystemRemindersAfterAuthorizationRefresh,
+                   selectedTodoReminderMode == .systemReminderAgent,
+                   status.allowsWriting {
+                    shouldSyncSystemRemindersAfterAuthorizationRefresh = false
+                    syncCurrentTodosToSystemReminders()
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
@@ -495,7 +502,8 @@ struct SettingsView: View {
         let previousMode = reminderModeStore.currentMode
         let shouldRemoveSystemReminders = TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
             previousMode: previousMode,
-            nextMode: mode
+            nextMode: mode,
+            systemRemindersMayExist: reminderModeStore.systemRemindersMayExist
         )
         let shouldSyncSystemReminders = TodoReminderModeTransitionPlanner.shouldSyncSystemReminders(nextMode: mode)
 
@@ -508,10 +516,12 @@ struct SettingsView: View {
 
         switch mode {
         case .off:
+            shouldSyncSystemRemindersAfterAuthorizationRefresh = false
             todoNotificationsEnabled = false
             todoNotificationScheduler.cancelAllTodoNotifications()
             todoNotificationMessage = "已关闭提醒"
         case .localNotification:
+            shouldSyncSystemRemindersAfterAuthorizationRefresh = false
             todoNotificationsEnabled = true
             todoNotificationScheduler.requestAuthorization { granted in
                 guard granted else {
@@ -531,9 +541,11 @@ struct SettingsView: View {
         case .systemReminderAgent:
             todoNotificationsEnabled = false
             todoNotificationScheduler.cancelAllTodoNotifications()
+            shouldSyncSystemRemindersAfterAuthorizationRefresh = shouldSyncSystemReminders
             systemReminderWriter.refreshAuthorizationStatus()
             if systemReminderAuthorizationStatus.allowsWriting {
                 if shouldSyncSystemReminders {
+                    shouldSyncSystemRemindersAfterAuthorizationRefresh = false
                     syncCurrentTodosToSystemReminders()
                 } else {
                     systemReminderMessage = "已切换到系统提醒事项模式"
@@ -550,6 +562,7 @@ struct SettingsView: View {
             let todos = try modelContext.fetch(descriptor)
 
             guard !todos.isEmpty else {
+                reminderModeStore.systemRemindersMayExist = false
                 return
             }
 
@@ -576,6 +589,7 @@ struct SettingsView: View {
                 if let firstError {
                     todoNotificationErrorMessage = "已切换到 EasyNote 通知，但清理旧系统提醒事项失败: \(firstError)"
                 } else if successCount > 0 {
+                    reminderModeStore.systemRemindersMayExist = false
                     todoNotificationMessage = "已同步 EasyNote 通知，并清理 \(successCount) 个系统提醒事项"
                 }
             }
@@ -636,6 +650,7 @@ struct SettingsView: View {
             let group = DispatchGroup()
             var successCount = 0
             var firstError: String?
+            var wroteOrCompletedSystemReminder = false
 
             operations.forEach { operation in
                 group.enter()
@@ -646,6 +661,7 @@ struct SettingsView: View {
                         switch result {
                         case .success:
                             successCount += 1
+                            wroteOrCompletedSystemReminder = true
                         case .failure(let error):
                             if firstError == nil {
                                 firstError = error.localizedDescription
@@ -658,6 +674,7 @@ struct SettingsView: View {
                         switch result {
                         case .success:
                             successCount += 1
+                            wroteOrCompletedSystemReminder = true
                         case .failure(let error):
                             if firstError == nil {
                                 firstError = error.localizedDescription
@@ -686,6 +703,7 @@ struct SettingsView: View {
                 if let firstError {
                     systemReminderErrorMessage = "同步失败: \(firstError)"
                 } else {
+                    reminderModeStore.systemRemindersMayExist = wroteOrCompletedSystemReminder
                     systemReminderMessage = "已同步/清理 \(successCount) 个系统提醒事项"
                 }
             }
@@ -717,6 +735,7 @@ struct SettingsView: View {
                 todoNotificationsEnabled = false
                 reminderModeStore.currentMode = .off
                 selectedTodoReminderMode = .off
+                todoNotificationScheduler.cancelAllTodoNotifications()
                 todoNotificationErrorMessage = "未授予通知权限，请在系统设置中允许通知"
             }
         }

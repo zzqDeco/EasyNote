@@ -20,7 +20,8 @@ Non-goals:
 - Do not introduce LLM-based planning in v1; the agent is deterministic and testable.
 - Do not create a custom Reminders list; v1 writes to the default list for new reminders.
 - Do not bulk-delete existing system reminders when the mode is turned off.
-- Do remove EasyNote-marked system reminders for current todos when the user switches from a non-local reminder mode to EasyNote notifications, so local notifications do not run beside stale Apple Reminders for the same todos.
+- Do remove EasyNote-marked system reminders for current todos when the user switches from System Reminders, or from off after System Reminders may have written reminders, to EasyNote notifications, so local notifications do not run beside stale Apple Reminders for the same todos.
+- Do not attempt system reminder cleanup on a first-time off-to-local notification switch where EasyNote has no evidence of prior system-reminder ownership.
 - Do not enable CloudKit or remote push notifications.
 
 ## Implementation
@@ -28,6 +29,7 @@ Non-goals:
 - `TodoReminderMode` stores `off`, `localNotification`, or `systemReminderAgent` in `todo_reminder_mode`.
 - When `todo_reminder_mode` is missing and `todo_notifications_enabled` is true, the mode store reports `.localNotification` so existing users keep their PR #19 behavior.
 - Setting `.localNotification` writes `todo_notifications_enabled = true`; setting `.off` or `.systemReminderAgent` writes it to false.
+- Successful system reminder writes or completions mark `todo_system_reminders_may_exist = true`; successful local-mode handoff cleanup clears that marker.
 - `SystemReminderAgent` returns a `SystemReminderProposal` with either `.createOrUpdate` or `.skip(reason)`.
 - The agent skips completed todos, missing deadlines, non-future deadlines, titles that trim to empty, and deadlines less than 60 seconds away.
 - Agent lead-time rules:

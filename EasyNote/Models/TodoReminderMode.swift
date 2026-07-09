@@ -21,11 +21,20 @@ enum TodoReminderMode: String, CaseIterable, Codable, Identifiable {
 
 protocol TodoReminderModeProviding: AnyObject {
     var currentMode: TodoReminderMode { get set }
+    var systemRemindersMayExist: Bool { get set }
 }
 
 enum TodoReminderModeTransitionPlanner {
-    static func shouldRemoveSystemReminders(previousMode: TodoReminderMode, nextMode: TodoReminderMode) -> Bool {
-        previousMode != .localNotification && nextMode == .localNotification
+    static func shouldRemoveSystemReminders(
+        previousMode: TodoReminderMode,
+        nextMode: TodoReminderMode,
+        systemRemindersMayExist: Bool
+    ) -> Bool {
+        guard nextMode == .localNotification else {
+            return false
+        }
+
+        return previousMode == .systemReminderAgent || (previousMode == .off && systemRemindersMayExist)
     }
 
     static func shouldSyncSystemReminders(nextMode: TodoReminderMode) -> Bool {
@@ -36,6 +45,7 @@ enum TodoReminderModeTransitionPlanner {
 final class TodoReminderModeStore: TodoReminderModeProviding {
     static let modeDefaultsKey = "todo_reminder_mode"
     static let legacyLocalNotificationEnabledDefaultsKey = "todo_notifications_enabled"
+    static let systemRemindersMayExistDefaultsKey = "todo_system_reminders_may_exist"
 
     private let defaults: UserDefaults
     private let localNotificationEnabledKey: String
@@ -64,6 +74,15 @@ final class TodoReminderModeStore: TodoReminderModeProviding {
         set {
             defaults.set(newValue.rawValue, forKey: Self.modeDefaultsKey)
             defaults.set(newValue == .localNotification, forKey: localNotificationEnabledKey)
+        }
+    }
+
+    var systemRemindersMayExist: Bool {
+        get {
+            defaults.bool(forKey: Self.systemRemindersMayExistDefaultsKey)
+        }
+        set {
+            defaults.set(newValue, forKey: Self.systemRemindersMayExistDefaultsKey)
         }
     }
 }
