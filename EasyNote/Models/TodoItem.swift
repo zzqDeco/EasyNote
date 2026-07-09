@@ -35,7 +35,7 @@ final class TodoItem {
         self.creationDate = Date()
     }
     
-    enum PriorityLevel: String, Codable {
+    enum PriorityLevel: String, Codable, Equatable {
         case high, medium, low
         
         var color: Color {
@@ -77,4 +77,4 @@ final class TodoItem {
         case .low: return "circle.fill"
         }
     }
-} 
+}

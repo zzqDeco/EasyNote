@@ -25,16 +25,18 @@
 - `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, existing-entry replacement, and deletion do not leave unreachable files.
 - `DiaryViewModel` consumes AI, speech, and CloudKit behavior through service protocols with production defaults, so tests can inject fakes without invoking provider, microphone, or cloud paths.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
-- `TodoViewModel` owns focused todo CRUD, recurrence, todo list state, and post-save todo notification synchronization through an injected scheduler.
+- `TodoViewModel` owns focused todo CRUD, recurrence, todo list state, and post-save reminder routing through injected local-notification and system-reminder services.
 - `ExploreViewModel` owns recommendation generation, cached recommendation state, current-session recommendation AI history, and shared user-facing recommendation error mapping through the AI service protocol.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
 - `ChatSessionViewModel` uses an in-memory fallback context only when no context is injected.
 - `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
 - Todo filtering belongs to the pure `TodoFilter` helper, not to `ExploreViewModel`.
 - Todo recurrence planning belongs to `TodoRecurrencePlanner` and is invoked from `TodoViewModel`.
-- Todo reminder scheduling belongs to `TodoNotificationSchedulingProviding`; `TodoViewModel` reconciles reminders only after SwiftData saves succeed, and deletion also cancels the removed todo identifier before reconciling the remaining list.
+- Todo local notification scheduling belongs to `TodoNotificationSchedulingProviding`; `TodoViewModel` reconciles local reminders only after SwiftData saves succeed, and deletion also cancels the removed todo identifier before reconciling the remaining list.
+- Todo system Reminders writes belong to `SystemReminderAgentProviding` and `SystemReminderWritingProviding`; `TodoViewModel` applies, completes, or removes system reminders only in `.systemReminderAgent` mode and only after SwiftData saves succeed.
+- System reminder write failures set `systemReminderErrorMessage` without rolling back the saved todo.
 
 ## Tests
 
 - Current unit tests cover pure model behavior and AI result apply helpers.
-- ViewModel tests should use protocol-based service fakes before asserting network, speech, or CloudKit-adjacent behavior.
+- ViewModel tests should use protocol-based service fakes before asserting network, speech, CloudKit, notification, or EventKit-adjacent behavior.

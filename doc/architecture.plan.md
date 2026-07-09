@@ -25,23 +25,25 @@ The current store is created under the app documents directory as `EasyNote.stor
 ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 
 - `DiaryViewModel` owns diary list/current-entry state, speech integration, AI diary actions, and CloudKit sync entry points.
-- `TodoViewModel` owns focused todo CRUD, recurrence behavior, and todo list state.
+- `TodoViewModel` owns focused todo CRUD, recurrence behavior, todo list state, and post-save routing to the active todo reminder mode.
 - `ExploreViewModel` owns recommendation generation and recommendation cache state; it does not own todo CRUD.
 - `ChatSessionViewModel` owns persisted chat sessions and message history.
 - `ContentView` passes the shared SwiftData `ModelContext` into stable app-level ViewModels through its root view instead of relying on production nil-context fallback stores.
 - Recurring todo completion is planned through a shared helper so todo entry points do not duplicate next-occurrence creation rules.
 - Todo local reminder eligibility is derived through a pure planner; `TodoViewModel` only asks the injected notification scheduler to synchronize or cancel after successful SwiftData saves.
+- Todo system reminder proposals are derived through the pure `SystemReminderAgent`; `TodoViewModel` only asks the injected EventKit writer to create, update, complete, or remove Apple Reminders after successful SwiftData saves.
 - Todo list categories are projected through a pure `TodoFilter` helper before SwiftUI renders the selected segment.
 - Diary review insights are projected through a pure `DiaryReviewProjection` helper from the full diary entry set, independent of active diary search and filters. It reports distinct tag totals separately from capped top-tag trends and normalizes legacy numeric mood values before aggregation.
 
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
-Current service interactions are routed through narrow protocols for AI, speech recognition, CloudKit diary sync, backup import/export, and todo reminder scheduling so ViewModels and Settings can be tested with fakes without changing production defaults.
+Current service interactions are routed through narrow protocols for AI, speech recognition, CloudKit diary sync, backup import/export, local todo notification scheduling, and system Reminders writing so ViewModels and Settings can be tested with fakes without changing production defaults.
 
 ## Service Layer
 
 - `OpenAIService` is the DeepSeek-compatible chat-completions client. It must not contain default API keys.
 - `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
 - `LocalTodoNotificationService` owns iOS local notification authorization state and todo reminder scheduling/cancellation.
+- `SystemReminderService` owns EventKit Reminders authorization state and writes EasyNote-marked reminders to the user's default Apple Reminders list.
 - `SpeechRecognitionService` owns microphone/speech permissions, recording state, and transcription updates.
 - `CloudKitService` owns CloudKit interactions, but Debug currently defaults to simulation mode.
 - `CloudKitSyncPreflight` owns the pure readiness checklist for future real CloudKit enablement without sending network requests or changing app storage.

@@ -35,6 +35,8 @@ Current focused tests cover:
 - `ChatSession` and `SessionMessage` basic integrity
 - `AIActionResult` success/failure state and input preview generation
 - diary AI result application helpers that only mutate summary or transcription text after explicit confirmation
+- `SystemReminderAgent` lead-time and skip decisions for Apple Reminders proposals
+- `TodoViewModel` routing to fake local notification schedulers or fake system reminder writers based on the active reminder mode
 
 When diary, todo, chat, or AI parsing behavior changes, add focused tests before relying on manual verification.
 
@@ -67,6 +69,12 @@ Before treating a branch as a usable app build, manually verify:
 - enable todo reminders in Settings, grant notification permission, and confirm a future-deadline todo schedules without changing todo data
 - complete or delete a reminded todo and confirm its pending reminder is canceled
 - disable todo reminders in Settings and confirm pending EasyNote todo reminders are canceled without deleting todos
+- switch Settings -> 提醒方式 to 系统提醒事项, grant Reminders permission, and create a future-deadline todo such as `明天 10 点提交报告`
+- confirm Apple Reminders contains one reminder with the todo title, matching due date, an earlier alarm chosen by the agent, and an `EasyNoteTodoID:<uuid>` marker in notes
+- edit the todo deadline and confirm the existing marked system reminder updates instead of duplicating
+- complete the todo and confirm the marked system reminder is completed
+- delete an EasyNote todo and confirm only the matching EasyNote-marked system reminder is removed
+- switch back to EasyNote 通知 and confirm new todos no longer write system reminders
 - configure and clear the DeepSeek API key in Settings
 - open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible

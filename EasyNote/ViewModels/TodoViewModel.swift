@@ -7,16 +7,26 @@ class TodoViewModel: ObservableObject {
     // 数据状态
     @Published private(set) var todoItems: [TodoItem] = []
     @Published var errorMessage: String?
+    @Published var systemReminderMessage: String?
+    @Published var systemReminderErrorMessage: String?
     
     // 模型上下文
     private var modelContext: ModelContext
     private let notificationScheduler: any TodoNotificationSchedulingProviding
+    private let systemReminderAgent: any SystemReminderAgentProviding
+    private let systemReminderWriter: any SystemReminderWritingProviding
+    private let reminderModeStore: any TodoReminderModeProviding
+    private let saveModelContext: (ModelContext) throws -> Void
     private var cancellables = Set<AnyCancellable>()
     
     // 初始化方法
     init(
         modelContext: ModelContext?,
-        notificationScheduler: any TodoNotificationSchedulingProviding = LocalTodoNotificationService.shared
+        notificationScheduler: any TodoNotificationSchedulingProviding = LocalTodoNotificationService.shared,
+        systemReminderAgent: any SystemReminderAgentProviding = SystemReminderAgent(),
+        systemReminderWriter: any SystemReminderWritingProviding = SystemReminderService.shared,
+        reminderModeStore: any TodoReminderModeProviding = TodoReminderModeStore(),
+        saveModelContext: @escaping (ModelContext) throws -> Void = { try $0.save() }
     ) {
         if let context = modelContext {
             self.modelContext = context
@@ -24,6 +34,10 @@ class TodoViewModel: ObservableObject {
             self.modelContext = Self.makeFallbackContext()
         }
         self.notificationScheduler = notificationScheduler
+        self.systemReminderAgent = systemReminderAgent
+        self.systemReminderWriter = systemReminderWriter
+        self.reminderModeStore = reminderModeStore
+        self.saveModelContext = saveModelContext
         
         // 加载待办列表
         loadTodoItems()
@@ -44,7 +58,7 @@ class TodoViewModel: ObservableObject {
         
         do {
             todoItems = try modelContext.fetch(descriptor)
-            notificationScheduler.reconcileNotifications(for: todoItems)
+            reconcileTodoNotificationsIfNeeded()
             print("从数据库加载了 \(todoItems.count) 个待办事项")
         } catch {
             print("加载待办事项失败: \(error)")
@@ -84,7 +98,10 @@ class TodoViewModel: ObservableObject {
                 }
             }
 
-            reconcileTodoNotifications()
+            synchronizeReminderOutputsAfterSaving(
+                changedTodos: [item] + (newTodo.map { [$0] } ?? []),
+                completedTodoIDs: item.isCompleted ? [item.id] : []
+            )
 
             return true
         }
@@ -104,7 +121,7 @@ class TodoViewModel: ObservableObject {
             return false
         }
 
-        reconcileTodoNotifications()
+        synchronizeReminderOutputsAfterSaving(changedTodos: todoItems)
         return true
     }
     
@@ -123,8 +140,7 @@ class TodoViewModel: ObservableObject {
                 _ = withAnimation {
                     todoItems.remove(at: index)
                 }
-                notificationScheduler.cancelNotification(forTodoID: id)
-                reconcileTodoNotifications()
+                removeReminderOutputsAfterDeleting(todoID: id)
                 completion?()
                 return true
             }
@@ -162,7 +178,7 @@ class TodoViewModel: ObservableObject {
             todoItems.append(todo)
         }
 
-        reconcileTodoNotifications()
+        synchronizeReminderOutputsAfterSaving(changedTodos: [todo])
 
         return true
     }
@@ -198,7 +214,7 @@ class TodoViewModel: ObservableObject {
                 return false
             }
 
-            reconcileTodoNotifications()
+            synchronizeReminderOutputsAfterSaving(changedTodos: [todoItems[index]])
 
             return true
         }
@@ -221,7 +237,7 @@ class TodoViewModel: ObservableObject {
     @discardableResult
     private func saveContext() -> Bool {
         do {
-            try modelContext.save()
+            try saveModelContext(modelContext)
             errorMessage = nil
             return true
         } catch {
@@ -232,8 +248,121 @@ class TodoViewModel: ObservableObject {
         }
     }
 
-    private func reconcileTodoNotifications() {
+    private func synchronizeReminderOutputsAfterSaving(
+        changedTodos: [TodoItem],
+        completedTodoIDs: [UUID] = []
+    ) {
+        switch reminderModeStore.currentMode {
+        case .off:
+            return
+        case .localNotification:
+            notificationScheduler.reconcileNotifications(for: todoItems)
+        case .systemReminderAgent:
+            completedTodoIDs.forEach { completeSystemReminderIfNeeded(for: $0) }
+            changedTodos
+                .filter { !completedTodoIDs.contains($0.id) }
+                .forEach { applySystemReminderIfNeeded(for: $0) }
+        }
+    }
+
+    private func removeReminderOutputsAfterDeleting(todoID: UUID) {
+        switch reminderModeStore.currentMode {
+        case .off:
+            return
+        case .localNotification:
+            notificationScheduler.cancelNotification(forTodoID: todoID)
+            notificationScheduler.reconcileNotifications(for: todoItems)
+        case .systemReminderAgent:
+            removeSystemReminderIfNeeded(for: todoID)
+        }
+    }
+
+    private func reconcileTodoNotificationsIfNeeded() {
+        guard reminderModeStore.currentMode == .localNotification else {
+            return
+        }
+
         notificationScheduler.reconcileNotifications(for: todoItems)
+    }
+
+    private func applySystemReminderIfNeeded(for todo: TodoItem) {
+        guard reminderModeStore.currentMode == .systemReminderAgent else {
+            return
+        }
+
+        let proposal = systemReminderAgent.proposal(
+            for: todo,
+            mode: reminderModeStore.currentMode,
+            context: .current
+        )
+
+        guard proposal.action == .createOrUpdate else {
+            systemReminderMessage = proposal.reason
+            systemReminderErrorMessage = nil
+            return
+        }
+
+        systemReminderWriter.applyProposal(proposal) { [weak self] result in
+            switch result {
+            case .success(let writeResult):
+                self?.systemReminderMessage = Self.systemReminderMessage(for: writeResult, proposal: proposal)
+                self?.systemReminderErrorMessage = nil
+            case .failure(let error):
+                self?.systemReminderErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func completeSystemReminderIfNeeded(for id: UUID) {
+        guard reminderModeStore.currentMode == .systemReminderAgent else {
+            return
+        }
+
+        systemReminderWriter.completeReminder(forTodoID: id) { [weak self] result in
+            switch result {
+            case .success:
+                self?.systemReminderMessage = "系统提醒事项已标记完成"
+                self?.systemReminderErrorMessage = nil
+            case .failure(let error):
+                self?.systemReminderErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func removeSystemReminderIfNeeded(for id: UUID) {
+        guard reminderModeStore.currentMode == .systemReminderAgent else {
+            return
+        }
+
+        systemReminderWriter.removeReminder(forTodoID: id) { [weak self] result in
+            switch result {
+            case .success:
+                self?.systemReminderMessage = "系统提醒事项已移除"
+                self?.systemReminderErrorMessage = nil
+            case .failure(let error):
+                self?.systemReminderErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private static func systemReminderMessage(
+        for result: SystemReminderWriteResult,
+        proposal: SystemReminderProposal
+    ) -> String {
+        switch result {
+        case .created:
+            return "已创建系统提醒事项：\(proposal.reason)"
+        case .updated:
+            return "已更新系统提醒事项：\(proposal.reason)"
+        case .skipped:
+            return proposal.reason
+        case .completed:
+            return "系统提醒事项已标记完成"
+        case .removed:
+            return "系统提醒事项已移除"
+        case .notFound:
+            return "没有找到对应的系统提醒事项"
+        }
     }
     
     private static func makeFallbackContext() -> ModelContext {

@@ -114,6 +114,7 @@ private enum EasyNoteLaunchOptions {
             "recommendations_last_updated",
             "darkModeEnabled",
             "accentColorName",
+            TodoReminderModeStore.modeDefaultsKey,
             LocalTodoNotificationService.enabledDefaultsKey
         ].forEach { defaults.removeObject(forKey: $0) }
     }

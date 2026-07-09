@@ -188,10 +188,194 @@ struct EasyNoteTests {
         #expect(!retained.map(\.title).contains("已过期"))
     }
 
+    @Test func systemReminderAgentSkipsCompletedTodo() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 1, to: now))
+        let todo = makeTodo(title: "已完成", isCompleted: true, deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.action == .skip(.completedTodo))
+    }
+
+    @Test func systemReminderAgentSkipsMissingDeadline() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let todo = makeTodo(title: "无截止时间")
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.action == .skip(.missingDeadline))
+    }
+
+    @Test func systemReminderAgentSkipsPastDeadline() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .minute, value: -5, to: now))
+        let todo = makeTodo(title: "已过期", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.action == .skip(.deadlineNotFuture))
+    }
+
+    @Test func systemReminderAgentUsesMeetingLeadTime() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 3, to: now))
+        let todo = makeTodo(title: "项目会议", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.action == .createOrUpdate)
+        #expect(proposal.alarmDate == deadline.addingTimeInterval(-30 * 60))
+        #expect(proposal.reason.contains("会议"))
+    }
+
+    @Test func systemReminderAgentUsesTravelLeadTime() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 4, to: now))
+        let todo = makeTodo(title: "去机场", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.alarmDate == deadline.addingTimeInterval(-2 * 60 * 60))
+        #expect(proposal.reason.contains("出行"))
+    }
+
+    @Test func systemReminderAgentUsesLongSubmissionLeadTime() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 48, to: now))
+        let todo = makeTodo(title: "提交报告", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.alarmDate == deadline.addingTimeInterval(-24 * 60 * 60))
+        #expect(proposal.reason.contains("24 小时"))
+    }
+
+    @Test func systemReminderAgentUsesShortSubmissionLeadTimeWhenPossible() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 5, to: now))
+        let todo = makeTodo(title: "作业截止", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.alarmDate == deadline.addingTimeInterval(-2 * 60 * 60))
+        #expect(proposal.reason.contains("2 小时"))
+    }
+
+    @Test func systemReminderAgentUsesPreparationLeadTime() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 3, to: now))
+        let todo = makeTodo(title: "准备材料", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.alarmDate == deadline.addingTimeInterval(-60 * 60))
+        #expect(proposal.reason.contains("准备"))
+    }
+
+    @Test func systemReminderAgentUsesDefaultLeadTime() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 2, to: now))
+        let todo = makeTodo(title: "普通待办", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.alarmDate == deadline.addingTimeInterval(-15 * 60))
+        #expect(proposal.reason.contains("15 分钟"))
+    }
+
+    @Test func systemReminderAgentClampsPastLeadTimeToFutureAlarm() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .minute, value: 90, to: now))
+        let todo = makeTodo(title: "去机场", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.action == .createOrUpdate)
+        #expect(proposal.alarmDate == now.addingTimeInterval(60))
+        #expect(proposal.alarmDate > now)
+    }
+
+    @Test func systemReminderAgentSkipsDeadlineTooClose() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .second, value: 30, to: now))
+        let todo = makeTodo(title: "马上到期", deadline: deadline)
+
+        let proposal = SystemReminderAgent().proposal(
+            for: todo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(proposal.action == .skip(.deadlineNotFuture))
+    }
+
+    @Test func systemReminderAgentMarkerUsesTodoID() async throws {
+        let todo = makeTodo(title: "标记")
+
+        #expect(SystemReminderAgent.marker(for: todo.id) == "EasyNoteTodoID:\(todo.id.uuidString)")
+    }
+
     @Test func todoViewModelSynchronizesNotificationAfterAddingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
-        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
         scheduler.reset()
 
         let deadline = Date().addingTimeInterval(3600)
@@ -204,7 +388,12 @@ struct EasyNoteTests {
     @Test func todoViewModelSynchronizesNotificationAfterEditingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
-        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
         let todo = makeTodo(title: "原待办")
 
         #expect(viewModel.addTodoItem(todo))
@@ -226,7 +415,12 @@ struct EasyNoteTests {
     @Test func todoViewModelReconcilesNotificationsAfterCompletingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
-        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
         let todo = makeTodo(title: "完成后取消", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
@@ -241,7 +435,12 @@ struct EasyNoteTests {
         let calendar = Calendar.current
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
-        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
         let deadline = try #require(calendar.date(byAdding: .hour, value: 1, to: Date()))
         let recurringTodo = makeTodo(
             title: "循环提醒",
@@ -266,7 +465,12 @@ struct EasyNoteTests {
     @Test func todoViewModelCancelsDeletedNotificationAndReconcilesRemainingTodos() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
-        let viewModel = TodoViewModel(modelContext: context, notificationScheduler: scheduler)
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
         let deletedTodo = makeTodo(title: "删除", deadline: Date().addingTimeInterval(3600))
         let retainedTodo = makeTodo(title: "保留", deadline: Date().addingTimeInterval(7200))
 
@@ -277,6 +481,202 @@ struct EasyNoteTests {
         #expect(viewModel.deleteTodoItem(withID: deletedTodo.id))
         #expect(scheduler.canceledTodoIDs == [deletedTodo.id])
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
+    }
+
+    @Test func todoViewModelAppliesSystemReminderAfterAddingTodo() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+
+        #expect(viewModel.addTodoItem(title: "提交报告", deadline: Date().addingTimeInterval(48 * 60 * 60)))
+        #expect(writer.appliedProposals.count == 1)
+        #expect(writer.appliedProposals.first?.title == "提交报告")
+        #expect(scheduler.reconciledTodoIDs.isEmpty)
+    }
+
+    @Test func todoViewModelDoesNotApplySystemReminderInLocalOrOffMode() async throws {
+        let localContext = try makeModelContext()
+        let localWriter = FakeSystemReminderWriter()
+        let localViewModel = TodoViewModel(
+            modelContext: localContext,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: localWriter,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
+
+        #expect(localViewModel.addTodoItem(title: "本地通知", deadline: Date().addingTimeInterval(3600)))
+        #expect(localWriter.appliedProposals.isEmpty)
+
+        let offContext = try makeModelContext()
+        let offWriter = FakeSystemReminderWriter()
+        let offViewModel = TodoViewModel(
+            modelContext: offContext,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: offWriter,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .off)
+        )
+
+        #expect(offViewModel.addTodoItem(title: "关闭提醒", deadline: Date().addingTimeInterval(3600)))
+        #expect(offWriter.appliedProposals.isEmpty)
+    }
+
+    @Test func todoViewModelAppliesUpdatedSystemReminderAfterEditingTodo() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+        let todo = makeTodo(title: "原待办", deadline: Date().addingTimeInterval(3600))
+
+        #expect(viewModel.addTodoItem(todo))
+        writer.reset()
+
+        let updatedDeadline = Date().addingTimeInterval(7200)
+        #expect(viewModel.updateTodoItem(
+            id: todo.id,
+            title: "更新后的会议",
+            priority: .high,
+            deadline: updatedDeadline,
+            notes: "zoom"
+        ))
+
+        #expect(writer.appliedProposals.count == 1)
+        #expect(writer.appliedProposals.first?.todoID == todo.id)
+        #expect(writer.appliedProposals.first?.title == "更新后的会议")
+    }
+
+    @Test func todoViewModelCompletesSystemReminderAfterCompletingTodo() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+        let todo = makeTodo(title: "完成提醒", deadline: Date().addingTimeInterval(3600))
+
+        #expect(viewModel.addTodoItem(todo))
+        writer.reset()
+
+        #expect(viewModel.toggleTodoCompletion(for: todo.id))
+        #expect(writer.completedTodoIDs == [todo.id])
+        #expect(writer.appliedProposals.isEmpty)
+    }
+
+    @Test func todoViewModelCompletesOriginalAndAppliesNextRecurringSystemReminder() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+        let deadline = Date().addingTimeInterval(3600)
+        let recurringTodo = makeTodo(
+            title: "循环提醒",
+            deadline: deadline,
+            isRecurring: true,
+            recurringInterval: TodoItem.RecurringInterval.daily.rawValue
+        )
+
+        #expect(viewModel.addTodoItem(recurringTodo))
+        writer.reset()
+
+        #expect(viewModel.toggleTodoCompletion(for: recurringTodo.id))
+        let nextTodo = try #require(viewModel.todoItems.first { $0.id != recurringTodo.id })
+        #expect(writer.completedTodoIDs == [recurringTodo.id])
+        #expect(writer.appliedProposals.map(\.todoID) == [nextTodo.id])
+    }
+
+    @Test func todoViewModelRemovesSystemReminderAfterDeletingTodo() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+        let todo = makeTodo(title: "删除提醒", deadline: Date().addingTimeInterval(3600))
+
+        #expect(viewModel.addTodoItem(todo))
+        writer.reset()
+
+        #expect(viewModel.deleteTodoItem(withID: todo.id))
+        #expect(writer.removedTodoIDs == [todo.id])
+    }
+
+    @Test func todoViewModelDoesNotWriteSystemReminderWhenSwiftDataSaveFails() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent),
+            saveModelContext: { _ in throw TestSaveError.failed }
+        )
+
+        #expect(!viewModel.addTodoItem(title: "不会写入", deadline: Date().addingTimeInterval(3600)))
+        #expect(writer.appliedProposals.isEmpty)
+        #expect(writer.completedTodoIDs.isEmpty)
+        #expect(writer.removedTodoIDs.isEmpty)
+    }
+
+    @Test func todoViewModelKeepsSavedTodoWhenSystemReminderWriterFails() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        writer.applyResult = .failure(.notAuthorized)
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+
+        #expect(viewModel.addTodoItem(title: "保存成功提醒失败", deadline: Date().addingTimeInterval(3600)))
+        #expect(viewModel.todoItems.count == 1)
+        #expect(writer.appliedProposals.count == 1)
+        #expect(viewModel.systemReminderErrorMessage == "未授予提醒事项权限")
+    }
+
+    @Test func todoReminderModeStoreMigratesLegacyNotificationSetting() async throws {
+        let suiteName = "EasyNoteTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        defaults.set(true, forKey: LocalTodoNotificationService.enabledDefaultsKey)
+        let store = TodoReminderModeStore(defaults: defaults)
+
+        #expect(store.currentMode == .localNotification)
+    }
+
+    @Test func todoReminderModeStoreUpdatesLegacyNotificationFlag() async throws {
+        let suiteName = "EasyNoteTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let store = TodoReminderModeStore(defaults: defaults)
+
+        store.currentMode = .systemReminderAgent
+        #expect(defaults.bool(forKey: LocalTodoNotificationService.enabledDefaultsKey) == false)
+
+        store.currentMode = .localNotification
+        #expect(defaults.bool(forKey: LocalTodoNotificationService.enabledDefaultsKey))
     }
     
     @Test func chatSessionSummaryUsesLatestUserMessage() async throws {
@@ -1796,6 +2196,71 @@ struct EasyNoteTests {
             canceledTodoIDs = []
             didCancelAll = false
         }
+    }
+
+    private final class FakeSystemReminderWriter: SystemReminderWritingProviding {
+        private let authorizationStatusSubject = CurrentValueSubject<SystemReminderAuthorizationStatus, Never>(.fullAccess)
+        private(set) var appliedProposals: [SystemReminderProposal] = []
+        private(set) var completedTodoIDs: [UUID] = []
+        private(set) var removedTodoIDs: [UUID] = []
+        var applyResult: Result<SystemReminderWriteResult, SystemReminderError> = .success(.created)
+        var completeResult: Result<Void, SystemReminderError> = .success(())
+        var removeResult: Result<Void, SystemReminderError> = .success(())
+
+        var authorizationStatusPublisher: AnyPublisher<SystemReminderAuthorizationStatus, Never> {
+            authorizationStatusSubject.eraseToAnyPublisher()
+        }
+
+        func refreshAuthorizationStatus() {}
+
+        func requestAuthorization(completion: @escaping (Bool) -> Void) {
+            completion(true)
+        }
+
+        func applyProposal(
+            _ proposal: SystemReminderProposal,
+            completion: @escaping (Result<SystemReminderWriteResult, SystemReminderError>) -> Void
+        ) {
+            appliedProposals.append(proposal)
+            completion(applyResult)
+        }
+
+        func completeReminder(
+            forTodoID id: UUID,
+            completion: ((Result<Void, SystemReminderError>) -> Void)?
+        ) {
+            completedTodoIDs.append(id)
+            completion?(completeResult)
+        }
+
+        func removeReminder(
+            forTodoID id: UUID,
+            completion: ((Result<Void, SystemReminderError>) -> Void)?
+        ) {
+            removedTodoIDs.append(id)
+            completion?(removeResult)
+        }
+
+        func reset() {
+            appliedProposals = []
+            completedTodoIDs = []
+            removedTodoIDs = []
+            applyResult = .success(.created)
+            completeResult = .success(())
+            removeResult = .success(())
+        }
+    }
+
+    private final class FakeTodoReminderModeStore: TodoReminderModeProviding {
+        var currentMode: TodoReminderMode
+
+        init(mode: TodoReminderMode) {
+            self.currentMode = mode
+        }
+    }
+
+    private enum TestSaveError: Error {
+        case failed
     }
 
     private final class FakeOpenAIService: OpenAIServiceProviding {
