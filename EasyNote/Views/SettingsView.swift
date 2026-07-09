@@ -459,6 +459,12 @@ struct SettingsView: View {
     }
 
     private func setTodoReminderMode(_ mode: TodoReminderMode) {
+        let previousMode = reminderModeStore.currentMode
+        let shouldRemoveSystemReminders = TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
+            previousMode: previousMode,
+            nextMode: mode
+        )
+
         selectedTodoReminderMode = mode
         reminderModeStore.currentMode = mode
         todoNotificationMessage = nil
@@ -484,6 +490,9 @@ struct SettingsView: View {
                 }
 
                 reconcileTodoNotifications()
+                if shouldRemoveSystemReminders {
+                    removeCurrentSystemRemindersAfterSwitchingToLocalMode()
+                }
             }
         case .systemReminderAgent:
             todoNotificationsEnabled = false
@@ -494,6 +503,46 @@ struct SettingsView: View {
             } else {
                 systemReminderMessage = "请授予提醒事项权限后同步当前待办"
             }
+        }
+    }
+
+    private func removeCurrentSystemRemindersAfterSwitchingToLocalMode() {
+        do {
+            let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
+            let todos = try modelContext.fetch(descriptor)
+
+            guard !todos.isEmpty else {
+                return
+            }
+
+            let group = DispatchGroup()
+            var successCount = 0
+            var firstError: String?
+
+            todos.forEach { todo in
+                group.enter()
+                systemReminderWriter.removeReminder(forTodoID: todo.id) { result in
+                    switch result {
+                    case .success:
+                        successCount += 1
+                    case .failure(let error):
+                        if firstError == nil {
+                            firstError = error.localizedDescription
+                        }
+                    }
+                    group.leave()
+                }
+            }
+
+            group.notify(queue: .main) {
+                if let firstError {
+                    todoNotificationErrorMessage = "已切换到 EasyNote 通知，但清理旧系统提醒事项失败: \(firstError)"
+                } else if successCount > 0 {
+                    todoNotificationMessage = "已同步 EasyNote 通知，并清理 \(successCount) 个系统提醒事项"
+                }
+            }
+        } catch {
+            todoNotificationErrorMessage = "已切换到 EasyNote 通知，但读取待办清理系统提醒事项失败: \(error.localizedDescription)"
         }
     }
 

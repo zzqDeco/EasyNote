@@ -74,7 +74,7 @@ Before treating a branch as a usable app build, manually verify:
 - edit the todo deadline and confirm the existing marked system reminder updates instead of duplicating
 - complete the todo and confirm the marked system reminder is completed
 - delete an EasyNote todo and confirm only the matching EasyNote-marked system reminder is removed
-- switch back to EasyNote 通知 and confirm new todos no longer write system reminders
+- switch back to EasyNote 通知 and confirm current EasyNote-marked Apple Reminders are removed and new todos no longer write system reminders
 - configure and clear the DeepSeek API key in Settings
 - open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible

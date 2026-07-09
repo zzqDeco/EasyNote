@@ -20,6 +20,7 @@ Non-goals:
 - Do not introduce LLM-based planning in v1; the agent is deterministic and testable.
 - Do not create a custom Reminders list; v1 writes to the default list for new reminders.
 - Do not bulk-delete existing system reminders when the mode is turned off.
+- Do remove EasyNote-marked system reminders for current todos when the user switches from system Reminders mode to EasyNote notifications, so local notifications do not run beside stale Apple Reminders for the same todos.
 - Do not enable CloudKit or remote push notifications.
 
 ## Implementation
@@ -40,7 +41,7 @@ Non-goals:
 - `SystemReminderService` requests full reminder access, finds existing marked reminders, updates one matching reminder, removes duplicate EasyNote-marked reminders for the same todo, and writes due date, alarm, priority, title, and notes.
 - `TodoViewModel` writes system reminders only in `.systemReminderAgent` mode and only after SwiftData saves succeed.
 - System reminder write failures do not roll back SwiftData saves; they set `systemReminderErrorMessage`.
-- `SettingsView` switches modes, requests Reminders access, cancels local EasyNote notifications when entering system mode, and exposes a manual sync for current todos.
+- `SettingsView` switches modes, requests Reminders access, cancels local EasyNote notifications when entering system mode, removes current EasyNote-marked Apple Reminders when handing ownership back to local notifications, and exposes a manual sync for current todos.
 
 ## Test Plan
 
@@ -66,6 +67,7 @@ Non-goals:
   - grant Reminders permission
   - create, edit, complete, and delete a deadline todo
   - confirm the Apple Reminders app has one EasyNote-marked reminder that updates instead of duplicating
+  - switch from system Reminders mode to EasyNote notifications and confirm the EasyNote-marked Apple Reminder is removed before local notifications own future alerts
 
 ## Assumptions
 

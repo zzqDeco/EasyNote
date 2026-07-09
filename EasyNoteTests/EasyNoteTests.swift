@@ -716,8 +716,7 @@ struct EasyNoteTests {
 
         todo.deadline = nil
         try context.save()
-        NotificationCenter.default.post(name: .easyNoteBackupDidImport, object: nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        viewModel.reloadTodoItemsAfterExternalImport()
 
         #expect(writer.removedTodoIDs == [todo.id])
     }
@@ -782,6 +781,21 @@ struct EasyNoteTests {
 
         store.currentMode = .localNotification
         #expect(defaults.bool(forKey: LocalTodoNotificationService.enabledDefaultsKey))
+    }
+
+    @Test func todoReminderModeTransitionPlannerClearsSystemRemindersOnlyForLocalHandoff() async throws {
+        #expect(TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
+            previousMode: .systemReminderAgent,
+            nextMode: .localNotification
+        ))
+        #expect(!TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
+            previousMode: .systemReminderAgent,
+            nextMode: .off
+        ))
+        #expect(!TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
+            previousMode: .localNotification,
+            nextMode: .systemReminderAgent
+        ))
     }
     
     @Test func chatSessionSummaryUsesLatestUserMessage() async throws {

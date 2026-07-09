@@ -48,7 +48,7 @@ Todo reminder notifications are derived from existing todo fields and do not add
 System Reminders mode lets EasyNote write eligible todos into Apple Reminders through EventKit without changing SwiftData schema. It is mutually exclusive with EasyNote local notifications:
 
 - `.off`: do not schedule local notifications and do not write new system reminders
-- `.localNotification`: reconcile EasyNote local notifications and do not write system reminders
+- `.localNotification`: reconcile EasyNote local notifications and do not write system reminders; when switching from `.systemReminderAgent`, Settings attempts to remove EasyNote-marked Apple Reminders for current todos so the same todo is not owned by two alert systems
 - `.systemReminderAgent`: cancel EasyNote local todo notifications, then write/update Apple Reminders through the system reminder agent and writer
 
 `SystemReminderAgent` is pure logic. It reads only a todo, the active mode, and `SystemReminderContext` with `now` plus `Calendar`, and returns a `SystemReminderProposal`:

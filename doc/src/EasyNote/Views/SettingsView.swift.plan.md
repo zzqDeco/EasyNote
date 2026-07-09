@@ -30,6 +30,7 @@
 - Reminder mode is persisted through `TodoReminderModeStore`; the legacy `todo_notifications_enabled` flag remains synchronized for PR #19 compatibility.
 - System Reminders operations are consumed through `SystemReminderAgentProviding` and `SystemReminderWritingProviding`; Settings can request Reminders permission and manually reconcile current todos into Apple Reminders, including creating/updating eligible todos, completing completed todos, and removing ineligible marked reminders.
 - Switching to system Reminders mode disables EasyNote local notifications and cancels EasyNote-created local todo notifications to avoid duplicate alerts.
+- Switching from system Reminders mode to EasyNote notifications reconciles local notifications and attempts to remove EasyNote-marked Apple Reminders for current todos so later local-mode edits do not leave stale system alerts.
 - Switching to off cancels EasyNote local notifications but does not bulk-delete Apple Reminders that were already written.
 - If system notification permission becomes schedulable while the app-level reminder toggle is still enabled, Settings reconciles current todos so reminders are recreated without waiting for a todo edit.
 - Settings refreshes notification authorization status when the app returns to the foreground, covering permission changes made in iOS Settings while the Settings view remains mounted.

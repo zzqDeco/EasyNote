@@ -45,7 +45,7 @@ class TodoViewModel: ObservableObject {
         NotificationCenter.default.publisher(for: .easyNoteBackupDidImport)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.loadTodoItems(reconcileSystemReminders: true)
+                self?.reloadTodoItemsAfterExternalImport()
             }
             .store(in: &cancellables)
     }
@@ -72,6 +72,10 @@ class TodoViewModel: ObservableObject {
     func updateModelContext(_ newContext: ModelContext) {
         modelContext = newContext
         loadTodoItems()
+    }
+
+    func reloadTodoItemsAfterExternalImport() {
+        loadTodoItems(reconcileSystemReminders: true)
     }
     
     /// 标记待办事项为已完成或未完成
