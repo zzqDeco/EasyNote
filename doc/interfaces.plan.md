@@ -7,7 +7,9 @@ This document records the current contracts that cross module boundaries in Easy
 - `openai_api_key`: stored in `UserDefaults` through the Settings screen and read by `OpenAIService`.
 - `darkModeEnabled`: stored with `@AppStorage` in `ThemeManager`.
 - `accentColorName`: stored with `@AppStorage` in `ThemeManager`.
-- `todo_notifications_enabled`: stored with `@AppStorage` in Settings and read by `LocalTodoNotificationService`.
+- `todo_reminder_mode`: stored by `TodoReminderModeStore` as `off`, `localNotification`, or `systemReminderAgent`.
+- `todo_notifications_enabled`: legacy-compatible local notification flag stored with `@AppStorage` in Settings and read by `LocalTodoNotificationService`.
+- `todo_system_reminders_may_exist`: a `TodoReminderModeStore` handoff marker used only to decide whether returning to local notifications should clean EasyNote-marked Apple Reminders after a prior system-reminder mode.
 
 The repository must not contain default API keys. Empty `openai_api_key` disables AI calls with a user-visible error.
 
@@ -29,7 +31,8 @@ Core SwiftData save paths should return a success value or set a user-visible `e
 
 Todo reminder notifications are derived from existing todo fields and do not add SwiftData schema:
 
-- global enablement is controlled by `todo_notifications_enabled`
+- global local-notification enablement is controlled by `todo_notifications_enabled`
+- active reminder behavior is controlled by `todo_reminder_mode`
 - a todo is eligible only when it is incomplete and has a future `deadline`
 - notification identifiers use `TodoItem.id` through the stable `easynote.todo.<uuid>` prefix
 - completing or deleting a todo cancels its notification
@@ -38,6 +41,39 @@ Todo reminder notifications are derived from existing todo fields and do not add
 - reconciliation retains at most 64 pending todo reminders, prioritizing the nearest future deadlines and canceling non-retained reminder identifiers
 
 `TodoNotificationPlanner` owns pure eligibility, identifier, and retained-slot selection rules. `LocalTodoNotificationService` owns `UNUserNotificationCenter`, authorization status publishing, permission requests, pending notification writes, and cancellation. `TodoViewModel` consumes this behavior through `TodoNotificationSchedulingProviding` and should only reconcile or cancel after SwiftData saves succeed; create, edit, complete, uncomplete, recurrence, and reset paths reconcile the whole current todo list so retained notification slots are refilled. UI tests must not depend on live notification permission prompts; focused unit tests should use fake schedulers.
+
+`TodoReminderModeStore` maps a missing `todo_reminder_mode` plus `todo_notifications_enabled == true` to `.localNotification` so existing local notification settings are preserved. Setting `.localNotification` writes the legacy flag to true; setting `.off` or `.systemReminderAgent` writes it to false. Successful system reminder writes or completions mark that EasyNote-created Apple Reminders may exist; successful handoff cleanup back to local notifications clears that marker.
+
+## System Reminders Boundary
+
+System Reminders mode lets EasyNote write eligible todos into Apple Reminders through EventKit without changing SwiftData schema. It is mutually exclusive with EasyNote local notifications:
+
+- `.off`: do not schedule local notifications and do not write new system reminders
+- `.localNotification`: reconcile EasyNote local notifications and do not write system reminders; when switching from system mode, or from off after system mode may have written reminders, Settings attempts to remove EasyNote-marked Apple Reminders for current todos so the same todo is not owned by two alert systems
+- `.systemReminderAgent`: cancel EasyNote local todo notifications, then write/update Apple Reminders through the system reminder agent and writer; when access is already granted, Settings syncs current todos immediately so existing local notifications are replaced instead of dropped. If Settings has not yet received the current Reminders authorization value, it syncs after the publisher reports writable access.
+
+`SystemReminderAgent` is pure logic. It reads only a todo, the active mode, and `SystemReminderContext` with `now` plus `Calendar`, and returns a `SystemReminderProposal`:
+
+- completed todos skip with `.completedTodo`
+- missing deadlines skip with `.missingDeadline`
+- non-future or less-than-60-second deadlines skip with `.deadlineNotFuture`
+- empty trimmed titles skip with `.emptyTitle`
+- meeting/call keywords lead by 30 minutes
+- travel keywords lead by 2 hours
+- submission/deadline keywords lead by 24 hours when the deadline is more than 24 hours away, otherwise 2 hours
+- preparation keywords lead by 1 hour
+- other todos lead by 15 minutes
+- lead times that would be in the past clamp to `now + 60 seconds` when the deadline is still far enough away
+
+`SystemReminderProposalReconciler` maps proposals to side effects: create/update proposals apply through EventKit, completed-todo skips complete the marked reminder, missing/past/empty-title skips remove the marked reminder, and disabled-mode skips are ignored. This mapping is shared by ViewModel save/reload paths and Settings manual sync.
+
+System reminders are identified by an EasyNote marker in notes:
+
+```text
+EasyNoteTodoID:<uuid>
+```
+
+`SystemReminderService` owns EventKit and must stay behind `SystemReminderWritingProviding`. It requests full Reminders access, publishes authorization state, treats write-only Reminders access as insufficient for this read/update/delete workflow, uses `defaultCalendarForNewReminders()` as the v1 target list, writes title, notes, due date, alarm date, and EventKit priority, and finds existing EasyNote-created reminders by marker. Applying a proposal updates one existing marked reminder or creates a new one; duplicate reminders with the same EasyNote marker are removed after the first one is updated. Completing or deleting a todo only touches reminders with the matching EasyNote marker. EventKit failures are user-visible system-reminder errors and do not roll back successful SwiftData saves.
 
 ## Local Backup Boundary
 

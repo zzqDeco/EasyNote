@@ -296,6 +296,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = EasyNote/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要麦克风权限来录制语音日记";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "需要提醒事项权限来把待办写入系统提醒事项";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要语音识别权限来将语音转换为文字";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -329,6 +330,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = EasyNote/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要麦克风权限来录制语音日记";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "需要提醒事项权限来把待办写入系统提醒事项";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要语音识别权限来将语音转换为文字";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

@@ -62,3 +62,13 @@ protocol TodoNotificationSchedulingProviding: AnyObject {
     func cancelNotification(forTodoID id: UUID)
     func cancelAllTodoNotifications()
 }
+
+protocol SystemReminderWritingProviding: AnyObject {
+    var authorizationStatusPublisher: AnyPublisher<SystemReminderAuthorizationStatus, Never> { get }
+
+    func refreshAuthorizationStatus()
+    func requestAuthorization(completion: @escaping (Bool) -> Void)
+    func applyProposal(_ proposal: SystemReminderProposal, completion: @escaping (Result<SystemReminderWriteResult, SystemReminderError>) -> Void)
+    func completeReminder(forTodoID id: UUID, completion: ((Result<Void, SystemReminderError>) -> Void)?)
+    func removeReminder(forTodoID id: UUID, completion: ((Result<Void, SystemReminderError>) -> Void)?)
+}

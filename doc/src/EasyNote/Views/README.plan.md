@@ -18,7 +18,7 @@
 - Diary review UI is read-only, consumes `DiaryReviewProjection` from the full diary dataset rather than the active search/filter result, and keeps bottom scroll padding for the tab-level floating add button.
 - Diary transcription UI should present AI apply/copy/discard controls and insert/replace actions explicitly; it should not mutate diary body text through implicit notifications.
 - Diary detail UI should show pending AI summaries before they are applied to the persisted summary field, scoped to the diary entry that produced the summary.
-- Todo views cover recommendations, detail/edit, and unified add.
+- Todo views cover recommendations, detail/edit, and unified add; todo list and detail surfaces display system reminder success/error messages published by `TodoViewModel`.
 - Chat views cover AI exploration and persisted session selection.
 - Settings owns local theme and DeepSeek API key entry.
 

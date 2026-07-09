@@ -15,12 +15,13 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
-| [todo-local-notifications.plan.md](todo-local-notifications.plan.md) | Add local todo reminder notifications without changing SwiftData schema | Active |
+| [agent-system-reminders.plan.md](agent-system-reminders.plan.md) | Add agent-selected Apple Reminders writes as a higher-level todo reminder mode | Active |
 
 ## Delivered Or Recent References
 
 | Document | Purpose | Status |
 |---|---|---|
+| [todo-local-notifications.plan.md](todo-local-notifications.plan.md) | Add local todo reminder notifications without changing SwiftData schema | Delivered |
 | [cloudkit-sync-preflight.plan.md](cloudkit-sync-preflight.plan.md) | Make future CloudKit enablement prerequisites explicit without enabling real sync | Delivered |
 | [ui-ci-stabilization.plan.md](ui-ci-stabilization.plan.md) | Add UI-test launch isolation and a manual hosted UI smoke workflow | Delivered |
 | [service-injection-seams.plan.md](service-injection-seams.plan.md) | Add narrow service protocols and initializer injection seams for ViewModels and Settings | Delivered |

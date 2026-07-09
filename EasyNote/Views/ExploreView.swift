@@ -394,6 +394,8 @@ struct ExploreView: View {
                 .accessibilityIdentifier("todo.addButton")
             }
 
+            todoReminderFeedback
+
             Picker("待办分类", selection: $selectedTodoFilter) {
                 ForEach(TodoFilter.allCases) { filter in
                     Text(filter.rawValue).tag(filter)
@@ -408,6 +410,21 @@ struct ExploreView: View {
 
     private var selectedTodoItems: [TodoItem] {
         selectedTodoFilter.apply(to: todoViewModel.todoItems)
+    }
+
+    @ViewBuilder
+    private var todoReminderFeedback: some View {
+        if let systemReminderErrorMessage = todoViewModel.systemReminderErrorMessage {
+            Text(systemReminderErrorMessage)
+                .font(.caption)
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let systemReminderMessage = todoViewModel.systemReminderMessage {
+            Text(systemReminderMessage)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
     
     // 待办事项分区视图

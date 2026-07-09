@@ -14,6 +14,8 @@ struct TodoDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // 标题和状态区域
                 titleSection
+
+                reminderStatusSection
                 
                 // 截止日期和优先级
                 deadlineAndPrioritySection
@@ -57,6 +59,21 @@ struct TodoDetailView: View {
     }
     
     // MARK: - 子视图
+
+    @ViewBuilder
+    private var reminderStatusSection: some View {
+        if let systemReminderErrorMessage = viewModel.systemReminderErrorMessage {
+            Text(systemReminderErrorMessage)
+                .font(.caption)
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let systemReminderMessage = viewModel.systemReminderMessage {
+            Text(systemReminderMessage)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
     
     private var titleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -401,4 +418,4 @@ struct TodoEditView: View {
     return NavigationView {
         TodoDetailView(viewModel: viewModel, item: todo)
     }
-} 
+}
