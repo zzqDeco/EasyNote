@@ -367,6 +367,42 @@ struct EasyNoteTests {
         #expect(SystemReminderAgent.marker(for: todo.id) == "EasyNoteTodoID:\(todo.id.uuidString)")
     }
 
+    @Test func systemReminderProposalReconcilerMapsProposalActions() async throws {
+        let calendar = makeGregorianCalendar()
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
+        let deadline = try #require(calendar.date(byAdding: .hour, value: 2, to: now))
+        let agent = SystemReminderAgent()
+        let activeTodo = makeTodo(title: "普通待办", deadline: deadline)
+        let completedTodo = makeTodo(title: "完成待办", isCompleted: true, deadline: deadline)
+        let noDeadlineTodo = makeTodo(title: "无截止时间")
+        let disabledProposal = agent.proposal(
+            for: activeTodo,
+            mode: .off,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        let activeProposal = agent.proposal(
+            for: activeTodo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+        let completedProposal = agent.proposal(
+            for: completedTodo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+        let noDeadlineProposal = agent.proposal(
+            for: noDeadlineTodo,
+            mode: .systemReminderAgent,
+            context: SystemReminderContext(now: now, calendar: calendar)
+        )
+
+        #expect(SystemReminderProposalReconciler.operation(for: activeProposal) == .apply(activeProposal))
+        #expect(SystemReminderProposalReconciler.operation(for: completedProposal) == .complete(completedTodo.id))
+        #expect(SystemReminderProposalReconciler.operation(for: noDeadlineProposal) == .remove(noDeadlineTodo.id))
+        #expect(SystemReminderProposalReconciler.operation(for: disabledProposal) == .ignore)
+    }
+
     @Test func todoViewModelSynchronizesNotificationAfterAddingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -661,6 +697,28 @@ struct EasyNoteTests {
 
         #expect(viewModel.deleteTodoItem(withID: todo.id))
         #expect(scheduler.canceledTodoIDs == [todo.id])
+        #expect(writer.removedTodoIDs == [todo.id])
+    }
+
+    @Test func todoViewModelReconcilesSystemRemindersAfterBackupReload() async throws {
+        let context = try makeModelContext()
+        let writer = FakeSystemReminderWriter()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: writer,
+            reminderModeStore: FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        )
+        let todo = makeTodo(title: "导入前待办", deadline: Date().addingTimeInterval(3600))
+
+        #expect(viewModel.addTodoItem(todo))
+        writer.reset()
+
+        todo.deadline = nil
+        try context.save()
+        NotificationCenter.default.post(name: .easyNoteBackupDidImport, object: nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
         #expect(writer.removedTodoIDs == [todo.id])
     }
 

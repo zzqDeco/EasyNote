@@ -531,9 +531,13 @@ struct SettingsView: View {
             let proposals = todos.map {
                 systemReminderAgent.proposal(for: $0, mode: .systemReminderAgent, context: context)
             }
-            let writableProposals = proposals.filter { $0.action == .createOrUpdate }
+            let operations = proposals
+                .map { SystemReminderProposalReconciler.operation(for: $0) }
+                .filter { operation in
+                    operation != .ignore
+                }
 
-            guard !writableProposals.isEmpty else {
+            guard !operations.isEmpty else {
                 systemReminderMessage = "没有需要写入系统提醒事项的待办"
                 return
             }
@@ -542,17 +546,47 @@ struct SettingsView: View {
             var successCount = 0
             var firstError: String?
 
-            writableProposals.forEach { proposal in
+            operations.forEach { operation in
                 group.enter()
-                systemReminderWriter.applyProposal(proposal) { result in
-                    switch result {
-                    case .success:
-                        successCount += 1
-                    case .failure(let error):
-                        if firstError == nil {
-                            firstError = error.localizedDescription
+
+                switch operation {
+                case .apply(let proposal):
+                    systemReminderWriter.applyProposal(proposal) { result in
+                        switch result {
+                        case .success:
+                            successCount += 1
+                        case .failure(let error):
+                            if firstError == nil {
+                                firstError = error.localizedDescription
+                            }
                         }
+                        group.leave()
                     }
+                case .complete(let id):
+                    systemReminderWriter.completeReminder(forTodoID: id) { result in
+                        switch result {
+                        case .success:
+                            successCount += 1
+                        case .failure(let error):
+                            if firstError == nil {
+                                firstError = error.localizedDescription
+                            }
+                        }
+                        group.leave()
+                    }
+                case .remove(let id):
+                    systemReminderWriter.removeReminder(forTodoID: id) { result in
+                        switch result {
+                        case .success:
+                            successCount += 1
+                        case .failure(let error):
+                            if firstError == nil {
+                                firstError = error.localizedDescription
+                            }
+                        }
+                        group.leave()
+                    }
+                case .ignore:
                     group.leave()
                 }
             }
@@ -561,7 +595,7 @@ struct SettingsView: View {
                 if let firstError {
                     systemReminderErrorMessage = "同步失败: \(firstError)"
                 } else {
-                    systemReminderMessage = "已同步 \(successCount) 个系统提醒事项"
+                    systemReminderMessage = "已同步/清理 \(successCount) 个系统提醒事项"
                 }
             }
         } catch {

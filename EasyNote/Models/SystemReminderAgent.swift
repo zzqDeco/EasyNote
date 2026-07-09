@@ -35,6 +35,28 @@ enum SystemReminderSkipReason: Equatable {
     case emptyTitle
 }
 
+enum SystemReminderProposalOperation: Equatable {
+    case apply(SystemReminderProposal)
+    case complete(UUID)
+    case remove(UUID)
+    case ignore
+}
+
+struct SystemReminderProposalReconciler {
+    static func operation(for proposal: SystemReminderProposal) -> SystemReminderProposalOperation {
+        switch proposal.action {
+        case .createOrUpdate:
+            return .apply(proposal)
+        case .skip(.completedTodo):
+            return .complete(proposal.todoID)
+        case .skip(.missingDeadline), .skip(.deadlineNotFuture), .skip(.emptyTitle):
+            return .remove(proposal.todoID)
+        case .skip(.reminderModeDisabled):
+            return .ignore
+        }
+    }
+}
+
 protocol SystemReminderAgentProviding {
     func proposal(
         for todo: TodoItem,

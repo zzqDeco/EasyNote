@@ -16,6 +16,7 @@
 ## Behavior Notes
 
 - The service uses EventKit `requestFullAccessToReminders` and requires `NSRemindersFullAccessUsageDescription`.
+- Write-only Reminders access is treated as insufficient because EasyNote must read existing marker notes before update, complete, or delete operations.
 - The v1 idempotency marker is `EasyNoteTodoID:<uuid>` appended to reminder notes.
 - Applying a proposal updates the first matching marked reminder, creates one when none exists, and removes extra EasyNote-marked duplicates for the same todo.
 - Completion and removal are no-op successes when the matching marked reminder is not found.

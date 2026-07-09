@@ -28,7 +28,7 @@
 - Successful import posts `easyNoteBackupDidImport` so active ViewModels reload SwiftData-backed lists.
 - Local todo reminder operations are consumed through `TodoNotificationSchedulingProviding`; enabling EasyNote notifications requests permission and reconciles current todos, while disabling them cancels EasyNote todo notifications without changing todo data.
 - Reminder mode is persisted through `TodoReminderModeStore`; the legacy `todo_notifications_enabled` flag remains synchronized for PR #19 compatibility.
-- System Reminders operations are consumed through `SystemReminderAgentProviding` and `SystemReminderWritingProviding`; Settings can request Reminders permission and manually sync eligible current todos into Apple Reminders.
+- System Reminders operations are consumed through `SystemReminderAgentProviding` and `SystemReminderWritingProviding`; Settings can request Reminders permission and manually reconcile current todos into Apple Reminders, including creating/updating eligible todos, completing completed todos, and removing ineligible marked reminders.
 - Switching to system Reminders mode disables EasyNote local notifications and cancels EasyNote-created local todo notifications to avoid duplicate alerts.
 - Switching to off cancels EasyNote local notifications but does not bulk-delete Apple Reminders that were already written.
 - If system notification permission becomes schedulable while the app-level reminder toggle is still enabled, Settings reconciles current todos so reminders are recreated without waiting for a todo edit.

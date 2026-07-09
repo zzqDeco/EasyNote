@@ -35,6 +35,7 @@
 - Todo local notification scheduling belongs to `TodoNotificationSchedulingProviding`; `TodoViewModel` reconciles local reminders only after SwiftData saves succeed, and deletion also cancels the removed todo identifier before reconciling the remaining list.
 - Todo system Reminders writes belong to `SystemReminderAgentProviding` and `SystemReminderWritingProviding`; `TodoViewModel` applies, completes, or removes system reminders only in `.systemReminderAgent` mode and only after SwiftData saves succeed.
 - System reminder write failures set `systemReminderErrorMessage` without rolling back the saved todo.
+- Backup import reloads reconcile system reminders in `.systemReminderAgent` mode so imported todo title, deadline, and completion changes do not leave stale Apple Reminders.
 
 ## Tests
 

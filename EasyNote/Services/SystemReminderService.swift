@@ -282,7 +282,7 @@ final class SystemReminderService: SystemReminderWritingProviding {
         case .authorized, .fullAccess:
             return .fullAccess
         case .writeOnly:
-            return .fullAccess
+            return .denied
         @unknown default:
             return .unknown
         }

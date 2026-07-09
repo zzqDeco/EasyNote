@@ -64,13 +64,15 @@ System Reminders mode lets EasyNote write eligible todos into Apple Reminders th
 - other todos lead by 15 minutes
 - lead times that would be in the past clamp to `now + 60 seconds` when the deadline is still far enough away
 
+`SystemReminderProposalReconciler` maps proposals to side effects: create/update proposals apply through EventKit, completed-todo skips complete the marked reminder, missing/past/empty-title skips remove the marked reminder, and disabled-mode skips are ignored. This mapping is shared by ViewModel save/reload paths and Settings manual sync.
+
 System reminders are identified by an EasyNote marker in notes:
 
 ```text
 EasyNoteTodoID:<uuid>
 ```
 
-`SystemReminderService` owns EventKit and must stay behind `SystemReminderWritingProviding`. It requests full Reminders access, publishes authorization state, uses `defaultCalendarForNewReminders()` as the v1 target list, writes title, notes, due date, alarm date, and EventKit priority, and finds existing EasyNote-created reminders by marker. Applying a proposal updates one existing marked reminder or creates a new one; duplicate reminders with the same EasyNote marker are removed after the first one is updated. Completing or deleting a todo only touches reminders with the matching EasyNote marker. EventKit failures are user-visible system-reminder errors and do not roll back successful SwiftData saves.
+`SystemReminderService` owns EventKit and must stay behind `SystemReminderWritingProviding`. It requests full Reminders access, publishes authorization state, treats write-only Reminders access as insufficient for this read/update/delete workflow, uses `defaultCalendarForNewReminders()` as the v1 target list, writes title, notes, due date, alarm date, and EventKit priority, and finds existing EasyNote-created reminders by marker. Applying a proposal updates one existing marked reminder or creates a new one; duplicate reminders with the same EasyNote marker are removed after the first one is updated. Completing or deleting a todo only touches reminders with the matching EasyNote marker. EventKit failures are user-visible system-reminder errors and do not roll back successful SwiftData saves.
 
 ## Local Backup Boundary
 

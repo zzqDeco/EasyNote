@@ -45,7 +45,7 @@ class TodoViewModel: ObservableObject {
         NotificationCenter.default.publisher(for: .easyNoteBackupDidImport)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.loadTodoItems()
+                self?.loadTodoItems(reconcileSystemReminders: true)
             }
             .store(in: &cancellables)
     }
@@ -53,12 +53,15 @@ class TodoViewModel: ObservableObject {
     // MARK: - 数据管理方法
     
     /// 加载所有待办事项
-    private func loadTodoItems() {
+    private func loadTodoItems(reconcileSystemReminders: Bool = false) {
         let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
         
         do {
             todoItems = try modelContext.fetch(descriptor)
             reconcileTodoNotificationsIfNeeded()
+            if reconcileSystemReminders {
+                reconcileSystemRemindersIfNeeded()
+            }
             print("从数据库加载了 \(todoItems.count) 个待办事项")
         } catch {
             print("加载待办事项失败: \(error)")
@@ -298,22 +301,7 @@ class TodoViewModel: ObservableObject {
             context: .current
         )
 
-        guard proposal.action == .createOrUpdate else {
-            systemReminderMessage = proposal.reason
-            systemReminderErrorMessage = nil
-            removeSystemReminderIfNeeded(for: todo.id)
-            return
-        }
-
-        systemReminderWriter.applyProposal(proposal) { [weak self] result in
-            switch result {
-            case .success(let writeResult):
-                self?.systemReminderMessage = Self.systemReminderMessage(for: writeResult, proposal: proposal)
-                self?.systemReminderErrorMessage = nil
-            case .failure(let error):
-                self?.systemReminderErrorMessage = error.localizedDescription
-            }
-        }
+        applySystemReminderProposal(proposal, reportSuccess: true, reportFailure: true)
     }
 
     private func completeSystemReminderIfNeeded(for id: UUID) {
@@ -368,6 +356,69 @@ class TodoViewModel: ObservableObject {
                 if reportFailure {
                     self?.systemReminderErrorMessage = error.localizedDescription
                 }
+            }
+        }
+    }
+
+    private func reconcileSystemRemindersIfNeeded() {
+        guard reminderModeStore.currentMode == .systemReminderAgent else {
+            return
+        }
+
+        let context = SystemReminderContext.current
+        todoItems
+            .map { systemReminderAgent.proposal(for: $0, mode: .systemReminderAgent, context: context) }
+            .forEach { applySystemReminderProposal($0, reportSuccess: false, reportFailure: true) }
+    }
+
+    private func applySystemReminderProposal(
+        _ proposal: SystemReminderProposal,
+        reportSuccess: Bool,
+        reportFailure: Bool
+    ) {
+        switch SystemReminderProposalReconciler.operation(for: proposal) {
+        case .apply:
+            systemReminderWriter.applyProposal(proposal) { [weak self] result in
+                switch result {
+                case .success(let writeResult):
+                    if reportSuccess {
+                        self?.systemReminderMessage = Self.systemReminderMessage(for: writeResult, proposal: proposal)
+                        self?.systemReminderErrorMessage = nil
+                    }
+                case .failure(let error):
+                    if reportFailure {
+                        self?.systemReminderErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+        case .complete(let id):
+            systemReminderWriter.completeReminder(forTodoID: id) { [weak self] result in
+                switch result {
+                case .success:
+                    if reportSuccess {
+                        self?.systemReminderMessage = "系统提醒事项已标记完成"
+                        self?.systemReminderErrorMessage = nil
+                    }
+                case .failure(let error):
+                    if reportFailure {
+                        self?.systemReminderErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+        case .remove(let id):
+            if reportSuccess {
+                systemReminderMessage = proposal.reason
+                systemReminderErrorMessage = nil
+            }
+            removeSystemReminder(
+                for: id,
+                reportSuccess: false,
+                reportFailure: reportFailure
+            )
+        case .ignore:
+            if reportSuccess {
+                systemReminderMessage = proposal.reason
+                systemReminderErrorMessage = nil
             }
         }
     }
