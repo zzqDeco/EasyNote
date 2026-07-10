@@ -166,7 +166,7 @@ final class ChatSessionViewModel: ObservableObject {
             session.title = previousTitle
             session.lastModifiedDate = previousModifiedDate
         }) else { return nil }
-        normalizeMessageOrder(in: session)
+        sessions.forEach(normalizeMessageOrder)
         return message
     }
 
