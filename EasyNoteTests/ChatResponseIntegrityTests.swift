@@ -167,6 +167,30 @@ struct ChatResponseIntegrityTests {
         #expect(existingSession.messages.isEmpty)
     }
 
+    @Test func loadedSessionMessagesAreNormalizedChronologically() async throws {
+        let context = try makeModelContext()
+        let session = ChatSession(title: "乱序会话")
+        let later = SessionMessage(
+            content: "稍后",
+            isUser: false,
+            timestamp: Date(timeIntervalSince1970: 200)
+        )
+        let earlier = SessionMessage(
+            content: "较早",
+            isUser: true,
+            timestamp: Date(timeIntervalSince1970: 100)
+        )
+        context.insert(session)
+        context.insert(later)
+        context.insert(earlier)
+        session.messages = [later, earlier]
+        try context.save()
+
+        _ = ChatSessionViewModel(modelContext: context)
+
+        #expect(session.messages.map(\.content) == ["较早", "稍后"])
+    }
+
     private func makeModelContext() throws -> ModelContext {
         let schema = Schema([DiaryEntry.self, TodoItem.self, ChatSession.self, SessionMessage.self])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)

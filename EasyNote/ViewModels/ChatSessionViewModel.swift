@@ -73,6 +73,7 @@ final class ChatSessionViewModel: ObservableObject {
         do {
             let descriptor = FetchDescriptor<ChatSession>(sortBy: [SortDescriptor(\.lastModifiedDate, order: .reverse)])
             let fetchedSessions = try modelContext.fetch(descriptor)
+            fetchedSessions.forEach(normalizeMessageOrder)
             
             sessions = fetchedSessions
 
@@ -150,6 +151,9 @@ final class ChatSessionViewModel: ObservableObject {
             isUser: isUser,
             relatedEntryIds: relatedEntryIDs.map(\.uuidString)
         )
+        let previousMessages = session.messages
+        let previousTitle = session.title
+        let previousModifiedDate = session.lastModifiedDate
         modelContext.insert(message)
         session.addMessage(message)
 
@@ -157,7 +161,12 @@ final class ChatSessionViewModel: ObservableObject {
             session.title = session.generateSummary()
         }
 
-        guard saveContext() else { return nil }
+        guard saveContext(onFailure: {
+            session.messages = previousMessages
+            session.title = previousTitle
+            session.lastModifiedDate = previousModifiedDate
+        }) else { return nil }
+        normalizeMessageOrder(in: session)
         return message
     }
 
@@ -387,15 +396,28 @@ final class ChatSessionViewModel: ObservableObject {
     
     // 保存上下文
     @discardableResult
-    private func saveContext() -> Bool {
+    private func saveContext(onFailure: (() -> Void)? = nil) -> Bool {
         do {
             try saveAction(modelContext)
             errorMessage = nil
             return true
         } catch {
+            onFailure?()
             modelContext.rollback()
             errorMessage = "保存会话失败: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    private func normalizeMessageOrder(in session: ChatSession) {
+        session.messages.sort { lhs, rhs in
+            if lhs.timestamp != rhs.timestamp {
+                return lhs.timestamp < rhs.timestamp
+            }
+            if lhs.isUser != rhs.isUser {
+                return lhs.isUser && !rhs.isUser
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
         }
     }
 }
