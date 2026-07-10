@@ -225,6 +225,7 @@ struct ChatResponseIntegrityTests {
     }
 
     private func settleTasks() async {
+        try? await Task.sleep(nanoseconds: 50_000_000)
         for _ in 0..<10 {
             await Task.yield()
         }
@@ -255,12 +256,16 @@ private final class ControllableChatProvider: ChatResponseProviding, @unchecked 
     var apiKey = "test-key"
     private let lock = NSLock()
     private var continuations: [CheckedContinuation<String, Error>] = []
+    private var requestStartWaiters: [CheckedContinuation<Void, Never>] = []
 
     func chat(prompt: String) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             lock.lock()
             continuations.append(continuation)
+            let waiters = requestStartWaiters
+            requestStartWaiters.removeAll()
             lock.unlock()
+            waiters.forEach { $0.resume() }
         }
     }
 
@@ -272,18 +277,15 @@ private final class ControllableChatProvider: ChatResponseProviding, @unchecked 
     }
 
     func waitUntilRequestStarted() async {
-        for _ in 0..<100 {
-            if hasPendingRequest {
-                return
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if continuations.isEmpty {
+                requestStartWaiters.append(continuation)
+                lock.unlock()
+            } else {
+                lock.unlock()
+                continuation.resume()
             }
-            await Task.yield()
         }
-        Issue.record("Chat provider request did not start")
-    }
-
-    private var hasPendingRequest: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return !continuations.isEmpty
     }
 }
