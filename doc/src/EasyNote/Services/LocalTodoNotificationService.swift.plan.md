@@ -17,6 +17,7 @@
 - Global enablement is read from `todo_notifications_enabled`.
 - Scheduling first checks current system notification settings, then writes a one-shot calendar notification for eligible todos through native async UserNotifications APIs.
 - Scheduling uses per-todo versions so async writes cannot re-add reminders after a later cancel, completion, deletion, or global disable.
+- The remove/add/recheck mutation region is serialized per todo; a newer edit always runs after an older in-flight add and becomes the final scheduled request.
 - `UNUserNotificationCenter.add` errors are surfaced as `TodoNotificationError.schedulingFailed`; after a successful add the service re-checks the schedule version and removes stale requests.
 - Replacing a scheduled reminder removes both pending and delivered notifications for the stable todo identifier before adding the new request.
 - When authorization is unavailable, the service removes the stable identifier instead of leaving stale pending requests behind.
@@ -27,5 +28,5 @@
 
 ## Tests
 
-- An injectable `UserNotificationCenterProviding` adapter covers add failures without live permission prompts.
+- An injectable `UserNotificationCenterProviding` adapter covers add failures and overlapping same-todo reschedules without live permission prompts.
 - ViewModel unit tests use `TodoNotificationSchedulingProviding` fakes so CI does not require live notification permission prompts.

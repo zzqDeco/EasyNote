@@ -42,6 +42,18 @@ enum TodoReminderModeTransitionPlanner {
     }
 }
 
+enum ReminderAuthorizationTransitionPlanner {
+    static func shouldSyncSystemReminders(
+        mode: TodoReminderMode,
+        previousStatus: SystemReminderAuthorizationStatus,
+        currentStatus: SystemReminderAuthorizationStatus
+    ) -> Bool {
+        mode == .systemReminderAgent
+            && !previousStatus.allowsWriting
+            && currentStatus.allowsWriting
+    }
+}
+
 final class TodoReminderModeStore: TodoReminderModeProviding {
     static let modeDefaultsKey = "todo_reminder_mode"
     static let legacyLocalNotificationEnabledDefaultsKey = "todo_notifications_enabled"

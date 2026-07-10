@@ -44,6 +44,7 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
     private let notificationCenter: any UserNotificationCenterProviding
     private let defaults: UserDefaults
     private let authorizationStatusSubject = CurrentValueSubject<TodoNotificationAuthorizationStatus, Never>(.notDetermined)
+    private let mutationGate = TodoNotificationMutationGate()
     private let scheduleVersionLock = NSLock()
     private var scheduleVersions: [UUID: Int] = [:]
     private var bulkCancellationVersion = 0
@@ -109,6 +110,33 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         let scheduleVersion = nextScheduleVersion(for: todoID)
         let status = await notificationCenter.authorizationStatus()
         await publishAuthorizationStatus(status)
+
+        await mutationGate.acquire(for: todoID)
+        do {
+            try await writeNotification(
+                todoID: todoID,
+                title: title,
+                notes: notes,
+                deadline: deadline,
+                scheduleVersion: scheduleVersion,
+                status: status
+            )
+            await mutationGate.release(for: todoID)
+        } catch {
+            await mutationGate.release(for: todoID)
+            throw error
+        }
+    }
+
+    private func writeNotification(
+        todoID: UUID,
+        title: String,
+        notes: String?,
+        deadline: Date,
+        scheduleVersion: Int,
+        status: TodoNotificationAuthorizationStatus
+    ) async throws {
+        try Task.checkCancellation()
 
         guard isCurrentScheduleVersion(scheduleVersion, for: todoID) else {
             return
@@ -302,5 +330,33 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
             content: content,
             trigger: trigger
         )
+    }
+}
+
+private actor TodoNotificationMutationGate {
+    private var activeTodoIDs: Set<UUID> = []
+    private var waiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+
+    func acquire(for todoID: UUID) async {
+        guard activeTodoIDs.contains(todoID) else {
+            activeTodoIDs.insert(todoID)
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters[todoID, default: []].append(continuation)
+        }
+    }
+
+    func release(for todoID: UUID) {
+        guard var todoWaiters = waiters[todoID], !todoWaiters.isEmpty else {
+            activeTodoIDs.remove(todoID)
+            waiters[todoID] = nil
+            return
+        }
+
+        let next = todoWaiters.removeFirst()
+        waiters[todoID] = todoWaiters.isEmpty ? nil : todoWaiters
+        next.resume()
     }
 }

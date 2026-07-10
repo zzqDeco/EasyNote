@@ -20,7 +20,7 @@
 - The v1 idempotency marker is `EasyNoteTodoID:<uuid>` appended to reminder notes.
 - Applying a proposal updates the first matching marked reminder, creates one when none exists, and removes extra EasyNote-marked duplicates for the same todo.
 - Completion and removal are no-op successes when the matching marked reminder is not found.
-- EventKit authorization and fetch callbacks use a single-resume checked continuation with a 10-second timeout. Cancellation, timeout, and late callbacks cannot resume the continuation twice.
+- EventKit callbacks use a single-resume checked continuation. Fetch operations use a 10-second timeout; the user-controlled authorization prompt uses a separate five-minute timeout. Cancellation, timeout, and late callbacks cannot resume the continuation twice.
 - Complete EventKit read-modify-write operations are serialized by the executor so actor reentrancy cannot create duplicate marker writes.
 - Authorization status updates are published on the main actor; denied, restricted, timeout, missing-list, and EventKit system errors remain distinct.
 - EventKit failures must remain separate from SwiftData save failures; a system reminder write error should not roll back a saved todo.

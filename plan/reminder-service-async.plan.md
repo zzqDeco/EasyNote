@@ -13,7 +13,7 @@
 ## Implementation
 
 - Use native async `UNUserNotificationCenter` APIs and injectable adapters so scheduling failures are testable.
-- Bridge EventKit authorization and fetch callbacks through a single-resume checked continuation with a 10-second timeout; ignore callbacks that arrive after completion, timeout, or cancellation.
+- Bridge EventKit callbacks through a single-resume checked continuation; use a 10-second operation timeout and a separate five-minute authorization-prompt timeout, and ignore callbacks after completion, timeout, or cancellation.
 - Serialize complete EventKit read-modify-write operations so concurrent writes preserve marker idempotency and duplicate cleanup.
 - Distinguish denied/restricted authorization, timeout, missing default list, EventKit failures, and local notification scheduling failures.
 - Keep SwiftData saves authoritative. Reminder side effects run afterward through owned tasks and publish errors on the main actor without rolling back saved todos.
@@ -26,6 +26,6 @@
 
 ## Assumptions
 
-- EventKit callback timeout is fixed at 10 seconds in production and injectable at service initialization for tests.
+- EventKit operation timeout is 10 seconds in production; authorization uses a separate five-minute timeout. Both are injectable for tests.
 - System Reminders continue using the default list and `EasyNoteTodoID:<uuid>` marker.
 - Full ViewModel actor isolation remains part of the dedicated concurrency-isolation work; this slice confines reminder-result publication to main-actor tasks.

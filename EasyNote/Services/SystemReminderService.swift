@@ -48,6 +48,7 @@ enum SystemReminderError: Error, Equatable, LocalizedError {
 
 final class SystemReminderService: SystemReminderWritingProviding, @unchecked Sendable {
     static let shared = SystemReminderService()
+    static let defaultAuthorizationTimeoutNanoseconds: UInt64 = 300_000_000_000
 
     private let eventStoreAdapter: any SystemReminderEventStoreProviding
     private let executor: SystemReminderOperationExecutor
@@ -63,12 +64,14 @@ final class SystemReminderService: SystemReminderWritingProviding, @unchecked Se
 
     init(
         eventStoreAdapter: any SystemReminderEventStoreProviding,
-        callbackTimeoutNanoseconds: UInt64 = ReminderCallbackBridge.defaultTimeoutNanoseconds
+        callbackTimeoutNanoseconds: UInt64 = ReminderCallbackBridge.defaultTimeoutNanoseconds,
+        authorizationTimeoutNanoseconds: UInt64 = SystemReminderService.defaultAuthorizationTimeoutNanoseconds
     ) {
         self.eventStoreAdapter = eventStoreAdapter
         self.executor = SystemReminderOperationExecutor(
             eventStoreAdapter: eventStoreAdapter,
-            callbackTimeoutNanoseconds: callbackTimeoutNanoseconds
+            callbackTimeoutNanoseconds: callbackTimeoutNanoseconds,
+            authorizationTimeoutNanoseconds: authorizationTimeoutNanoseconds
         )
         self.authorizationStatusSubject = CurrentValueSubject(eventStoreAdapter.authorizationStatus)
     }
@@ -125,15 +128,18 @@ final class SystemReminderService: SystemReminderWritingProviding, @unchecked Se
 private actor SystemReminderOperationExecutor {
     private let eventStoreAdapter: any SystemReminderEventStoreProviding
     private let callbackTimeoutNanoseconds: UInt64
+    private let authorizationTimeoutNanoseconds: UInt64
     private var operationInProgress = false
     private var operationWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
         eventStoreAdapter: any SystemReminderEventStoreProviding,
-        callbackTimeoutNanoseconds: UInt64
+        callbackTimeoutNanoseconds: UInt64,
+        authorizationTimeoutNanoseconds: UInt64
     ) {
         self.eventStoreAdapter = eventStoreAdapter
         self.callbackTimeoutNanoseconds = callbackTimeoutNanoseconds
+        self.authorizationTimeoutNanoseconds = authorizationTimeoutNanoseconds
     }
 
     func requestAuthorization() async throws {
@@ -148,7 +154,7 @@ private actor SystemReminderOperationExecutor {
         let granted: Bool
         do {
             granted = try await ReminderCallbackBridge.value(
-                timeoutNanoseconds: callbackTimeoutNanoseconds
+                timeoutNanoseconds: authorizationTimeoutNanoseconds
             ) { [eventStoreAdapter] completion in
                 eventStoreAdapter.requestFullAccessToReminders(completion: completion)
             }

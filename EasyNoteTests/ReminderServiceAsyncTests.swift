@@ -42,7 +42,7 @@ struct ReminderServiceAsyncTests {
         adapter.holdAuthorizationCallbacks = true
         let service = SystemReminderService(
             eventStoreAdapter: adapter,
-            callbackTimeoutNanoseconds: 20_000_000
+            authorizationTimeoutNanoseconds: 20_000_000
         )
 
         await expectSystemReminderError(.timeout) {
@@ -190,6 +190,61 @@ struct ReminderServiceAsyncTests {
             #expect(message.contains("notificationAddFailed"))
         }
         #expect(adapter.addedRequests.count == 1)
+    }
+
+    @Test func concurrentLocalNotificationUpdatesKeepNewestRequest() async throws {
+        let suiteName = "ReminderServiceAsyncTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(true, forKey: LocalTodoNotificationService.enabledDefaultsKey)
+
+        let todoID = UUID()
+        let adapter = FakeUserNotificationCenter()
+        adapter.holdAddRequests = true
+        let service = LocalTodoNotificationService(
+            notificationCenterAdapter: adapter,
+            defaults: defaults
+        )
+        let olderTodo = TodoItem(
+            id: todoID,
+            title: "旧截止时间",
+            deadline: Date().addingTimeInterval(1800)
+        )
+        let newerTodo = TodoItem(
+            id: todoID,
+            title: "新截止时间",
+            deadline: Date().addingTimeInterval(3600)
+        )
+
+        let olderTask = Task { try await service.synchronizeNotification(for: olderTodo) }
+        await waitUntil { adapter.pendingAddCount == 1 }
+        let newerTask = Task { try await service.synchronizeNotification(for: newerTodo) }
+
+        adapter.completeNextAdd()
+        await waitUntil { adapter.pendingAddCount == 1 }
+        adapter.completeNextAdd()
+
+        try await olderTask.value
+        try await newerTask.value
+        #expect(adapter.activeRequestTitle(forTodoID: todoID) == "新截止时间")
+    }
+
+    @Test func externalSystemReminderGrantTriggersSyncOnlyForSystemMode() {
+        #expect(ReminderAuthorizationTransitionPlanner.shouldSyncSystemReminders(
+            mode: .systemReminderAgent,
+            previousStatus: .denied,
+            currentStatus: .fullAccess
+        ))
+        #expect(!ReminderAuthorizationTransitionPlanner.shouldSyncSystemReminders(
+            mode: .systemReminderAgent,
+            previousStatus: .fullAccess,
+            currentStatus: .fullAccess
+        ))
+        #expect(!ReminderAuthorizationTransitionPlanner.shouldSyncSystemReminders(
+            mode: .localNotification,
+            previousStatus: .denied,
+            currentStatus: .fullAccess
+        ))
     }
 
     private func makeProposal(todoID: UUID = UUID()) -> SystemReminderProposal {
@@ -355,11 +410,21 @@ private final class FakeUserNotificationCenter: UserNotificationCenterProviding,
     var authorizationResult = true
     var authorizationError: Error?
     var addError: Error?
+    var holdAddRequests = false
     var pendingRequests: [UNNotificationRequest] = []
     var delivered: [UNNotification] = []
     private(set) var addedRequests: [UNNotificationRequest] = []
     private(set) var removedPendingIdentifiers: [[String]] = []
     private(set) var removedDeliveredIdentifiers: [[String]] = []
+    private let addStateLock = NSLock()
+    private var pendingAddContinuations: [CheckedContinuation<Void, Never>] = []
+    private var activeRequests: [String: UNNotificationRequest] = [:]
+
+    var pendingAddCount: Int {
+        addStateLock.lock()
+        defer { addStateLock.unlock() }
+        return pendingAddContinuations.count
+    }
 
     func setDelegate(_ delegate: (any UNUserNotificationCenterDelegate)?) {}
 
@@ -375,9 +440,15 @@ private final class FakeUserNotificationCenter: UserNotificationCenterProviding,
     }
 
     func add(_ request: UNNotificationRequest) async throws {
-        addedRequests.append(request)
-        if let addError {
-            throw addError
+        let shouldHold = recordAddStart(request)
+        if shouldHold {
+            await withCheckedContinuation { continuation in
+                enqueueAddContinuation(continuation)
+            }
+        }
+
+        if let error = finishAdd(request) {
+            throw error
         }
     }
 
@@ -390,10 +461,48 @@ private final class FakeUserNotificationCenter: UserNotificationCenterProviding,
     }
 
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        addStateLock.lock()
         removedPendingIdentifiers.append(identifiers)
+        identifiers.forEach { activeRequests[$0] = nil }
+        addStateLock.unlock()
     }
 
     func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
         removedDeliveredIdentifiers.append(identifiers)
+    }
+
+    func completeNextAdd() {
+        addStateLock.lock()
+        let continuation = pendingAddContinuations.isEmpty ? nil : pendingAddContinuations.removeFirst()
+        addStateLock.unlock()
+        continuation?.resume()
+    }
+
+    func activeRequestTitle(forTodoID id: UUID) -> String? {
+        let identifier = TodoNotificationPlanner.notificationIdentifier(for: id)
+        addStateLock.lock()
+        defer { addStateLock.unlock() }
+        return activeRequests[identifier]?.content.title
+    }
+
+    private func recordAddStart(_ request: UNNotificationRequest) -> Bool {
+        addStateLock.lock()
+        defer { addStateLock.unlock() }
+        addedRequests.append(request)
+        return holdAddRequests
+    }
+
+    private func enqueueAddContinuation(_ continuation: CheckedContinuation<Void, Never>) {
+        addStateLock.lock()
+        pendingAddContinuations.append(continuation)
+        addStateLock.unlock()
+    }
+
+    private func finishAdd(_ request: UNNotificationRequest) -> Error? {
+        addStateLock.lock()
+        defer { addStateLock.unlock() }
+        guard addError == nil else { return addError }
+        activeRequests[request.identifier] = request
+        return nil
     }
 }

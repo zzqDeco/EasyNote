@@ -47,7 +47,8 @@ struct SettingsView: View {
     @State private var systemReminderAuthorizationStatus: SystemReminderAuthorizationStatus = .notDetermined
     @State private var systemReminderMessage: String?
     @State private var systemReminderErrorMessage: String?
-    @State private var reminderOperationTask: Task<Void, Never>?
+    @State private var reminderWriteTask: Task<Void, Never>?
+    @State private var reminderStatusTask: Task<Void, Never>?
 
     private let backupService: any BackupServiceProviding
     private let todoNotificationScheduler: any TodoNotificationSchedulingProviding
@@ -247,8 +248,8 @@ struct SettingsView: View {
                 refreshReminderAuthorizationStatuses()
             }
             .onDisappear {
-                reminderOperationTask?.cancel()
-                reminderOperationTask = nil
+                reminderStatusTask?.cancel()
+                reminderStatusTask = nil
             }
             .onReceive(todoNotificationScheduler.authorizationStatusPublisher) { status in
                 todoNotificationAuthorizationStatus = status
@@ -506,12 +507,12 @@ struct SettingsView: View {
         case .off:
             todoNotificationsEnabled = false
             todoNotificationMessage = "已关闭提醒"
-            startReminderOperation {
+            startReminderWriteOperation {
                 await todoNotificationScheduler.cancelAllTodoNotifications()
             }
         case .localNotification:
             todoNotificationsEnabled = true
-            startReminderOperation {
+            startReminderWriteOperation {
                 do {
                     try await todoNotificationScheduler.requestAuthorization()
                     let synchronized = await reconcileTodoNotificationsNow()
@@ -530,7 +531,7 @@ struct SettingsView: View {
             }
         case .systemReminderAgent:
             todoNotificationsEnabled = false
-            startReminderOperation {
+            startReminderWriteOperation {
                 await todoNotificationScheduler.cancelAllTodoNotifications()
                 let status = await systemReminderWriter.refreshAuthorizationStatus()
                 systemReminderAuthorizationStatus = status
@@ -594,7 +595,7 @@ struct SettingsView: View {
         systemReminderMessage = nil
         systemReminderErrorMessage = nil
 
-        startReminderOperation {
+        startReminderWriteOperation {
             do {
                 try await systemReminderWriter.requestAuthorization()
                 systemReminderAuthorizationStatus = await systemReminderWriter.refreshAuthorizationStatus()
@@ -612,7 +613,7 @@ struct SettingsView: View {
     }
 
     private func syncCurrentTodosToSystemReminders() {
-        startReminderOperation {
+        startReminderWriteOperation {
             await syncCurrentTodosToSystemRemindersNow()
         }
     }
@@ -705,7 +706,7 @@ struct SettingsView: View {
         todoNotificationMessage = nil
         todoNotificationErrorMessage = nil
 
-        startReminderOperation {
+        startReminderWriteOperation {
             do {
                 try await todoNotificationScheduler.requestAuthorization()
                 todoNotificationAuthorizationStatus = await todoNotificationScheduler.refreshAuthorizationStatus()
@@ -726,7 +727,7 @@ struct SettingsView: View {
     }
 
     private func reconcileTodoNotifications() {
-        startReminderOperation {
+        startReminderWriteOperation {
             _ = await reconcileTodoNotificationsNow()
         }
     }
@@ -756,10 +757,13 @@ struct SettingsView: View {
     }
 
     private func refreshReminderAuthorizationStatuses() {
-        startReminderOperation {
+        reminderStatusTask?.cancel()
+        reminderStatusTask = Task { @MainActor in
             let previousTodoStatus = todoNotificationAuthorizationStatus
+            let previousSystemStatus = systemReminderAuthorizationStatus
             let todoStatus = await todoNotificationScheduler.refreshAuthorizationStatus()
             let systemStatus = await systemReminderWriter.refreshAuthorizationStatus()
+            guard !Task.isCancelled else { return }
             todoNotificationAuthorizationStatus = todoStatus
             systemReminderAuthorizationStatus = systemStatus
 
@@ -767,16 +771,28 @@ struct SettingsView: View {
                todoNotificationsEnabled,
                !previousTodoStatus.allowsScheduling,
                todoStatus.allowsScheduling {
-                _ = await reconcileTodoNotificationsNow()
+                startReminderWriteOperation {
+                    _ = await reconcileTodoNotificationsNow()
+                }
+            }
+
+            if ReminderAuthorizationTransitionPlanner.shouldSyncSystemReminders(
+                mode: selectedTodoReminderMode,
+                previousStatus: previousSystemStatus,
+                currentStatus: systemStatus
+            ) {
+                startReminderWriteOperation {
+                    await syncCurrentTodosToSystemRemindersNow()
+                }
             }
         }
     }
 
-    private func startReminderOperation(
+    private func startReminderWriteOperation(
         _ operation: @escaping @MainActor () async -> Void
     ) {
-        reminderOperationTask?.cancel()
-        reminderOperationTask = Task { @MainActor in
+        reminderWriteTask?.cancel()
+        reminderWriteTask = Task { @MainActor in
             await operation()
         }
     }
