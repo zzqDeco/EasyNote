@@ -268,6 +268,7 @@ struct ChatExploreView: View {
                     )
                 }
                 .font(.subheadline.weight(.medium))
+                .disabled(sessionViewModel.isProcessingChatRequest(forSessionID: failure.context.sessionID))
             }
 
             Spacer()

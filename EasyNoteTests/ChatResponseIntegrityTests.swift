@@ -108,6 +108,35 @@ struct ChatResponseIntegrityTests {
         #expect(result?.message.contains("焦虑") == false)
     }
 
+    @Test func builtInBroadSummaryPromptsRemainUnscoped() {
+        let first = makeDiarySnapshot(
+            title: "项目复盘",
+            content: "完成第一阶段",
+            mood: "满足",
+            creationDate: Date(timeIntervalSince1970: 100)
+        )
+        let second = makeDiarySnapshot(
+            title: "旅行",
+            content: "去了杭州",
+            mood: "开心",
+            creationDate: Date(timeIntervalSince1970: 200)
+        )
+
+        let recent = LocalDiaryQueryAnalyzer.analyze(
+            query: "最近写了哪些日记？",
+            entries: [first, second]
+        )
+        let moods = LocalDiaryQueryAnalyzer.analyze(
+            query: "我的笔记中提到过哪些心情？",
+            entries: [first, second]
+        )
+
+        #expect(recent?.relatedEntryIDs == [second.id, first.id])
+        #expect(Set(moods?.relatedEntryIDs ?? []) == Set([first.id, second.id]))
+        #expect(moods?.message.contains("满足：1 条记录") == true)
+        #expect(moods?.message.contains("开心：1 条记录") == true)
+    }
+
     @Test func emptyKeyFailsClosedWithoutCallingProvider() async throws {
         let provider = ImmediateChatProvider(apiKey: "", result: .success("不应调用"))
         let outcome = await ChatResponseGenerator.generate(
@@ -180,6 +209,33 @@ struct ChatResponseIntegrityTests {
         viewModel.switchToSession(secondSession)
 
         #expect(viewModel.chatRequestFailure(forSessionID: firstSession.id) == failure)
+    }
+
+    @Test func cancellingRetryBySwitchingSessionsPreservesFailure() async throws {
+        let context = try makeModelContext()
+        let viewModel = ChatSessionViewModel(modelContext: context)
+        let firstSession = try #require(viewModel.currentSession)
+        let failingProvider = ImmediateChatProvider(result: .failure(ChatProviderTestError.failed))
+
+        #expect(viewModel.submitChatRequest(
+            makeRequestContext(sessionID: firstSession.id, query: "无本地匹配"),
+            provider: failingProvider
+        ))
+        await viewModel.waitForPendingChatRequests()
+        _ = try #require(viewModel.chatRequestFailure(forSessionID: firstSession.id))
+
+        let retryProvider = ControllableChatProvider()
+        #expect(viewModel.retryFailedChatRequest(forSessionID: firstSession.id, provider: retryProvider))
+        await retryProvider.waitUntilRequestStarted()
+        let secondSession = try #require(viewModel.createNewSession(title: "第二会话"))
+        retryProvider.resumeNext(with: .success("取消后的回复"))
+        await settleTasks()
+
+        let retainedFailure = try #require(viewModel.chatRequestFailure(forSessionID: firstSession.id))
+        #expect(retainedFailure.context.userQuery == "无本地匹配")
+        #expect(retainedFailure.userMessageWasSaved)
+        #expect(firstSession.messages.map(\.content) == ["无本地匹配"])
+        #expect(viewModel.currentSession?.id == secondSession.id)
     }
 
     @Test func deletingSessionCancelsStaleResponse() async throws {

@@ -251,7 +251,11 @@ final class ChatSessionViewModel: ObservableObject {
             return false
         }
 
-        chatRequestFailures[sessionID] = nil
+        chatRequestFailures[sessionID] = ChatRequestFailure(
+            context: retryContext,
+            message: failure.message,
+            userMessageWasSaved: true
+        )
         startResponseRequest(retryContext, provider: provider)
         return true
     }

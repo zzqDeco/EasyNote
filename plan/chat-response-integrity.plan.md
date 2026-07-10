@@ -21,6 +21,7 @@
 - Use `LocalDiaryQueryAnalyzer` only for titles, dates, previews, tags, moods, and counts present in the captured snapshots; unmatched failures remain retryable UI errors.
 - Remove query command phrases only at term boundaries so real subjects such as `中国` remain searchable.
 - Treat diary, note, and record suffixes consistently, and apply topic scopes before recent or mood fallback summaries.
+- Keep built-in broad summary prompts unscoped and retain retry state while a retried provider request can still be cancelled.
 
 ## Test Plan
 
