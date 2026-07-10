@@ -7,7 +7,12 @@ import Combine
 import Foundation
 import SwiftData
 
-protocol OpenAIServiceProviding: AnyObject {
+protocol ChatResponseProviding: AnyObject {
+    var apiKey: String { get }
+    func chat(prompt: String) async throws -> String
+}
+
+protocol OpenAIServiceProviding: ChatResponseProviding {
     var apiKey: String { get set }
     var isProcessingPublisher: AnyPublisher<Bool, Never> { get }
 
@@ -16,7 +21,6 @@ protocol OpenAIServiceProviding: AnyObject {
     func analyzeDiaryContent(text: String) -> AnyPublisher<(moods: [String], tags: [String]), OpenAIError>
     func expandText(text: String) -> AnyPublisher<String, OpenAIError>
     func summarizeText(text: String) -> AnyPublisher<String, OpenAIError>
-    func chat(prompt: String) async throws -> String
     func generateRecommendations(from diaryContent: String) -> AnyPublisher<(recommendations: [String], todos: [String]), OpenAIError>
 }
 

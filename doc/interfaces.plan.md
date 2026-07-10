@@ -123,6 +123,8 @@ Current request contract:
 
 Current response contract expects `choices[0].message.content`. Malformed or failed responses are mapped to `OpenAIError` and should become user-visible errors or controlled fallbacks.
 
+Chat exploration captures a `ChatRequestContext` before sending. The context fixes the request UUID, target session UUID, conversation history, related diary IDs, and diary snapshots. User and assistant messages are written by target session ID; switching, clearing, or deleting a session invalidates its in-flight request. Provider failures may use `LocalDiaryQueryAnalyzer`, but only to report titles, dates, previews, moods, and counts present in the captured snapshots. If no factual local result exists, the failure remains a retryable UI state and is not persisted as an assistant claim.
+
 `AIResponseParser` owns the model-content parsing contract:
 
 - Diary analysis accepts pure JSON, Markdown fenced JSON, or surrounding prose containing a JSON object with non-empty `moods` and `tags` arrays.
