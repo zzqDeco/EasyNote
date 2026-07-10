@@ -236,9 +236,18 @@ struct ReminderServiceAsyncTests {
     }
 }
 
-private enum FakeReminderError: Error {
+private enum FakeReminderError: LocalizedError {
     case eventStoreUnavailable
     case notificationAddFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .eventStoreUnavailable:
+            return "eventStoreUnavailable"
+        case .notificationAddFailed:
+            return "notificationAddFailed"
+        }
+    }
 }
 
 private final class FakeSystemReminderEventStore: SystemReminderEventStoreProviding, @unchecked Sendable {
