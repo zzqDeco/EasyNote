@@ -62,6 +62,52 @@ struct ChatResponseIntegrityTests {
         ).map(\.id) == [entry.id])
     }
 
+    @Test func localDiarySearchStripsNotebookCommandSuffixes() {
+        let project = makeDiarySnapshot(title: "项目", content: "完成第一阶段")
+        let unrelated = makeDiarySnapshot(title: "旅行", content: "去了杭州")
+
+        #expect(LocalDiaryQueryAnalyzer.matchingEntries(
+            for: "查找包含项目的笔记",
+            in: [unrelated, project]
+        ).map(\.id) == [project.id])
+    }
+
+    @Test func localRecentSummaryAppliesTopicBeforeDateWindow() {
+        let project = makeDiarySnapshot(
+            title: "项目复盘",
+            content: "完成第一阶段",
+            creationDate: Date(timeIntervalSince1970: 100)
+        )
+        let unrelated = makeDiarySnapshot(
+            title: "旅行",
+            content: "去了杭州",
+            creationDate: Date(timeIntervalSince1970: 200)
+        )
+
+        let result = LocalDiaryQueryAnalyzer.analyze(
+            query: "最近关于项目的日记",
+            entries: [unrelated, project]
+        )
+
+        #expect(result?.relatedEntryIDs == [project.id])
+        #expect(result?.message.contains("项目复盘") == true)
+        #expect(result?.message.contains("旅行") == false)
+    }
+
+    @Test func localMoodSummaryAppliesTopicBeforeCounting() {
+        let project = makeDiarySnapshot(title: "项目复盘", content: "完成第一阶段", mood: "满足")
+        let unrelated = makeDiarySnapshot(title: "旅行", content: "遇到延误", mood: "焦虑")
+
+        let result = LocalDiaryQueryAnalyzer.analyze(
+            query: "项目相关的心情",
+            entries: [unrelated, project]
+        )
+
+        #expect(result?.relatedEntryIDs == [project.id])
+        #expect(result?.message.contains("满足：1 条记录") == true)
+        #expect(result?.message.contains("焦虑") == false)
+    }
+
     @Test func emptyKeyFailsClosedWithoutCallingProvider() async throws {
         let provider = ImmediateChatProvider(apiKey: "", result: .success("不应调用"))
         let outcome = await ChatResponseGenerator.generate(
@@ -282,14 +328,20 @@ struct ChatResponseIntegrityTests {
         )
     }
 
-    private func makeDiarySnapshot(title: String, content: String) -> ChatDiaryEntrySnapshot {
+    private func makeDiarySnapshot(
+        title: String,
+        content: String,
+        mood: String? = nil,
+        tags: [String] = [],
+        creationDate: Date = Date(timeIntervalSince1970: 100)
+    ) -> ChatDiaryEntrySnapshot {
         ChatDiaryEntrySnapshot(
             id: UUID(),
             title: title,
             content: content,
-            mood: nil,
-            tags: [],
-            creationDate: Date(timeIntervalSince1970: 100)
+            mood: mood,
+            tags: tags,
+            creationDate: creationDate
         )
     }
 

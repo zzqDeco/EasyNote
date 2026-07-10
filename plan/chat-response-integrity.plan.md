@@ -20,6 +20,7 @@
 - Track whether a failed request saved its user message so retry cannot create an orphan assistant response.
 - Use `LocalDiaryQueryAnalyzer` only for titles, dates, previews, tags, moods, and counts present in the captured snapshots; unmatched failures remain retryable UI errors.
 - Remove query command phrases only at term boundaries so real subjects such as `中国` remain searchable.
+- Treat diary, note, and record suffixes consistently, and apply topic scopes before recent or mood fallback summaries.
 
 ## Test Plan
 

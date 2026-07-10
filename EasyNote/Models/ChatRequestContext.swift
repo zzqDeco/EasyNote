@@ -96,14 +96,18 @@ struct LocalDiaryQueryResult: Equatable, Sendable {
 enum LocalDiaryQueryAnalyzer {
     private static let ignoredQueryTerms: Set<String> = [
         "我的", "笔记", "日记", "查找", "查看", "包含", "关于", "相关",
-        "哪些", "什么", "请", "帮我", "一下", "记录", "提到过", "提到", "中"
+        "哪些", "什么", "请", "帮我", "一下", "记录", "提到过", "提到", "中",
+        "最近", "近期", "心情", "情绪", "感受"
     ]
     private static let queryPrefixes = [
-        "请帮我", "帮我", "查找", "查看", "包含", "关于", "相关", "哪些", "什么", "我的", "请"
+        "请告诉我", "请帮我", "请查找", "请查看", "请包含", "帮我", "查找", "查看",
+        "包含", "最近", "近期", "关于", "相关", "哪些", "什么", "我的"
     ]
     private static let querySuffixes = [
-        "的日记中", "的记录中", "日记中", "记录中", "的日记", "的记录",
-        "提到过", "提到", "日记", "记录", "相关", "一下"
+        "相关的心情", "相关的情绪", "相关的感受", "的日记中", "的记录中", "的笔记中",
+        "日记中", "记录中", "笔记中", "的日记", "的记录", "的笔记", "的心情", "的情绪",
+        "的感受", "提到过", "提到", "日记", "记录", "笔记", "心情", "情绪", "感受",
+        "相关", "一下"
     ]
 
     static func matchingEntries(
@@ -129,8 +133,13 @@ enum LocalDiaryQueryAnalyzer {
     ) -> LocalDiaryQueryResult? {
         guard !entries.isEmpty else { return nil }
 
+        let topicTerms = topicSearchTerms(from: query)
+        let topicEntries = matchingEntries(for: topicTerms, in: entries)
+        let scopedEntries = topicTerms.isEmpty ? entries : topicEntries
+
         if query.contains("最近") || query.contains("近期") {
-            let recentEntries = Array(entries.sorted { $0.creationDate > $1.creationDate }.prefix(5))
+            guard !scopedEntries.isEmpty else { return nil }
+            let recentEntries = Array(scopedEntries.sorted { $0.creationDate > $1.creationDate }.prefix(5))
             return LocalDiaryQueryResult(
                 message: labeledMessage(
                     heading: "根据当前日记，最近的记录是：",
@@ -142,7 +151,8 @@ enum LocalDiaryQueryAnalyzer {
         }
 
         if query.contains("心情") || query.contains("情绪") || query.contains("感受") {
-            let moodCounts = entries.reduce(into: [String: Int]()) { counts, entry in
+            guard !scopedEntries.isEmpty else { return nil }
+            let moodCounts = scopedEntries.reduce(into: [String: Int]()) { counts, entry in
                 guard let mood = entry.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !mood.isEmpty else { return }
                 counts[mood, default: 0] += 1
@@ -158,7 +168,7 @@ enum LocalDiaryQueryAnalyzer {
             return LocalDiaryQueryResult(
                 message: (["本地结果（AI 服务暂不可用）", "根据当前日记，记录到的心情有："] + lines)
                     .joined(separator: "\n"),
-                relatedEntryIDs: entries.compactMap { entry in
+                relatedEntryIDs: scopedEntries.compactMap { entry in
                     guard let mood = entry.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
                           !mood.isEmpty else { return nil }
                     return entry.id
@@ -196,29 +206,57 @@ enum LocalDiaryQueryAnalyzer {
         return Array(Set(terms)).sorted()
     }
 
+    private static func topicSearchTerms(from query: String) -> [String] {
+        let normalized = query
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let components = normalized.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        let candidates = components.filter { !$0.isEmpty } + (normalized.isEmpty ? [] : [normalized])
+        let terms = candidates.compactMap(cleanedSearchTerm)
+        return Array(Set(terms)).sorted()
+    }
+
     private static func searchTerms(for candidate: String) -> [String] {
         let original = candidate.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
         guard original.count >= 2, !ignoredQueryTerms.contains(original) else { return [] }
-        var term = original
+        guard let cleaned = cleanedSearchTerm(original), cleaned != original else {
+            return [original]
+        }
+        return [original, cleaned]
+    }
+
+    private static func cleanedSearchTerm(_ candidate: String) -> String? {
+        var term = candidate.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
+        guard term.count >= 2, !ignoredQueryTerms.contains(term) else { return nil }
 
         var changed = true
         while changed {
             changed = false
-            if let prefix = queryPrefixes.first(where: { term.hasPrefix($0) && term != $0 }) {
+            if let prefix = queryPrefixes.first(where: { term.hasPrefix($0) }) {
                 term.removeFirst(prefix.count)
                 changed = true
             }
-            if let suffix = querySuffixes.first(where: { term.hasSuffix($0) && term != $0 }) {
+            if let suffix = querySuffixes.first(where: { term.hasSuffix($0) }) {
                 term.removeLast(suffix.count)
                 changed = true
             }
             term = term.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
         }
 
-        guard term.count >= 2, !ignoredQueryTerms.contains(term), term != original else {
-            return [original]
+        return term.count >= 2 && !ignoredQueryTerms.contains(term) ? term : nil
+    }
+
+    private static func matchingEntries(
+        for terms: [String],
+        in entries: [ChatDiaryEntrySnapshot]
+    ) -> [ChatDiaryEntrySnapshot] {
+        guard !terms.isEmpty else { return [] }
+        return entries.filter { entry in
+            let searchableValues = [entry.title, entry.content] + entry.tags
+            return terms.contains { term in
+                searchableValues.contains { $0.localizedCaseInsensitiveContains(term) }
+            }
         }
-        return [original, term]
     }
 
     private static func labeledMessage(
