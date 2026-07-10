@@ -72,6 +72,30 @@ struct ChatResponseIntegrityTests {
         ).map(\.id) == [project.id])
     }
 
+    @Test func localDiarySearchAllowsSingleCharacterChineseTopics() {
+        let cat = makeDiarySnapshot(title: "猫", content: "晒太阳")
+        let unrelated = makeDiarySnapshot(title: "旅行", content: "去了杭州")
+
+        #expect(LocalDiaryQueryAnalyzer.matchingEntries(
+            for: "猫",
+            in: [unrelated, cat]
+        ).map(\.id) == [cat.id])
+        #expect(LocalDiaryQueryAnalyzer.matchingEntries(
+            for: "查找猫的日记",
+            in: [unrelated, cat]
+        ).map(\.id) == [cat.id])
+    }
+
+    @Test func localDiarySearchStripsMentionQueryWrappers() {
+        let project = makeDiarySnapshot(title: "项目", content: "完成第一阶段")
+        let unrelated = makeDiarySnapshot(title: "旅行", content: "去了杭州")
+
+        #expect(LocalDiaryQueryAnalyzer.matchingEntries(
+            for: "我的笔记中提到过项目吗？",
+            in: [unrelated, project]
+        ).map(\.id) == [project.id])
+    }
+
     @Test func localRecentSummaryAppliesTopicBeforeDateWindow() {
         let project = makeDiarySnapshot(
             title: "项目复盘",
@@ -134,6 +158,20 @@ struct ChatResponseIntegrityTests {
         #expect(result?.relatedEntryIDs == [happy.id])
         #expect(result?.message.contains("开心：1 条记录") == true)
         #expect(result?.message.contains("平静") == false)
+    }
+
+    @Test func localMoodSummaryStripsConnectorBeforeNaturalSuffix() {
+        let project = makeDiarySnapshot(title: "项目复盘", content: "完成第一阶段", mood: "满足")
+        let unrelated = makeDiarySnapshot(title: "旅行", content: "遇到延误", mood: "焦虑")
+
+        let result = LocalDiaryQueryAnalyzer.analyze(
+            query: "项目的心情怎么样",
+            entries: [unrelated, project]
+        )
+
+        #expect(result?.relatedEntryIDs == [project.id])
+        #expect(result?.message.contains("满足：1 条记录") == true)
+        #expect(result?.message.contains("焦虑") == false)
     }
 
     @Test func builtInBroadSummaryPromptsRemainUnscoped() {

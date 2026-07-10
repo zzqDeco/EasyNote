@@ -23,6 +23,7 @@
 - Treat diary, note, and record suffixes consistently, and apply topic scopes before recent or mood fallback summaries.
 - Keep built-in broad summary prompts unscoped and retain retry state while a retried provider request can still be cancelled.
 - Keep natural broad mood prompts unscoped, include mood metadata in matching, and remove connector particles left by command wrappers.
+- Preserve non-stop-word single-character CJK topics and strip mention-question and natural mood wrappers as complete boundaries.
 
 ## Test Plan
 

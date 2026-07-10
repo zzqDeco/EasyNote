@@ -102,16 +102,19 @@ enum LocalDiaryQueryAnalyzer {
     private static let queryPrefixes = [
         "我的笔记中提到过哪些", "我的日记中提到过哪些", "我的记录中提到过哪些",
         "笔记中提到过哪些", "日记中提到过哪些", "记录中提到过哪些",
+        "我的笔记中提到过", "我的日记中提到过", "我的记录中提到过",
+        "笔记中提到过", "日记中提到过", "记录中提到过",
         "最近写了哪些", "近期写了哪些", "我最近", "我近期", "请告诉我", "请帮我", "请查找", "请查看",
         "请包含", "帮我", "查找", "查看", "包含", "最近", "近期", "关于", "相关",
         "哪些", "什么", "我的"
     ]
     private static let querySuffixes = [
+        "的心情怎么样", "的情绪怎么样", "的感受怎么样", "的心情如何", "的情绪如何", "的感受如何",
         "心情怎么样", "情绪怎么样", "感受怎么样", "心情如何", "情绪如何", "感受如何",
         "相关的心情", "相关的情绪", "相关的感受", "的日记中", "的记录中", "的笔记中",
         "日记中", "记录中", "笔记中", "的日记", "的记录", "的笔记", "的心情", "的情绪",
         "的感受", "提到过", "提到", "日记", "记录", "笔记", "心情", "情绪", "感受",
-        "相关", "一下"
+        "相关", "一下", "吗"
     ]
 
     static func matchingEntries(
@@ -222,7 +225,7 @@ enum LocalDiaryQueryAnalyzer {
 
     private static func searchTerms(for candidate: String) -> [String] {
         let original = candidate.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
-        guard original.count >= 2, !ignoredQueryTerms.contains(original) else { return [] }
+        guard isUsableSearchTerm(original) else { return [] }
         guard let cleaned = cleanedSearchTerm(original), cleaned != original else {
             return [original]
         }
@@ -231,7 +234,7 @@ enum LocalDiaryQueryAnalyzer {
 
     private static func cleanedSearchTerm(_ candidate: String) -> String? {
         var term = candidate.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
-        guard term.count >= 2, !ignoredQueryTerms.contains(term) else { return nil }
+        guard isUsableSearchTerm(term) else { return nil }
 
         var changed = true
         var removedPrefix = false
@@ -253,7 +256,13 @@ enum LocalDiaryQueryAnalyzer {
             term = term.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
         }
 
-        return term.count >= 2 && !ignoredQueryTerms.contains(term) ? term : nil
+        return isUsableSearchTerm(term) ? term : nil
+    }
+
+    private static func isUsableSearchTerm(_ term: String) -> Bool {
+        guard !term.isEmpty, !ignoredQueryTerms.contains(term) else { return false }
+        if term.count >= 2 { return true }
+        return term.unicodeScalars.first?.properties.isIdeographic == true
     }
 
     private static func matchingEntries(
