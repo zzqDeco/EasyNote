@@ -531,7 +531,6 @@ struct DiaryEditView: View {
     
     private func cleanupOnDisappear() {
         guard !didResolveDraft else { return }
-        captureActiveVoiceRecordingIfNeeded()
         discardPendingRecording()
         clearTransientEditorState()
         didResolveDraft = true
@@ -552,7 +551,6 @@ struct DiaryEditView: View {
     }
 
     private func discardAndDismiss() {
-        captureActiveVoiceRecordingIfNeeded()
         discardPendingRecording()
         clearTransientEditorState()
         didResolveDraft = true
@@ -584,7 +582,7 @@ struct DiaryEditView: View {
     }
 
     private func clearTransientEditorState() {
-        viewModel.setTranscriptionText("")
+        viewModel.cancelVoiceRecording()
         isShowingTranscription = false
     }
 }

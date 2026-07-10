@@ -17,7 +17,7 @@
 - `DiaryEditDraft` snapshots the original persisted fields and owns mutable content, mood, tags, and an optional pending replacement audio URL.
 - Content typing, mood/tag selection, transcription insertion/replacement, AI-refined transcription application, and recording capture update only the draft.
 - Done commits all draft fields through one SwiftData save. Failed saves roll back, keep the editor open, retain the draft recording for retry, and show the persistence error.
-- Discard removes only the pending replacement recording. Successful replacement removes the old saved recording only after SwiftData saves the new URL.
+- Discard cancels active recognition, clears shared transcription state, and removes unclaimed or pending replacement recordings. Successful replacement removes the old saved recording only after SwiftData saves the new URL.
 - `MoodCatalog` converts picker integers and legacy numeric strings to canonical Chinese stored labels while preserving existing non-empty Chinese labels.
 
 ## Test Plan

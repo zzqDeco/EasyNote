@@ -342,6 +342,14 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         recordingState = .processing
         isRecording = false
     }
+
+    func cancelRecording() {
+        tearDownRecordingPipeline(cancelRecognition: true)
+        discardRecordingFile()
+        transcribedText = ""
+        recordingState = .idle
+        isRecording = false
+    }
     
     func saveRecordingWithTranscription() -> (audioURL: URL?, transcription: String) {
         // 验证音频文件是否存在

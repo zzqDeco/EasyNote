@@ -35,7 +35,7 @@ Existing-diary editing uses `DiaryEditDraft` instead of mutating `DiaryEntry` as
 - `DiaryViewModel.commitEditDraft` resolves the entry by stable UUID, applies all draft fields, and performs exactly one SwiftData save.
 - A failed save rolls back, exposes a user-visible error, keeps the editor and pending recording available for retry, and leaves the original recording untouched.
 - Successful replacement deletes the previously saved local recording only after the new URL commits.
-- Cancel or unresolved disappearance deletes only the pending replacement recording and never persists draft fields.
+- Cancel or unresolved disappearance cancels the active recognition session, clears its shared transcription buffer, deletes any unclaimed or pending replacement recording, and never persists draft fields.
 - `MoodCatalog` maps picker integers and legacy numeric strings to canonical Chinese labels; existing non-empty Chinese labels remain valid inputs.
 
 ## Todo Notification Boundary
@@ -157,6 +157,8 @@ Resetting or replacing the transcription buffer, or starting a new recording att
 
 Views and ViewModels should not manage `AVAudioEngine` or `SFSpeechAudioBufferRecognitionRequest` directly.
 `DiaryViewModel` consumes speech behavior through `SpeechRecognitionProviding`, including erased publishers for transcription, recording state, recording activity, and permission status.
+
+`cancelRecording()` invalidates the active recognition session before cancelling it, deletes any recording file that has not been transferred to a diary draft, and clears published transcription state. A late Speech callback from the cancelled session must not repopulate the next editor's shared transcription buffer.
 
 Transcription content is not written into diary body text automatically. Views must apply transcribed or AI-refined text through an explicit insert or replace action, using the shared diary draft composition helper. Insert/replace actions should stay unavailable while speech recognition is still recording or processing partial results.
 

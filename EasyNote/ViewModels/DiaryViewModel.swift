@@ -183,6 +183,11 @@ class DiaryViewModel: ObservableObject {
         }
     }
 
+    func cancelVoiceRecording() {
+        speechService.cancelRecording()
+        setTranscriptionText("")
+    }
+
     @discardableResult
     func captureVoiceRecordingDraft() -> VoiceRecordingDraft {
         let (audioURL, transcription) = speechService.saveRecordingWithTranscription()

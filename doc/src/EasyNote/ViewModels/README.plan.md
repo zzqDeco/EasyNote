@@ -16,6 +16,7 @@
 - `DiaryViewModel` owns diary CRUD, current entry state, speech save integration, AI diary actions, and CloudKit entry points.
 - `DiaryViewModel.commitEditDraft` applies existing-diary content, mood, tags, and audio URL through one injected SwiftData save; failure rolls back and exposes `errorMessage` without deleting either retryable draft audio or the original saved recording.
 - `DiaryViewModel` mirrors speech permission state and keeps transcription/AI-refined text separate from diary body content until the user explicitly inserts or replaces it.
+- `DiaryViewModel.cancelVoiceRecording` routes editor dismissal through the speech cancellation boundary so discarded recognition cannot repopulate shared transcription state.
 - `DiaryViewModel` records current-session AI action history and per-target/source pending AI results; diary summaries and transcription AI outputs require explicit apply before mutating `DiaryEntry.aiSummary` or `transcribedText`.
 - `DiaryViewModel` binds pending diary summary results to their source `DiaryEntry.id` and removes discarded pending results from current-session history.
 - `DiaryViewModel` clears stale pending results when a later AI action fails in the same target/source scope.

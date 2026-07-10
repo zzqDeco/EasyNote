@@ -1685,6 +1685,21 @@ struct EasyNoteTests {
         #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: nil, callback: activeSessionID))
     }
 
+    @Test func diaryViewModelCancellationClearsSpeechSessionState() async throws {
+        let speechService = FakeSpeechRecognitionService()
+        speechService.publishTranscription("未保存转写")
+        let viewModel = DiaryViewModel(
+            modelContext: try makeModelContext(),
+            speechService: speechService
+        )
+
+        #expect(viewModel.transcribedText == "未保存转写")
+        viewModel.cancelVoiceRecording()
+
+        #expect(speechService.cancelRecordingCallCount == 1)
+        #expect(viewModel.transcribedText.isEmpty)
+    }
+
     @Test func diaryRecordingCleanupRemovesPreviousFileWithoutDeletingReplacement() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -2757,6 +2772,7 @@ struct EasyNoteTests {
         private let isRecordingSubject = CurrentValueSubject<Bool, Never>(false)
         private let speechPermissionSubject = CurrentValueSubject<SpeechPermissionStatus, Never>(.authorized)
         private let microphonePermissionSubject = CurrentValueSubject<MicrophonePermissionStatus, Never>(.granted)
+        private(set) var cancelRecordingCallCount = 0
 
         var transcribedTextPublisher: AnyPublisher<String, Never> {
             transcribedTextSubject.eraseToAnyPublisher()
@@ -2786,8 +2802,19 @@ struct EasyNoteTests {
 
         func stopRecording() throws {}
 
+        func cancelRecording() {
+            cancelRecordingCallCount += 1
+            transcribedTextSubject.send("")
+            recordingStateSubject.send(.idle)
+            isRecordingSubject.send(false)
+        }
+
         func saveRecordingWithTranscription() -> (audioURL: URL?, transcription: String) {
             (nil, transcribedTextSubject.value)
+        }
+
+        func publishTranscription(_ text: String) {
+            transcribedTextSubject.send(text)
         }
     }
 
