@@ -1,8 +1,19 @@
 import SwiftUI
 import AVFoundation
 import SwiftData
-import Combine
 import UIKit
+
+private enum DiaryEditAlert: Identifiable {
+    case discardChanges
+    case saveFailure(String)
+
+    var id: String {
+        switch self {
+        case .discardChanges: "discardChanges"
+        case .saveFailure: "saveFailure"
+        }
+    }
+}
 
 struct DiaryEditView: View {
     @ObservedObject var viewModel: DiaryViewModel
@@ -10,20 +21,25 @@ struct DiaryEditView: View {
     @Environment(\.colorScheme) private var colorScheme
     let entry: DiaryEntry
     
-    @State private var editedContent: String = ""
+    @State private var draft: DiaryEditDraft
     @State private var showingMoodPicker = false
     @State private var showingTagEditor = false
-    @State private var isRecording = false
-    @State private var contentSaveWorkItem: DispatchWorkItem?
     @State private var isShowingTranscription = false
-    @State private var showingCancelAlert = false
-    @State private var hasChanges = false
-    @State private var tempMood: Int = 1 // 添加临时状态来保存心情值
+    @State private var activeAlert: DiaryEditAlert?
+    @State private var didResolveDraft = false
+    @State private var tempMood: Int
     
     init(viewModel: DiaryViewModel, entry: DiaryEntry) {
         self.viewModel = viewModel
         self.entry = entry
-        self._editedContent = State(initialValue: entry.content)
+        self._draft = State(initialValue: DiaryEditDraft(
+            entryID: entry.id,
+            content: entry.content,
+            mood: entry.mood,
+            tags: entry.tags,
+            originalAudioURL: entry.audioURL
+        ))
+        self._tempMood = State(initialValue: MoodCatalog.index(forStoredLabel: entry.mood) ?? MoodCatalog.defaultIndex)
     }
     
     var body: some View {
@@ -70,13 +86,11 @@ struct DiaryEditView: View {
                         TranscriptionDisplayView(
                             viewModel: viewModel,
                             isShowingTranscription: isShowingTranscription,
-                            content: editedContent,
+                            content: draft.content,
                             onApplyTranscription: { mode in
-                                let nextContent = viewModel.applyTranscription(to: editedContent, mode: mode)
-                                guard nextContent != editedContent else { return }
-                                editedContent = nextContent
-                                viewModel.updateCurrentEntry(content: nextContent)
-                                hasChanges = true
+                                let nextContent = viewModel.applyTranscription(to: draft.content, mode: mode)
+                                guard nextContent != draft.content else { return }
+                                draft.content = nextContent
                             }
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
@@ -133,10 +147,10 @@ struct DiaryEditView: View {
             
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("取消") {
-                    if hasChanges {
-                        showingCancelAlert = true
+                    if draft.hasChanges || viewModel.isRecording {
+                        activeAlert = .discardChanges
                     } else {
-                        dismiss()
+                        discardAndDismiss()
                     }
                 }
                 .foregroundColor(.red)
@@ -148,13 +162,22 @@ struct DiaryEditView: View {
         .sheet(isPresented: $showingTagEditor) {
             tagEditorSheet
         }
-        .alert("放弃更改", isPresented: $showingCancelAlert) {
-            Button("放弃", role: .destructive) {
-                dismiss()
+        .alert(item: $activeAlert) { alert in
+            switch alert {
+            case .discardChanges:
+                Alert(
+                    title: Text("放弃更改"),
+                    message: Text("您有未保存的更改，确定要放弃吗？"),
+                    primaryButton: .destructive(Text("放弃"), action: discardAndDismiss),
+                    secondaryButton: .cancel(Text("继续编辑"))
+                )
+            case .saveFailure(let message):
+                Alert(
+                    title: Text("保存失败"),
+                    message: Text(message),
+                    dismissButton: .default(Text("继续编辑"))
+                )
             }
-            Button("继续编辑", role: .cancel) { }
-        } message: {
-            Text("您有未保存的更改，确定要放弃吗？")
         }
         .onAppear {
             setupOnAppear()
@@ -170,8 +193,7 @@ struct DiaryEditView: View {
         HStack(spacing: 16) {
             Button {
                 if viewModel.isRecording {
-                    viewModel.stopRecording()
-                    viewModel.saveVoiceRecordingToCurrentEntry()
+                    captureActiveVoiceRecordingIfNeeded()
                     isShowingTranscription = true
                 } else {
                     if !viewModel.startRecording() {
@@ -185,10 +207,10 @@ struct DiaryEditView: View {
                     .symbolEffect(.pulse, options: .repeating, isActive: viewModel.isRecording)
             }
             
-            if !editedContent.isEmpty && !viewModel.isRecording && !viewModel.isProcessingAI {
+            if !draft.content.isEmpty && !viewModel.isRecording && !viewModel.isProcessingAI {
                 Button {
-                    viewModel.setTranscriptionText(editedContent, inputSource: .editorContent)
-                    viewModel.refineTranscribedText(editedContent, inputSource: .editorContent)
+                    viewModel.setTranscriptionText(draft.content, inputSource: .editorContent)
+                    viewModel.refineTranscribedText(draft.content, inputSource: .editorContent)
                     isShowingTranscription = true
                 } label: {
                     Image(systemName: "wand.and.stars")
@@ -206,8 +228,8 @@ struct DiaryEditView: View {
                     showingMoodPicker = true
                 } label: {
                     HStack {
-                        if let mood = entry.mood {
-                            Label(mood, systemImage: moodIcon(for: mood))
+                        if let mood = draft.mood {
+                            Label(mood, systemImage: MoodCatalog.systemImage(forStoredLabel: mood))
                         } else {
                             Label("选择心情", systemImage: "face.smiling")
                                 .foregroundColor(.secondary)
@@ -225,11 +247,11 @@ struct DiaryEditView: View {
                     showingTagEditor = true
                 } label: {
                     HStack {
-                        if entry.tags.isEmpty {
+                        if draft.tags.isEmpty {
                             Label("添加标签", systemImage: "tag")
                                 .foregroundColor(.secondary)
                         } else {
-                            Label("\(entry.tags.count)个标签", systemImage: "tag")
+                            Label("\(draft.tags.count)个标签", systemImage: "tag")
                         }
                     }
                     .padding(.horizontal, 12)
@@ -242,10 +264,10 @@ struct DiaryEditView: View {
             }
             
             // 当前标签显示
-            if !entry.tags.isEmpty {
+            if !draft.tags.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(entry.tags, id: \.self) { tag in
+                        ForEach(draft.tags, id: \.self) { tag in
                             Text(tag)
                                 .font(.caption)
                                 .padding(.horizontal, 10)
@@ -270,7 +292,7 @@ struct DiaryEditView: View {
                 .foregroundColor(.primary.opacity(0.8))
             
             ZStack(alignment: .topLeading) {
-                if editedContent.isEmpty {
+                if draft.content.isEmpty {
                     Text("写下您的想法...")
                         .font(.body)
                         .foregroundColor(.gray.opacity(0.8))
@@ -279,14 +301,11 @@ struct DiaryEditView: View {
                         .padding(.bottom, 0)
                 }
                 
-                TextEditor(text: $editedContent)
+                TextEditor(text: $draft.content)
                     .font(.body)
                     .frame(minHeight: 200)
                     .padding(0)
                     .background(Color.clear)
-                    .onChange(of: editedContent) { _, newValue in
-                        handleContentChange(newValue)
-                    }
             }
             .padding(.horizontal, 5)
             .background(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white)
@@ -395,18 +414,21 @@ struct DiaryEditView: View {
     }
     
     private var moodPickerSheet: some View {
-        MoodPickerView(selectedMood: $tempMood)
+        MoodPickerView(selectedMood: Binding(
+            get: { tempMood },
+            set: { selectedMood in
+                tempMood = selectedMood
+                draft.mood = MoodCatalog.storedLabel(for: selectedMood)
+            }
+        ))
             .onDisappear {
-                if tempMood != 1 { // 假设1是默认值
-                    viewModel.updateCurrentEntry(mood: String(tempMood))
-                }
                 showingMoodPicker = false
             }
     }
     
     private var tagEditorSheet: some View {
-        TagEditorView(tags: entry.tags) { updatedTags in
-            viewModel.updateCurrentEntry(tags: updatedTags)
+        TagEditorView(tags: draft.tags) { updatedTags in
+            draft.tags = updatedTags
             showingTagEditor = false
         }
     }
@@ -420,7 +442,7 @@ struct DiaryEditView: View {
                 .foregroundColor(.primary.opacity(0.8))
                 .padding(.top, 8)
             
-            MarkdownView(editedContent)
+            MarkdownView(draft.content)
                 .padding()
                 .background(
                     RoundedRectangle(cornerRadius: 12)
@@ -443,46 +465,17 @@ struct DiaryEditView: View {
         return formatter.string(from: entry.lastModified)
     }
     
-    private func moodIcon(for mood: String) -> String {
-        switch mood {
-        case "很糟": return "cloud.rain"
-        case "不好": return "cloud"
-        case "一般": return "sun.min"
-        case "不错": return "sun.max"
-        case "很棒": return "sun.max.fill"
-        case "愤怒": return "flame"
-        case "恐惧": return "exclamationmark.triangle"
-        case "焦虑": return "arrow.up.heart"
-        case "思考": return "bubble.left.and.bubble.right"
-        case "疲倦": return "moon.zzz"
-        case "兴奋": return "star.fill"
-        case "搞笑": return "face.smiling"
-        case "爱意": return "heart.fill"
-        case "感恩": return "hands.sparkles"
-        case "自信": return "person.fill.checkmark"
-        case "放松": return "leaf"
-        // 保留旧的映射以兼容旧数据
-        case "开心": return "face.smiling"
-        case "平静": return "face.dashed"
-        case "伤心": return "face.sad"
-        case "生气": return "face.angered"
-        case "惊讶": return "face.surprised"
-        case "疲惫": return "face.exhausted"
-        default: return "sun.min"
-        }
-    }
-    
     private func insertMarkdownFormat(_ format: String) {
         // 创建一个NSRange来存储当前光标位置
-        let cursorPosition = NSRange(location: editedContent.count, length: 0)
+        let cursorPosition = NSRange(location: draft.content.count, length: 0)
         
         // 根据不同的格式类型处理
         switch format {
         case "**粗体**":
             // 在当前位置插入两个星号，然后插入光标，然后再插入两个星号
-            let currentPosition = editedContent.count
-            editedContent.insert(contentsOf: "**", at: editedContent.index(editedContent.startIndex, offsetBy: currentPosition))
-            editedContent.insert(contentsOf: "**", at: editedContent.index(editedContent.startIndex, offsetBy: currentPosition + 2))
+            let currentPosition = draft.content.count
+            draft.content.insert(contentsOf: "**", at: draft.content.index(draft.content.startIndex, offsetBy: currentPosition))
+            draft.content.insert(contentsOf: "**", at: draft.content.index(draft.content.startIndex, offsetBy: currentPosition + 2))
             
             // 模拟光标移动到中间位置
             DispatchQueue.main.async {
@@ -496,9 +489,9 @@ struct DiaryEditView: View {
             }
         case "*斜体*":
             // 在当前位置插入一个星号，然后插入光标，然后再插入一个星号
-            let currentPosition = editedContent.count
-            editedContent.insert(contentsOf: "*", at: editedContent.index(editedContent.startIndex, offsetBy: currentPosition))
-            editedContent.insert(contentsOf: "*", at: editedContent.index(editedContent.startIndex, offsetBy: currentPosition + 1))
+            let currentPosition = draft.content.count
+            draft.content.insert(contentsOf: "*", at: draft.content.index(draft.content.startIndex, offsetBy: currentPosition))
+            draft.content.insert(contentsOf: "*", at: draft.content.index(draft.content.startIndex, offsetBy: currentPosition + 1))
             
             // 模拟光标移动到中间位置
             DispatchQueue.main.async {
@@ -512,76 +505,86 @@ struct DiaryEditView: View {
             }
         case "# 标题", "## 二级标题":
             // 不添加换行，直接插入标题标记
-            if !editedContent.isEmpty && !editedContent.hasSuffix("\n") {
-                editedContent += "\n"
+            if !draft.content.isEmpty && !draft.content.hasSuffix("\n") {
+                draft.content += "\n"
             }
-            editedContent += format + " "
+            draft.content += format + " "
         case "- 列表", "1. 编号":
             // 确保列表项在新行上
-            if !editedContent.isEmpty && !editedContent.hasSuffix("\n") {
-                editedContent += "\n"
+            if !draft.content.isEmpty && !draft.content.hasSuffix("\n") {
+                draft.content += "\n"
             }
-            editedContent += format + " "
+            draft.content += format + " "
         default:
             // 默认行为，直接添加格式
-            editedContent += format
+            draft.content += format
         }
-        
-        // 更新内容
-        viewModel.updateCurrentEntry(content: editedContent)
-        hasChanges = true
-    }
-    
-    private func handleContentChange(_ newValue: String) {
-        // 标记有更改
-        hasChanges = true
-        
-        // 取消之前的延迟保存
-        contentSaveWorkItem?.cancel()
-        
-        // 创建新的延迟保存任务
-        let workItem = DispatchWorkItem {
-            viewModel.updateCurrentEntry(content: newValue)
-        }
-        
-        // 存储并延迟执行
-        contentSaveWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
     
     private func setupOnAppear() {
-        // 确保编辑内容始终与条目内容同步
-        editedContent = entry.content
-        
         // 设置当前条目为正在编辑的条目
         if viewModel.currentEntry?.id != entry.id {
             viewModel.currentEntry = entry
         }
-        
-        // 初始化时重置hasChanges
-        hasChanges = false
     }
     
     private func cleanupOnDisappear() {
-        // 取消所有延迟的内容保存操作
-        contentSaveWorkItem?.cancel()
-        contentSaveWorkItem = nil
-        
-        // 停止录音（如果正在录音）
-        if viewModel.isRecording {
-            viewModel.stopRecording()
-            viewModel.saveVoiceRecordingToCurrentEntry()
-        }
+        guard !didResolveDraft else { return }
+        captureActiveVoiceRecordingIfNeeded()
+        discardPendingRecording()
+        clearTransientEditorState()
+        didResolveDraft = true
     }
     
     private func saveAndDismiss() {
-        // 确保所有更改已保存
-        if let pendingWorkItem = contentSaveWorkItem, !pendingWorkItem.isCancelled {
-            pendingWorkItem.perform()
+        captureActiveVoiceRecordingIfNeeded()
+
+        if draft.hasChanges,
+           !viewModel.commitEditDraft(draft, forEntryID: entry.id) {
+            activeAlert = .saveFailure(viewModel.errorMessage ?? "保存日记失败，请重试")
+            return
         }
-        
-        // 关闭编辑界面
+
+        clearTransientEditorState()
+        didResolveDraft = true
         dismiss()
+    }
+
+    private func discardAndDismiss() {
+        captureActiveVoiceRecordingIfNeeded()
+        discardPendingRecording()
+        clearTransientEditorState()
+        didResolveDraft = true
+        dismiss()
+    }
+
+    private func captureActiveVoiceRecordingIfNeeded() {
+        guard DiaryViewModel.shouldCaptureVoiceRecordingDraft(
+            isRecording: viewModel.isRecording,
+            recordingState: viewModel.recordingState
+        ) else {
+            return
+        }
+
+        if viewModel.isRecording {
+            viewModel.stopRecording()
+        }
+
+        let recording = viewModel.captureVoiceRecordingDraft()
+        guard let audioURL = recording.audioURL else { return }
+
+        let supersededRecording = draft.replacePendingRecording(with: audioURL)
+        viewModel.discardRecordingFile(at: supersededRecording)
+    }
+
+    private func discardPendingRecording() {
+        let pendingRecording = draft.discardPendingRecording()
+        viewModel.discardRecordingFile(at: pendingRecording)
+    }
+
+    private func clearTransientEditorState() {
+        viewModel.setTranscriptionText("")
+        isShowingTranscription = false
     }
 }
 

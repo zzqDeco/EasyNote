@@ -17,6 +17,7 @@
 - Current tests cover chat-session title summary and basic integrity behavior.
 - Current tests cover AI action result success/failure records, input matching, per-target/source pending state, stale pending cleanup after failures, source-bound diary summary application, stale result rejection, and explicit diary/transcription application behavior.
 - Current tests cover CloudKit preflight readiness as pure local logic; they do not contact CloudKit.
+- Current tests cover existing-diary draft save/discard/rollback, canonical mood storage, transcription isolation, and original/pending recording ownership.
 
 ## Tests
 

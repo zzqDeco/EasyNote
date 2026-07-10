@@ -1433,6 +1433,223 @@ struct EasyNoteTests {
         #expect(result == "已有正文")
     }
 
+    @Test func moodCatalogNormalizesNumericValuesAndAcceptsChineseLabels() async throws {
+        #expect(MoodCatalog.storedLabel(for: 4) == "不错")
+        #expect(MoodCatalog.index(forStoredLabel: "很棒") == 5)
+        #expect(MoodCatalog.index(forStoredLabel: "开心") == 5)
+        #expect(MoodCatalog.canonicalStoredLabel("4") == "不错")
+        #expect(MoodCatalog.canonicalStoredLabel("开心") == "开心")
+        #expect(MoodCatalog.systemImage(forStoredLabel: "平静") == "face.dashed")
+        #expect(MoodCatalog.canonicalStoredLabel("999") == "一般")
+        #expect(MoodCatalog.canonicalStoredLabel("  ") == nil)
+    }
+
+    @Test func diaryEditTranscriptionDoesNotPersistBeforeCommit() async throws {
+        let context = try makeModelContext()
+        let entry = makeDiary(title: "语音草稿", content: "已有正文", tags: ["原标签"], mood: "平静")
+        context.insert(entry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        var draft = DiaryEditDraft(
+            entryID: entry.id,
+            content: entry.content,
+            mood: entry.mood,
+            tags: entry.tags,
+            originalAudioURL: nil
+        )
+
+        viewModel.setTranscriptionText("新增转写")
+        draft.content = viewModel.applyTranscription(to: draft.content, mode: .insert)
+
+        #expect(entry.content == "已有正文")
+        #expect(draft.content == "已有正文\n\n新增转写")
+        #expect(viewModel.commitEditDraft(draft, forEntryID: entry.id))
+        #expect(entry.content == "已有正文\n\n新增转写")
+    }
+
+    @Test func diaryViewModelCommitsEditDraftWithOneSaveAndThenRemovesReplacedAudio() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let originalAudioURL = directory.appendingPathComponent("original.caf")
+        let replacementAudioURL = directory.appendingPathComponent("replacement.caf")
+        try Data([0x01]).write(to: originalAudioURL)
+        try Data([0x02]).write(to: replacementAudioURL)
+
+        let entry = makeDiary(title: "待编辑", content: "旧正文", tags: ["旧标签"], mood: "一般")
+        entry.audioURL = originalAudioURL
+        context.insert(entry)
+        try context.save()
+        var saveCallCount = 0
+        let viewModel = DiaryViewModel(
+            modelContext: context,
+            saveModelContext: { context in
+                saveCallCount += 1
+                try context.save()
+            }
+        )
+        var draft = DiaryEditDraft(
+            entryID: entry.id,
+            content: entry.content,
+            mood: entry.mood,
+            tags: entry.tags,
+            originalAudioURL: entry.audioURL
+        )
+        draft.content = "新正文"
+        draft.mood = "4"
+        draft.tags = ["新标签"]
+        draft.replacePendingRecording(with: replacementAudioURL)
+
+        #expect(viewModel.commitEditDraft(draft, forEntryID: entry.id))
+
+        #expect(saveCallCount == 1)
+        #expect(entry.content == "新正文")
+        #expect(entry.mood == "不错")
+        #expect(entry.tags == ["新标签"])
+        #expect(entry.audioURL == replacementAudioURL)
+        #expect(!FileManager.default.fileExists(atPath: originalAudioURL.path))
+        #expect(FileManager.default.fileExists(atPath: replacementAudioURL.path))
+    }
+
+    @Test func diaryEditDraftDiscardKeepsEntryAndOriginalAudioUnchanged() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let originalAudioURL = directory.appendingPathComponent("original.caf")
+        let pendingAudioURL = directory.appendingPathComponent("pending.caf")
+        try Data([0x01]).write(to: originalAudioURL)
+        try Data([0x02]).write(to: pendingAudioURL)
+
+        let entry = makeDiary(title: "放弃编辑", content: "原正文", tags: ["原标签"], mood: "平静")
+        entry.audioURL = originalAudioURL
+        var draft = DiaryEditDraft(
+            entryID: entry.id,
+            content: entry.content,
+            mood: entry.mood,
+            tags: entry.tags,
+            originalAudioURL: entry.audioURL
+        )
+        draft.content = "未保存正文"
+        draft.mood = "很棒"
+        draft.tags = ["未保存标签"]
+        draft.replacePendingRecording(with: pendingAudioURL)
+
+        let discardedAudioURL = draft.discardPendingRecording()
+        DiaryViewModel.removeRecordingFile(at: discardedAudioURL)
+
+        #expect(entry.content == "原正文")
+        #expect(entry.mood == "平静")
+        #expect(entry.tags == ["原标签"])
+        #expect(entry.audioURL == originalAudioURL)
+        #expect(FileManager.default.fileExists(atPath: originalAudioURL.path))
+        #expect(!FileManager.default.fileExists(atPath: pendingAudioURL.path))
+        #expect(draft.pendingReplacementAudioURL == nil)
+    }
+
+    @Test func diaryEditDraftReplacementReturnsOnlySupersededPendingAudio() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let originalAudioURL = directory.appendingPathComponent("original.caf")
+        let firstPendingURL = directory.appendingPathComponent("first.caf")
+        let secondPendingURL = directory.appendingPathComponent("second.caf")
+        try Data([0x01]).write(to: originalAudioURL)
+        try Data([0x02]).write(to: firstPendingURL)
+        try Data([0x03]).write(to: secondPendingURL)
+        var draft = DiaryEditDraft(
+            entryID: UUID(),
+            content: "正文",
+            mood: nil,
+            tags: [],
+            originalAudioURL: originalAudioURL
+        )
+
+        #expect(draft.replacePendingRecording(with: firstPendingURL) == nil)
+        let supersededFirstURL = draft.replacePendingRecording(with: secondPendingURL)
+        DiaryViewModel.removeRecordingFile(at: supersededFirstURL)
+        #expect(supersededFirstURL == firstPendingURL)
+        #expect(draft.pendingReplacementAudioURL == secondPendingURL)
+        #expect(!FileManager.default.fileExists(atPath: firstPendingURL.path))
+        #expect(FileManager.default.fileExists(atPath: originalAudioURL.path))
+        #expect(FileManager.default.fileExists(atPath: secondPendingURL.path))
+
+        let supersededSecondURL = draft.replacePendingRecording(with: originalAudioURL)
+        DiaryViewModel.removeRecordingFile(at: supersededSecondURL)
+        #expect(supersededSecondURL == secondPendingURL)
+        #expect(draft.pendingReplacementAudioURL == nil)
+        #expect(FileManager.default.fileExists(atPath: originalAudioURL.path))
+        #expect(!FileManager.default.fileExists(atPath: secondPendingURL.path))
+    }
+
+    @Test func diaryViewModelFailedDraftSaveRollsBackAndPreservesBothRecordingsForRetry() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let originalAudioURL = directory.appendingPathComponent("original.caf")
+        let replacementAudioURL = directory.appendingPathComponent("replacement.caf")
+        try Data([0x01]).write(to: originalAudioURL)
+        try Data([0x02]).write(to: replacementAudioURL)
+
+        let entry = makeDiary(title: "失败回滚", content: "旧正文", tags: ["旧标签"], mood: "一般")
+        entry.audioURL = originalAudioURL
+        context.insert(entry)
+        try context.save()
+        let viewModel = DiaryViewModel(
+            modelContext: context,
+            saveModelContext: { _ in throw TestSaveError.failed }
+        )
+        var draft = DiaryEditDraft(
+            entryID: entry.id,
+            content: entry.content,
+            mood: entry.mood,
+            tags: entry.tags,
+            originalAudioURL: entry.audioURL
+        )
+        draft.content = "重试正文"
+        draft.mood = "5"
+        draft.tags = ["重试标签"]
+        draft.replacePendingRecording(with: replacementAudioURL)
+
+        #expect(!viewModel.commitEditDraft(draft, forEntryID: entry.id))
+        #expect(entry.content == "旧正文")
+        #expect(entry.mood == "一般")
+        #expect(entry.tags == ["旧标签"])
+        #expect(entry.audioURL == originalAudioURL)
+        #expect(draft.pendingReplacementAudioURL == replacementAudioURL)
+        #expect(FileManager.default.fileExists(atPath: originalAudioURL.path))
+        #expect(FileManager.default.fileExists(atPath: replacementAudioURL.path))
+        #expect(viewModel.errorMessage?.contains("保存日记失败") == true)
+
+        let discardedAudioURL = draft.discardPendingRecording()
+        DiaryViewModel.removeRecordingFile(at: discardedAudioURL)
+        #expect(FileManager.default.fileExists(atPath: originalAudioURL.path))
+        #expect(!FileManager.default.fileExists(atPath: replacementAudioURL.path))
+    }
+
+    @Test func diaryViewModelRejectsMissingReplacementRecordingBeforeMutatingEntry() async throws {
+        let context = try makeModelContext()
+        let entry = makeDiary(title: "缺失录音", content: "原正文", tags: ["原标签"], mood: "一般")
+        context.insert(entry)
+        try context.save()
+        let viewModel = DiaryViewModel(modelContext: context)
+        var draft = DiaryEditDraft(
+            entryID: entry.id,
+            content: entry.content,
+            mood: entry.mood,
+            tags: entry.tags,
+            originalAudioURL: nil
+        )
+        draft.content = "不应保存"
+        draft.replacePendingRecording(
+            with: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("caf")
+        )
+
+        #expect(!viewModel.commitEditDraft(draft, forEntryID: entry.id))
+        #expect(entry.content == "原正文")
+        #expect(entry.audioURL == nil)
+        #expect(viewModel.errorMessage == "待保存的录音文件不存在")
+    }
+
     @Test func recordingStateAllowsTranscriptionActionsOnlyWhenStable() async throws {
         #expect(!RecordingState.recording.allowsTranscriptionActions)
         #expect(!RecordingState.processing.allowsTranscriptionActions)

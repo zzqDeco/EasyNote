@@ -10,6 +10,7 @@ Source notes are required for public contracts, cross-module boundaries, persist
 
 - [EasyNoteApp](EasyNote/EasyNoteApp.swift.plan.md)
 - [AIActionResult](EasyNote/Models/AIActionResult.swift.plan.md)
+- [DiaryEditDraft](EasyNote/Models/DiaryEditDraft.swift.plan.md)
 - [Models Overview](EasyNote/Models/README.plan.md)
 - [SystemReminderAgent](EasyNote/Models/SystemReminderAgent.swift.plan.md)
 - [TodoNotificationPlanner](EasyNote/Models/TodoNotificationPlanner.swift.plan.md)
@@ -32,6 +33,7 @@ Source notes are required for public contracts, cross-module boundaries, persist
 - [DiaryDraftComposer](EasyNote/ViewModels/DiaryDraftComposer.swift.plan.md)
 - [ViewModels Overview](EasyNote/ViewModels/README.plan.md)
 - [Views Overview](EasyNote/Views/README.plan.md)
+- [DiaryEditView](EasyNote/Views/DiaryEditView.swift.plan.md)
 - [SettingsView](EasyNote/Views/SettingsView.swift.plan.md)
 - [TranscriptionDisplayView](EasyNote/Views/TranscriptionDisplayView.swift.plan.md)
 

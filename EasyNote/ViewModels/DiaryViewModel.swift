@@ -40,6 +40,7 @@ class DiaryViewModel: ObservableObject {
     
     // 模型上下文
     private var modelContext: ModelContext
+    private let saveModelContext: (ModelContext) throws -> Void
     
     // MARK: - 初始化方法
     
@@ -47,11 +48,13 @@ class DiaryViewModel: ObservableObject {
         modelContext: ModelContext?,
         speechService: any SpeechRecognitionProviding = SpeechRecognitionService(),
         openAIService: any OpenAIServiceProviding = OpenAIService(),
-        cloudKitService: any CloudKitDiarySyncProviding = CloudKitService()
+        cloudKitService: any CloudKitDiarySyncProviding = CloudKitService(),
+        saveModelContext: @escaping (ModelContext) throws -> Void = { try $0.save() }
     ) {
         self.speechService = speechService
         self.openAIService = openAIService
         self.cloudKitService = cloudKitService
+        self.saveModelContext = saveModelContext
 
         if let context = modelContext {
             self.modelContext = context
@@ -310,47 +313,62 @@ class DiaryViewModel: ObservableObject {
         entry.lastModified = Date()
         return saveContext()
     }
-    
+
     @discardableResult
-    func saveVoiceRecordingToCurrentEntry() -> Bool {
-        guard let entry = currentEntry else {
-            errorMessage = "没有正在编辑的日记"
+    func commitEditDraft(_ draft: DiaryEditDraft, forEntryID entryID: UUID) -> Bool {
+        guard draft.entryID == entryID else {
+            errorMessage = "日记草稿与当前条目不匹配"
             return false
         }
-        
-        let previousAudioURL = entry.audioURL
-        let recording = captureVoiceRecordingDraft()
-        var replacementAudioURL: URL?
-        
-        if let url = recording.audioURL, FileManager.default.fileExists(atPath: url.path) {
-            entry.audioURL = url
-            replacementAudioURL = url
-            print("成功保存录音到: \(url.path)")
-        } else if recording.audioURL != nil {
-            print("音频文件URL无效或文件不存在")
-        }
-        
-        // 保存原始识别文本到transcribedText，而不是直接修改entry.content
-        if !recording.transcription.isEmpty {
-            // 将识别文本保存到transcribedText供用户预览
-            self.setTranscriptionText(recording.transcription)
-            
-            // 不再自动润色文本，由用户手动触发
-            // if !transcription.isEmpty && !openAIService.apiKey.isEmpty {
-            //     refineTranscribedText(transcription)
-            // }
-        }
-        
-        let didSave = saveContext()
-        if didSave, replacementAudioURL != nil {
-            Self.removeReplacedRecordingFile(previous: previousAudioURL, replacement: replacementAudioURL)
-        } else if !didSave,
-                  let replacementAudioURL,
-                  previousAudioURL?.standardizedFileURL != replacementAudioURL.standardizedFileURL {
-            Self.removeRecordingFile(at: replacementAudioURL)
+
+        if let replacementAudioURL = draft.pendingReplacementAudioURL {
+            guard replacementAudioURL.isFileURL,
+                  FileManager.default.fileExists(atPath: replacementAudioURL.path) else {
+                errorMessage = "待保存的录音文件不存在"
+                return false
+            }
         }
 
-        return didSave
+        guard let entry = diaryEntry(withID: entryID) else {
+            errorMessage = "未找到要保存的日记"
+            return false
+        }
+
+        let previousAudioURL = entry.audioURL
+        entry.content = draft.content
+        entry.mood = MoodCatalog.canonicalStoredLabel(draft.mood)
+        entry.tags = draft.tags
+        entry.audioURL = draft.resolvedAudioURL
+        entry.lastModified = Date()
+
+        guard saveContext() else {
+            return false
+        }
+
+        if draft.pendingReplacementAudioURL != nil {
+            Self.removeReplacedRecordingFile(
+                previous: previousAudioURL,
+                replacement: draft.pendingReplacementAudioURL
+            )
+        }
+        return true
+    }
+
+    private func diaryEntry(withID entryID: UUID) -> DiaryEntry? {
+        if currentEntry?.id == entryID {
+            return currentEntry
+        }
+
+        if let loadedEntry = diaryEntries.first(where: { $0.id == entryID }) {
+            return loadedEntry
+        }
+
+        let descriptor = FetchDescriptor<DiaryEntry>(
+            predicate: #Predicate<DiaryEntry> { entry in
+                entry.id == entryID
+            }
+        )
+        return try? modelContext.fetch(descriptor).first
     }
     
     // MARK: - AI功能
@@ -711,7 +729,7 @@ class DiaryViewModel: ObservableObject {
     @discardableResult
     private func saveContext() -> Bool {
         do {
-            try modelContext.save()
+            try saveModelContext(modelContext)
             errorMessage = nil
             return true
         } catch {

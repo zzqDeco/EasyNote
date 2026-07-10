@@ -27,6 +27,17 @@ Model changes require a migration or compatibility note before implementation.
 
 Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
 
+## Diary Edit Transaction Boundary
+
+Existing-diary editing uses `DiaryEditDraft` instead of mutating `DiaryEntry` as the user types. The draft snapshots content, canonical mood, tags, and original audio URL, and may own one pending replacement recording.
+
+- Content, mood, tags, transcription insertion/replacement, accepted transcription AI output, and recording capture stay in the draft until Done.
+- `DiaryViewModel.commitEditDraft` resolves the entry by stable UUID, applies all draft fields, and performs exactly one SwiftData save.
+- A failed save rolls back, exposes a user-visible error, keeps the editor and pending recording available for retry, and leaves the original recording untouched.
+- Successful replacement deletes the previously saved local recording only after the new URL commits.
+- Cancel or unresolved disappearance deletes only the pending replacement recording and never persists draft fields.
+- `MoodCatalog` maps picker integers and legacy numeric strings to canonical Chinese labels; existing non-empty Chinese labels remain valid inputs.
+
 ## Todo Notification Boundary
 
 Todo reminder notifications are derived from existing todo fields and do not add SwiftData schema:
@@ -149,7 +160,7 @@ Views and ViewModels should not manage `AVAudioEngine` or `SFSpeechAudioBufferRe
 
 Transcription content is not written into diary body text automatically. Views must apply transcribed or AI-refined text through an explicit insert or replace action, using the shared diary draft composition helper. Insert/replace actions should stay unavailable while speech recognition is still recording or processing partial results.
 
-Draft recording files are owned by diary save flows after capture. Unsaved new-entry drafts should delete their pending local `.caf` file on dismissal, superseded draft recordings should be deleted before their URL is overwritten, deleting a diary entry should remove its saved local `.caf` or legacy `.m4a` after the model delete saves, and replacing an existing diary recording should remove the previously referenced local `.caf` or legacy `.m4a` only after the new reference is saved successfully. New-entry save and dismiss paths should capture both active recordings and recordings that have already reached `finished`.
+Draft recording files are owned by diary save flows after capture. Unsaved new-entry drafts should delete their pending local `.caf` file on dismissal, superseded draft recordings should be deleted before their URL is overwritten, deleting a diary entry should remove its saved local `.caf` or legacy `.m4a` after the model delete saves, and replacing an existing diary recording should remove the previously referenced local `.caf` or legacy `.m4a` only after the new reference is saved successfully. A failed existing-entry save retains both the original and pending replacement so the visible draft can retry; discarding that draft then removes only the pending replacement. New-entry save and dismiss paths should capture both active recordings and recordings that have already reached `finished`.
 
 ## CloudKit Boundary
 
