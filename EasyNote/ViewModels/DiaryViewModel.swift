@@ -334,7 +334,11 @@ class DiaryViewModel: ObservableObject {
             return false
         }
 
+        let previousContent = entry.content
+        let previousMood = entry.mood
+        let previousTags = entry.tags
         let previousAudioURL = entry.audioURL
+        let previousLastModified = entry.lastModified
         entry.content = draft.content
         entry.mood = MoodCatalog.canonicalStoredLabel(draft.mood)
         entry.tags = draft.tags
@@ -342,6 +346,14 @@ class DiaryViewModel: ObservableObject {
         entry.lastModified = Date()
 
         guard saveContext() else {
+            // Keep the model instance held by the editor consistent even on
+            // SwiftData versions where rollback does not refresh it eagerly.
+            entry.content = previousContent
+            entry.mood = previousMood
+            entry.tags = previousTags
+            entry.audioURL = previousAudioURL
+            entry.lastModified = previousLastModified
+            modelContext.rollback()
             return false
         }
 

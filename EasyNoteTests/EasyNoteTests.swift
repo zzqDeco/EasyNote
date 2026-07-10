@@ -1592,6 +1592,7 @@ struct EasyNoteTests {
         entry.audioURL = originalAudioURL
         context.insert(entry)
         try context.save()
+        let originalLastModified = entry.lastModified
         let viewModel = DiaryViewModel(
             modelContext: context,
             saveModelContext: { _ in throw TestSaveError.failed }
@@ -1613,6 +1614,7 @@ struct EasyNoteTests {
         #expect(entry.mood == "一般")
         #expect(entry.tags == ["旧标签"])
         #expect(entry.audioURL == originalAudioURL)
+        #expect(entry.lastModified == originalLastModified)
         #expect(draft.pendingReplacementAudioURL == replacementAudioURL)
         #expect(FileManager.default.fileExists(atPath: originalAudioURL.path))
         #expect(FileManager.default.fileExists(atPath: replacementAudioURL.path))
