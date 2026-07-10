@@ -345,15 +345,13 @@ class DiaryViewModel: ObservableObject {
         entry.audioURL = draft.resolvedAudioURL
         entry.lastModified = Date()
 
-        guard saveContext() else {
-            // Keep the model instance held by the editor consistent even on
-            // SwiftData versions where rollback does not refresh it eagerly.
+        guard saveContext(onFailure: {
             entry.content = previousContent
             entry.mood = previousMood
             entry.tags = previousTags
             entry.audioURL = previousAudioURL
             entry.lastModified = previousLastModified
-            modelContext.rollback()
+        }) else {
             return false
         }
 
@@ -739,12 +737,13 @@ class DiaryViewModel: ObservableObject {
     }
     
     @discardableResult
-    private func saveContext() -> Bool {
+    private func saveContext(onFailure: (() -> Void)? = nil) -> Bool {
         do {
             try saveModelContext(modelContext)
             errorMessage = nil
             return true
         } catch {
+            onFailure?()
             modelContext.rollback()
             errorMessage = "保存日记失败: \(error.localizedDescription)"
             return false
