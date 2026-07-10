@@ -47,7 +47,7 @@ struct SettingsView: View {
     @State private var systemReminderAuthorizationStatus: SystemReminderAuthorizationStatus = .notDetermined
     @State private var systemReminderMessage: String?
     @State private var systemReminderErrorMessage: String?
-    @State private var shouldSyncSystemRemindersAfterAuthorizationRefresh = false
+    @State private var reminderOperationTask: Task<Void, Never>?
 
     private let backupService: any BackupServiceProviding
     private let todoNotificationScheduler: any TodoNotificationSchedulingProviding
@@ -244,33 +244,21 @@ struct SettingsView: View {
             .navigationTitle("设置")
             .onAppear {
                 selectedTodoReminderMode = reminderModeStore.currentMode
-                todoNotificationScheduler.refreshAuthorizationStatus()
-                systemReminderWriter.refreshAuthorizationStatus()
+                refreshReminderAuthorizationStatuses()
+            }
+            .onDisappear {
+                reminderOperationTask?.cancel()
+                reminderOperationTask = nil
             }
             .onReceive(todoNotificationScheduler.authorizationStatusPublisher) { status in
-                let previousStatus = todoNotificationAuthorizationStatus
                 todoNotificationAuthorizationStatus = status
-
-                if selectedTodoReminderMode == .localNotification,
-                   todoNotificationsEnabled,
-                   !previousStatus.allowsScheduling,
-                   status.allowsScheduling {
-                    reconcileTodoNotifications()
-                }
             }
             .onReceive(systemReminderWriter.authorizationStatusPublisher) { status in
                 systemReminderAuthorizationStatus = status
-                if shouldSyncSystemRemindersAfterAuthorizationRefresh,
-                   selectedTodoReminderMode == .systemReminderAgent,
-                   status.allowsWriting {
-                    shouldSyncSystemRemindersAfterAuthorizationRefresh = false
-                    syncCurrentTodosToSystemReminders()
-                }
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
-                    todoNotificationScheduler.refreshAuthorizationStatus()
-                    systemReminderWriter.refreshAuthorizationStatus()
+                    refreshReminderAuthorizationStatuses()
                 }
             }
             .fileExporter(
@@ -516,47 +504,55 @@ struct SettingsView: View {
 
         switch mode {
         case .off:
-            shouldSyncSystemRemindersAfterAuthorizationRefresh = false
             todoNotificationsEnabled = false
-            todoNotificationScheduler.cancelAllTodoNotifications()
             todoNotificationMessage = "已关闭提醒"
+            startReminderOperation {
+                await todoNotificationScheduler.cancelAllTodoNotifications()
+            }
         case .localNotification:
-            shouldSyncSystemRemindersAfterAuthorizationRefresh = false
             todoNotificationsEnabled = true
-            todoNotificationScheduler.requestAuthorization { granted in
-                guard granted else {
+            startReminderOperation {
+                do {
+                    try await todoNotificationScheduler.requestAuthorization()
+                    let synchronized = await reconcileTodoNotificationsNow()
+                    if synchronized, shouldRemoveSystemReminders {
+                        await removeCurrentSystemRemindersAfterSwitchingToLocalMode()
+                    }
+                } catch is CancellationError {
+                    return
+                } catch {
                     todoNotificationsEnabled = false
                     reminderModeStore.currentMode = .off
                     selectedTodoReminderMode = .off
-                    todoNotificationScheduler.cancelAllTodoNotifications()
-                    todoNotificationErrorMessage = "未授予通知权限，EasyNote 通知未开启"
-                    return
-                }
-
-                reconcileTodoNotifications()
-                if shouldRemoveSystemReminders {
-                    removeCurrentSystemRemindersAfterSwitchingToLocalMode()
+                    await todoNotificationScheduler.cancelAllTodoNotifications()
+                    todoNotificationErrorMessage = "EasyNote 通知未开启: \(error.localizedDescription)"
                 }
             }
         case .systemReminderAgent:
             todoNotificationsEnabled = false
-            todoNotificationScheduler.cancelAllTodoNotifications()
-            shouldSyncSystemRemindersAfterAuthorizationRefresh = shouldSyncSystemReminders
-            systemReminderWriter.refreshAuthorizationStatus()
-            if systemReminderAuthorizationStatus.allowsWriting {
-                if shouldSyncSystemReminders {
-                    shouldSyncSystemRemindersAfterAuthorizationRefresh = false
-                    syncCurrentTodosToSystemReminders()
-                } else {
-                    systemReminderMessage = "已切换到系统提醒事项模式"
+            startReminderOperation {
+                await todoNotificationScheduler.cancelAllTodoNotifications()
+                let status = await systemReminderWriter.refreshAuthorizationStatus()
+                systemReminderAuthorizationStatus = status
+                guard !Task.isCancelled else {
+                    return
                 }
-            } else {
-                systemReminderMessage = "请授予提醒事项权限后同步当前待办"
+
+                if status.allowsWriting {
+                    if shouldSyncSystemReminders {
+                        await syncCurrentTodosToSystemRemindersNow()
+                    } else {
+                        systemReminderMessage = "已切换到系统提醒事项模式"
+                    }
+                } else {
+                    systemReminderMessage = "请授予提醒事项权限后同步当前待办"
+                }
             }
         }
     }
 
-    private func removeCurrentSystemRemindersAfterSwitchingToLocalMode() {
+    @MainActor
+    private func removeCurrentSystemRemindersAfterSwitchingToLocalMode() async {
         do {
             let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
             let todos = try modelContext.fetch(descriptor)
@@ -566,32 +562,28 @@ struct SettingsView: View {
                 return
             }
 
-            let group = DispatchGroup()
             var successCount = 0
             var firstError: String?
 
-            todos.forEach { todo in
-                group.enter()
-                systemReminderWriter.removeReminder(forTodoID: todo.id) { result in
-                    switch result {
-                    case .success:
-                        successCount += 1
-                    case .failure(let error):
-                        if firstError == nil {
-                            firstError = error.localizedDescription
-                        }
+            for todo in todos {
+                do {
+                    try Task.checkCancellation()
+                    try await systemReminderWriter.removeReminder(forTodoID: todo.id)
+                    successCount += 1
+                } catch is CancellationError {
+                    return
+                } catch {
+                    if firstError == nil {
+                        firstError = error.localizedDescription
                     }
-                    group.leave()
                 }
             }
 
-            group.notify(queue: .main) {
-                if let firstError {
-                    todoNotificationErrorMessage = "已切换到 EasyNote 通知，但清理旧系统提醒事项失败: \(firstError)"
-                } else if successCount > 0 {
-                    reminderModeStore.systemRemindersMayExist = false
-                    todoNotificationMessage = "已同步 EasyNote 通知，并清理 \(successCount) 个系统提醒事项"
-                }
+            if let firstError {
+                todoNotificationErrorMessage = "已切换到 EasyNote 通知，但清理旧系统提醒事项失败: \(firstError)"
+            } else if successCount > 0 {
+                reminderModeStore.systemRemindersMayExist = false
+                todoNotificationMessage = "已同步 EasyNote 通知，并清理 \(successCount) 个系统提醒事项"
             }
         } catch {
             todoNotificationErrorMessage = "已切换到 EasyNote 通知，但读取待办清理系统提醒事项失败: \(error.localizedDescription)"
@@ -602,20 +594,31 @@ struct SettingsView: View {
         systemReminderMessage = nil
         systemReminderErrorMessage = nil
 
-        systemReminderWriter.requestAuthorization { granted in
-            if granted {
+        startReminderOperation {
+            do {
+                try await systemReminderWriter.requestAuthorization()
+                systemReminderAuthorizationStatus = await systemReminderWriter.refreshAuthorizationStatus()
                 if selectedTodoReminderMode == .systemReminderAgent {
-                    syncCurrentTodosToSystemReminders()
+                    await syncCurrentTodosToSystemRemindersNow()
                 } else {
                     systemReminderMessage = "提醒事项权限已开启"
                 }
-            } else {
-                systemReminderErrorMessage = "未授予提醒事项权限，请在系统设置中允许访问提醒事项"
+            } catch is CancellationError {
+                return
+            } catch {
+                systemReminderErrorMessage = error.localizedDescription
             }
         }
     }
 
     private func syncCurrentTodosToSystemReminders() {
+        startReminderOperation {
+            await syncCurrentTodosToSystemRemindersNow()
+        }
+    }
+
+    @MainActor
+    private func syncCurrentTodosToSystemRemindersNow() async {
         systemReminderMessage = nil
         systemReminderErrorMessage = nil
 
@@ -647,65 +650,42 @@ struct SettingsView: View {
                 return
             }
 
-            let group = DispatchGroup()
             var successCount = 0
             var firstError: String?
             var wroteOrCompletedSystemReminder = false
 
-            operations.forEach { operation in
-                group.enter()
-
-                switch operation {
-                case .apply(let proposal):
-                    systemReminderWriter.applyProposal(proposal) { result in
-                        switch result {
-                        case .success:
-                            successCount += 1
-                            wroteOrCompletedSystemReminder = true
-                        case .failure(let error):
-                            if firstError == nil {
-                                firstError = error.localizedDescription
-                            }
-                        }
-                        group.leave()
+            for operation in operations {
+                do {
+                    try Task.checkCancellation()
+                    switch operation {
+                    case .apply(let proposal):
+                        _ = try await systemReminderWriter.applyProposal(proposal)
+                        successCount += 1
+                        wroteOrCompletedSystemReminder = true
+                    case .complete(let id):
+                        try await systemReminderWriter.completeReminder(forTodoID: id)
+                        successCount += 1
+                        wroteOrCompletedSystemReminder = true
+                    case .remove(let id):
+                        try await systemReminderWriter.removeReminder(forTodoID: id)
+                        successCount += 1
+                    case .ignore:
+                        break
                     }
-                case .complete(let id):
-                    systemReminderWriter.completeReminder(forTodoID: id) { result in
-                        switch result {
-                        case .success:
-                            successCount += 1
-                            wroteOrCompletedSystemReminder = true
-                        case .failure(let error):
-                            if firstError == nil {
-                                firstError = error.localizedDescription
-                            }
-                        }
-                        group.leave()
+                } catch is CancellationError {
+                    return
+                } catch {
+                    if firstError == nil {
+                        firstError = error.localizedDescription
                     }
-                case .remove(let id):
-                    systemReminderWriter.removeReminder(forTodoID: id) { result in
-                        switch result {
-                        case .success:
-                            successCount += 1
-                        case .failure(let error):
-                            if firstError == nil {
-                                firstError = error.localizedDescription
-                            }
-                        }
-                        group.leave()
-                    }
-                case .ignore:
-                    group.leave()
                 }
             }
 
-            group.notify(queue: .main) {
-                if let firstError {
-                    systemReminderErrorMessage = "同步失败: \(firstError)"
-                } else {
-                    reminderModeStore.systemRemindersMayExist = wroteOrCompletedSystemReminder
-                    systemReminderMessage = "已同步/清理 \(successCount) 个系统提醒事项"
-                }
+            if let firstError {
+                systemReminderErrorMessage = "同步失败: \(firstError)"
+            } else {
+                reminderModeStore.systemRemindersMayExist = wroteOrCompletedSystemReminder
+                systemReminderMessage = "已同步/清理 \(successCount) 个系统提醒事项"
             }
         } catch {
             systemReminderErrorMessage = "读取待办失败: \(error.localizedDescription)"
@@ -725,38 +705,79 @@ struct SettingsView: View {
         todoNotificationMessage = nil
         todoNotificationErrorMessage = nil
 
-        todoNotificationScheduler.requestAuthorization { granted in
-            if granted {
+        startReminderOperation {
+            do {
+                try await todoNotificationScheduler.requestAuthorization()
+                todoNotificationAuthorizationStatus = await todoNotificationScheduler.refreshAuthorizationStatus()
                 todoNotificationMessage = "通知权限已开启"
                 if selectedTodoReminderMode == .localNotification {
-                    reconcileTodoNotifications()
+                    _ = await reconcileTodoNotificationsNow()
                 }
-            } else {
+            } catch is CancellationError {
+                return
+            } catch {
                 todoNotificationsEnabled = false
                 reminderModeStore.currentMode = .off
                 selectedTodoReminderMode = .off
-                todoNotificationScheduler.cancelAllTodoNotifications()
-                todoNotificationErrorMessage = "未授予通知权限，请在系统设置中允许通知"
+                await todoNotificationScheduler.cancelAllTodoNotifications()
+                todoNotificationErrorMessage = error.localizedDescription
             }
         }
     }
 
     private func reconcileTodoNotifications() {
+        startReminderOperation {
+            _ = await reconcileTodoNotificationsNow()
+        }
+    }
+
+    @MainActor
+    private func reconcileTodoNotificationsNow() async -> Bool {
         do {
             let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
             let todos = try modelContext.fetch(descriptor)
             let now = Date()
             let eligibleCount = todos.filter { TodoNotificationPlanner.shouldScheduleNotification(for: $0, now: now) }.count
             let retainedCount = TodoNotificationPlanner.retainedNotificationTodos(from: todos, now: now).count
-            todoNotificationScheduler.reconcileNotifications(for: todos)
+            try await todoNotificationScheduler.reconcileNotifications(for: todos)
             if eligibleCount > retainedCount {
                 todoNotificationMessage = "已同步最近 \(retainedCount) 个待办提醒（共 \(eligibleCount) 个符合条件）"
             } else {
                 todoNotificationMessage = "已同步 \(retainedCount) 个待办提醒"
             }
             todoNotificationErrorMessage = nil
+            return true
+        } catch is CancellationError {
+            return false
         } catch {
             todoNotificationErrorMessage = "同步待办提醒失败: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func refreshReminderAuthorizationStatuses() {
+        startReminderOperation {
+            let previousTodoStatus = todoNotificationAuthorizationStatus
+            let todoStatus = await todoNotificationScheduler.refreshAuthorizationStatus()
+            let systemStatus = await systemReminderWriter.refreshAuthorizationStatus()
+            todoNotificationAuthorizationStatus = todoStatus
+            systemReminderAuthorizationStatus = systemStatus
+
+            if selectedTodoReminderMode == .localNotification,
+               todoNotificationsEnabled,
+               !previousTodoStatus.allowsScheduling,
+               todoStatus.allowsScheduling {
+                _ = await reconcileTodoNotificationsNow()
+            }
+        }
+    }
+
+    private func startReminderOperation(
+        _ operation: @escaping @MainActor () async -> Void
+    ) {
+        reminderOperationTask?.cancel()
+        reminderOperationTask = Task { @MainActor in
+            await operation()
         }
     }
 

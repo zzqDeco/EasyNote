@@ -42,8 +42,8 @@ Current service interactions are routed through narrow protocols for AI, speech 
 
 - `OpenAIService` is the DeepSeek-compatible chat-completions client. It must not contain default API keys.
 - `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
-- `LocalTodoNotificationService` owns iOS local notification authorization state and todo reminder scheduling/cancellation.
-- `SystemReminderService` owns EventKit Reminders authorization state and writes EasyNote-marked reminders to the user's default Apple Reminders list.
+- `LocalTodoNotificationService` owns iOS local notification authorization state and async todo reminder scheduling/cancellation through an injectable UserNotifications adapter.
+- `SystemReminderService` owns EventKit Reminders authorization state and serialized async writes of EasyNote-marked reminders to the user's default Apple Reminders list. EventKit callbacks are bounded by a single-resume 10-second timeout bridge.
 - `SpeechRecognitionService` owns microphone/speech permissions, recording state, and transcription updates.
 - `CloudKitService` owns CloudKit interactions, but Debug currently defaults to simulation mode.
 - `CloudKitSyncPreflight` owns the pure readiness checklist for future real CloudKit enablement without sending network requests or changing app storage.

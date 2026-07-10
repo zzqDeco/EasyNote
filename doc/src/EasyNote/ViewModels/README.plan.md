@@ -32,9 +32,9 @@
 - `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
 - Todo filtering belongs to the pure `TodoFilter` helper, not to `ExploreViewModel`.
 - Todo recurrence planning belongs to `TodoRecurrencePlanner` and is invoked from `TodoViewModel`.
-- Todo local notification scheduling belongs to `TodoNotificationSchedulingProviding`; `TodoViewModel` reconciles local reminders only after SwiftData saves succeed, and deletion also cancels the removed todo identifier before reconciling the remaining list.
+- Todo local notification scheduling belongs to the async/throws `TodoNotificationSchedulingProviding`; `TodoViewModel` reconciles local reminders only after SwiftData saves succeed, and deletion also cancels the removed todo identifier before reconciling the remaining list.
 - Todo system Reminders writes belong to `SystemReminderAgentProviding` and `SystemReminderWritingProviding`; `TodoViewModel` applies, completes, or removes system reminders only in `.systemReminderAgent` mode and only after SwiftData saves succeed.
-- System reminder write failures set `systemReminderErrorMessage` without rolling back the saved todo; todo list/detail views render that message so a saved todo with a failed Apple Reminders write is not silent.
+- Reminder side effects run through a ViewModel-owned task chain and publish results on the main actor. Local notification and system reminder failures set the existing visible reminder error without rolling back the saved todo.
 - Backup import reloads reconcile system reminders in `.systemReminderAgent` mode so imported todo title, deadline, and completion changes do not leave stale Apple Reminders.
 
 ## Tests

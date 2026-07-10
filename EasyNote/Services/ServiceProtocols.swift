@@ -52,23 +52,23 @@ extension BackupServiceProviding {
     }
 }
 
-protocol TodoNotificationSchedulingProviding: AnyObject {
+protocol TodoNotificationSchedulingProviding: AnyObject, Sendable {
     var authorizationStatusPublisher: AnyPublisher<TodoNotificationAuthorizationStatus, Never> { get }
 
-    func refreshAuthorizationStatus()
-    func requestAuthorization(completion: @escaping (Bool) -> Void)
-    func synchronizeNotification(for todo: TodoItem)
-    func reconcileNotifications(for todos: [TodoItem])
-    func cancelNotification(forTodoID id: UUID)
-    func cancelAllTodoNotifications()
+    func refreshAuthorizationStatus() async -> TodoNotificationAuthorizationStatus
+    func requestAuthorization() async throws
+    func synchronizeNotification(for todo: TodoItem) async throws
+    func reconcileNotifications(for todos: [TodoItem]) async throws
+    func cancelNotification(forTodoID id: UUID) async
+    func cancelAllTodoNotifications() async
 }
 
-protocol SystemReminderWritingProviding: AnyObject {
+protocol SystemReminderWritingProviding: AnyObject, Sendable {
     var authorizationStatusPublisher: AnyPublisher<SystemReminderAuthorizationStatus, Never> { get }
 
-    func refreshAuthorizationStatus()
-    func requestAuthorization(completion: @escaping (Bool) -> Void)
-    func applyProposal(_ proposal: SystemReminderProposal, completion: @escaping (Result<SystemReminderWriteResult, SystemReminderError>) -> Void)
-    func completeReminder(forTodoID id: UUID, completion: ((Result<Void, SystemReminderError>) -> Void)?)
-    func removeReminder(forTodoID id: UUID, completion: ((Result<Void, SystemReminderError>) -> Void)?)
+    func refreshAuthorizationStatus() async -> SystemReminderAuthorizationStatus
+    func requestAuthorization() async throws
+    func applyProposal(_ proposal: SystemReminderProposal) async throws -> SystemReminderWriteResult
+    func completeReminder(forTodoID id: UUID) async throws
+    func removeReminder(forTodoID id: UUID) async throws
 }

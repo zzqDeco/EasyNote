@@ -412,11 +412,13 @@ struct EasyNoteTests {
             systemReminderWriter: FakeSystemReminderWriter(),
             reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
         )
+        await viewModel.waitForPendingReminderOperations()
         scheduler.reset()
 
         let deadline = Date().addingTimeInterval(3600)
 
         #expect(viewModel.addTodoItem(title: "带提醒的待办", deadline: deadline))
+        await viewModel.waitForPendingReminderOperations()
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
         #expect(scheduler.canceledTodoIDs.isEmpty)
     }
@@ -430,9 +432,11 @@ struct EasyNoteTests {
             systemReminderWriter: FakeSystemReminderWriter(),
             reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
         )
+        await viewModel.waitForPendingReminderOperations()
         let todo = makeTodo(title: "原待办")
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         scheduler.reset()
 
         let deadline = Date().addingTimeInterval(7200)
@@ -444,6 +448,7 @@ struct EasyNoteTests {
             deadline: deadline,
             notes: "需要提醒"
         ))
+        await viewModel.waitForPendingReminderOperations()
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
         #expect(viewModel.todoItems.first?.title == "改后的待办")
     }
@@ -457,12 +462,15 @@ struct EasyNoteTests {
             systemReminderWriter: FakeSystemReminderWriter(),
             reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
         )
+        await viewModel.waitForPendingReminderOperations()
         let todo = makeTodo(title: "完成后取消", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         scheduler.reset()
 
         #expect(viewModel.toggleTodoCompletion(for: todo.id))
+        await viewModel.waitForPendingReminderOperations()
         #expect(scheduler.canceledTodoIDs.isEmpty)
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
@@ -477,6 +485,7 @@ struct EasyNoteTests {
             systemReminderWriter: FakeSystemReminderWriter(),
             reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
         )
+        await viewModel.waitForPendingReminderOperations()
         let deadline = try #require(calendar.date(byAdding: .hour, value: 1, to: Date()))
         let recurringTodo = makeTodo(
             title: "循环提醒",
@@ -486,9 +495,11 @@ struct EasyNoteTests {
         )
 
         #expect(viewModel.addTodoItem(recurringTodo))
+        await viewModel.waitForPendingReminderOperations()
         scheduler.reset()
 
         #expect(viewModel.toggleTodoCompletion(for: recurringTodo.id))
+        await viewModel.waitForPendingReminderOperations()
 
         let nextTodo = try #require(viewModel.todoItems.first { $0.id != recurringTodo.id })
         #expect(scheduler.canceledTodoIDs.isEmpty)
@@ -507,14 +518,17 @@ struct EasyNoteTests {
             systemReminderWriter: FakeSystemReminderWriter(),
             reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
         )
+        await viewModel.waitForPendingReminderOperations()
         let deletedTodo = makeTodo(title: "删除", deadline: Date().addingTimeInterval(3600))
         let retainedTodo = makeTodo(title: "保留", deadline: Date().addingTimeInterval(7200))
 
         #expect(viewModel.addTodoItem(deletedTodo))
         #expect(viewModel.addTodoItem(retainedTodo))
+        await viewModel.waitForPendingReminderOperations()
         scheduler.reset()
 
         #expect(viewModel.deleteTodoItem(withID: deletedTodo.id))
+        await viewModel.waitForPendingReminderOperations()
         #expect(scheduler.canceledTodoIDs == [deletedTodo.id])
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
@@ -532,6 +546,7 @@ struct EasyNoteTests {
         )
 
         #expect(viewModel.addTodoItem(title: "提交报告", deadline: Date().addingTimeInterval(48 * 60 * 60)))
+        await viewModel.waitForPendingReminderOperations()
         #expect(writer.appliedProposals.count == 1)
         #expect(writer.appliedProposals.first?.title == "提交报告")
         #expect(scheduler.reconciledTodoIDs.isEmpty)
@@ -549,6 +564,7 @@ struct EasyNoteTests {
         )
 
         #expect(localViewModel.addTodoItem(title: "本地通知", deadline: Date().addingTimeInterval(3600)))
+        await localViewModel.waitForPendingReminderOperations()
         #expect(localWriter.appliedProposals.isEmpty)
 
         let offContext = try makeModelContext()
@@ -561,6 +577,7 @@ struct EasyNoteTests {
         )
 
         #expect(offViewModel.addTodoItem(title: "关闭提醒", deadline: Date().addingTimeInterval(3600)))
+        await offViewModel.waitForPendingReminderOperations()
         #expect(offWriter.appliedProposals.isEmpty)
     }
 
@@ -576,6 +593,7 @@ struct EasyNoteTests {
         let todo = makeTodo(title: "原待办", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         writer.reset()
 
         let updatedDeadline = Date().addingTimeInterval(7200)
@@ -586,6 +604,7 @@ struct EasyNoteTests {
             deadline: updatedDeadline,
             notes: "zoom"
         ))
+        await viewModel.waitForPendingReminderOperations()
 
         #expect(writer.appliedProposals.count == 1)
         #expect(writer.appliedProposals.first?.todoID == todo.id)
@@ -604,6 +623,7 @@ struct EasyNoteTests {
         let todo = makeTodo(title: "提交报告", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         writer.reset()
 
         #expect(viewModel.updateTodoItem(
@@ -613,6 +633,7 @@ struct EasyNoteTests {
             deadline: nil,
             notes: nil
         ))
+        await viewModel.waitForPendingReminderOperations()
 
         #expect(writer.appliedProposals.isEmpty)
         #expect(writer.removedTodoIDs == [todo.id])
@@ -630,9 +651,11 @@ struct EasyNoteTests {
         let todo = makeTodo(title: "完成提醒", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         writer.reset()
 
         #expect(viewModel.toggleTodoCompletion(for: todo.id))
+        await viewModel.waitForPendingReminderOperations()
         #expect(writer.completedTodoIDs == [todo.id])
         #expect(writer.appliedProposals.isEmpty)
     }
@@ -655,9 +678,11 @@ struct EasyNoteTests {
         )
 
         #expect(viewModel.addTodoItem(recurringTodo))
+        await viewModel.waitForPendingReminderOperations()
         writer.reset()
 
         #expect(viewModel.toggleTodoCompletion(for: recurringTodo.id))
+        await viewModel.waitForPendingReminderOperations()
         let nextTodo = try #require(viewModel.todoItems.first { $0.id != recurringTodo.id })
         #expect(writer.completedTodoIDs == [recurringTodo.id])
         #expect(writer.appliedProposals.map(\.todoID) == [nextTodo.id])
@@ -675,9 +700,11 @@ struct EasyNoteTests {
         let todo = makeTodo(title: "删除提醒", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         writer.reset()
 
         #expect(viewModel.deleteTodoItem(withID: todo.id))
+        await viewModel.waitForPendingReminderOperations()
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
@@ -691,13 +718,16 @@ struct EasyNoteTests {
             systemReminderWriter: writer,
             reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
         )
+        await viewModel.waitForPendingReminderOperations()
         let todo = makeTodo(title: "曾经写入系统提醒", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         scheduler.reset()
         writer.reset()
 
         #expect(viewModel.deleteTodoItem(withID: todo.id))
+        await viewModel.waitForPendingReminderOperations()
         #expect(scheduler.canceledTodoIDs == [todo.id])
         #expect(writer.removedTodoIDs == [todo.id])
     }
@@ -714,11 +744,13 @@ struct EasyNoteTests {
         let todo = makeTodo(title: "导入前待办", deadline: Date().addingTimeInterval(3600))
 
         #expect(viewModel.addTodoItem(todo))
+        await viewModel.waitForPendingReminderOperations()
         writer.reset()
 
         todo.deadline = nil
         try context.save()
         viewModel.reloadTodoItemsAfterExternalImport()
+        await viewModel.waitForPendingReminderOperations()
 
         #expect(writer.removedTodoIDs == [todo.id])
     }
@@ -735,6 +767,7 @@ struct EasyNoteTests {
         )
 
         #expect(!viewModel.addTodoItem(title: "不会写入", deadline: Date().addingTimeInterval(3600)))
+        await viewModel.waitForPendingReminderOperations()
         #expect(writer.appliedProposals.isEmpty)
         #expect(writer.completedTodoIDs.isEmpty)
         #expect(writer.removedTodoIDs.isEmpty)
@@ -753,10 +786,33 @@ struct EasyNoteTests {
         )
 
         #expect(viewModel.addTodoItem(title: "保存成功提醒失败", deadline: Date().addingTimeInterval(3600)))
+        await viewModel.waitForPendingReminderOperations()
         #expect(viewModel.todoItems.count == 1)
         #expect(writer.appliedProposals.count == 1)
         #expect(viewModel.systemReminderErrorMessage == "未授予提醒事项权限")
         #expect(!reminderModeStore.systemRemindersMayExist)
+    }
+
+    @Test func todoViewModelKeepsSavedTodoWhenLocalNotificationSchedulingFails() async throws {
+        let context = try makeModelContext()
+        let scheduler = FakeTodoNotificationScheduler()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: scheduler,
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .localNotification)
+        )
+        await viewModel.waitForPendingReminderOperations()
+        scheduler.reset()
+        scheduler.reconcileError = TodoNotificationError.schedulingFailed("测试失败")
+
+        #expect(viewModel.addTodoItem(title: "本地保存成功", deadline: Date().addingTimeInterval(3600)))
+        await viewModel.waitForPendingReminderOperations()
+
+        let storedTodos = try context.fetch(FetchDescriptor<TodoItem>())
+        #expect(storedTodos.count == 1)
+        #expect(storedTodos.first?.title == "本地保存成功")
+        #expect(viewModel.systemReminderErrorMessage == "写入 EasyNote 通知失败: 测试失败")
     }
 
     @Test func todoReminderModeStoreMigratesLegacyNotificationSetting() async throws {
@@ -2312,37 +2368,45 @@ struct EasyNoteTests {
         var cancellable: AnyCancellable?
     }
 
-    private final class FakeTodoNotificationScheduler: TodoNotificationSchedulingProviding {
+    private final class FakeTodoNotificationScheduler: TodoNotificationSchedulingProviding, @unchecked Sendable {
         private let authorizationStatusSubject = CurrentValueSubject<TodoNotificationAuthorizationStatus, Never>(.authorized)
         private(set) var synchronizedTodos: [TodoItem] = []
         private(set) var reconciledTodoIDs: [[UUID]] = []
         private(set) var canceledTodoIDs: [UUID] = []
         private(set) var didCancelAll = false
         var requestAuthorizationResult = true
+        var reconcileError: Error?
 
         var authorizationStatusPublisher: AnyPublisher<TodoNotificationAuthorizationStatus, Never> {
             authorizationStatusSubject.eraseToAnyPublisher()
         }
 
-        func refreshAuthorizationStatus() {}
-
-        func requestAuthorization(completion: @escaping (Bool) -> Void) {
-            completion(requestAuthorizationResult)
+        func refreshAuthorizationStatus() async -> TodoNotificationAuthorizationStatus {
+            .authorized
         }
 
-        func synchronizeNotification(for todo: TodoItem) {
+        func requestAuthorization() async throws {
+            if !requestAuthorizationResult {
+                throw TodoNotificationError.authorizationDenied
+            }
+        }
+
+        func synchronizeNotification(for todo: TodoItem) async throws {
             synchronizedTodos.append(todo)
         }
 
-        func reconcileNotifications(for todos: [TodoItem]) {
+        func reconcileNotifications(for todos: [TodoItem]) async throws {
             reconciledTodoIDs.append(todos.map(\.id))
+            if let reconcileError {
+                throw reconcileError
+            }
         }
 
-        func cancelNotification(forTodoID id: UUID) {
+        func cancelNotification(forTodoID id: UUID) async {
             canceledTodoIDs.append(id)
         }
 
-        func cancelAllTodoNotifications() {
+        func cancelAllTodoNotifications() async {
             didCancelAll = true
         }
 
@@ -2351,10 +2415,11 @@ struct EasyNoteTests {
             reconciledTodoIDs = []
             canceledTodoIDs = []
             didCancelAll = false
+            reconcileError = nil
         }
     }
 
-    private final class FakeSystemReminderWriter: SystemReminderWritingProviding {
+    private final class FakeSystemReminderWriter: SystemReminderWritingProviding, @unchecked Sendable {
         private let authorizationStatusSubject = CurrentValueSubject<SystemReminderAuthorizationStatus, Never>(.fullAccess)
         private(set) var appliedProposals: [SystemReminderProposal] = []
         private(set) var completedTodoIDs: [UUID] = []
@@ -2367,34 +2432,25 @@ struct EasyNoteTests {
             authorizationStatusSubject.eraseToAnyPublisher()
         }
 
-        func refreshAuthorizationStatus() {}
-
-        func requestAuthorization(completion: @escaping (Bool) -> Void) {
-            completion(true)
+        func refreshAuthorizationStatus() async -> SystemReminderAuthorizationStatus {
+            .fullAccess
         }
 
-        func applyProposal(
-            _ proposal: SystemReminderProposal,
-            completion: @escaping (Result<SystemReminderWriteResult, SystemReminderError>) -> Void
-        ) {
+        func requestAuthorization() async throws {}
+
+        func applyProposal(_ proposal: SystemReminderProposal) async throws -> SystemReminderWriteResult {
             appliedProposals.append(proposal)
-            completion(applyResult)
+            return try applyResult.get()
         }
 
-        func completeReminder(
-            forTodoID id: UUID,
-            completion: ((Result<Void, SystemReminderError>) -> Void)?
-        ) {
+        func completeReminder(forTodoID id: UUID) async throws {
             completedTodoIDs.append(id)
-            completion?(completeResult)
+            try completeResult.get()
         }
 
-        func removeReminder(
-            forTodoID id: UUID,
-            completion: ((Result<Void, SystemReminderError>) -> Void)?
-        ) {
+        func removeReminder(forTodoID id: UUID) async throws {
             removedTodoIDs.append(id)
-            completion?(removeResult)
+            try removeResult.get()
         }
 
         func reset() {

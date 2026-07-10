@@ -18,6 +18,8 @@ class TodoViewModel: ObservableObject {
     private let reminderModeStore: any TodoReminderModeProviding
     private let saveModelContext: (ModelContext) throws -> Void
     private var cancellables = Set<AnyCancellable>()
+    private let reminderOperationLock = NSLock()
+    private var reminderOperationTask: Task<Void, Never>?
     
     // 初始化方法
     init(
@@ -48,6 +50,14 @@ class TodoViewModel: ObservableObject {
                 self?.reloadTodoItemsAfterExternalImport()
             }
             .store(in: &cancellables)
+    }
+
+    deinit {
+        currentReminderOperationTask()?.cancel()
+    }
+
+    func waitForPendingReminderOperations() async {
+        await currentReminderOperationTask()?.value
     }
     
     // MARK: - 数据管理方法
@@ -263,7 +273,17 @@ class TodoViewModel: ObservableObject {
         case .off:
             return
         case .localNotification:
-            notificationScheduler.reconcileNotifications(for: todoItems)
+            let todos = todoItems
+            enqueueReminderOperation { viewModel in
+                do {
+                    try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                    viewModel.systemReminderErrorMessage = nil
+                } catch is CancellationError {
+                    return
+                } catch {
+                    viewModel.systemReminderErrorMessage = error.localizedDescription
+                }
+            }
         case .systemReminderAgent:
             completedTodoIDs.forEach { completeSystemReminderIfNeeded(for: $0) }
             changedTodos
@@ -277,8 +297,18 @@ class TodoViewModel: ObservableObject {
         case .off:
             break
         case .localNotification:
-            notificationScheduler.cancelNotification(forTodoID: todoID)
-            notificationScheduler.reconcileNotifications(for: todoItems)
+            let todos = todoItems
+            enqueueReminderOperation { viewModel in
+                await viewModel.notificationScheduler.cancelNotification(forTodoID: todoID)
+                do {
+                    try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                    viewModel.systemReminderErrorMessage = nil
+                } catch is CancellationError {
+                    return
+                } catch {
+                    viewModel.systemReminderErrorMessage = error.localizedDescription
+                }
+            }
         case .systemReminderAgent:
             break
         }
@@ -291,7 +321,17 @@ class TodoViewModel: ObservableObject {
             return
         }
 
-        notificationScheduler.reconcileNotifications(for: todoItems)
+        let todos = todoItems
+        enqueueReminderOperation { viewModel in
+            do {
+                try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                viewModel.systemReminderErrorMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                viewModel.systemReminderErrorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func applySystemReminderIfNeeded(for todo: TodoItem) {
@@ -313,15 +353,12 @@ class TodoViewModel: ObservableObject {
             return
         }
 
-        systemReminderWriter.completeReminder(forTodoID: id) { [weak self] result in
-            switch result {
-            case .success:
-                self?.reminderModeStore.systemRemindersMayExist = true
-                self?.systemReminderMessage = "系统提醒事项已标记完成"
-                self?.systemReminderErrorMessage = nil
-            case .failure(let error):
-                self?.systemReminderErrorMessage = error.localizedDescription
-            }
+        enqueueReminderOperation { viewModel in
+            await viewModel.performSystemReminderOperation(
+                .complete(id),
+                reportSuccess: true,
+                reportFailure: true
+            )
         }
     }
 
@@ -350,18 +387,12 @@ class TodoViewModel: ObservableObject {
         reportSuccess: Bool,
         reportFailure: Bool
     ) {
-        systemReminderWriter.removeReminder(forTodoID: id) { [weak self] result in
-            switch result {
-            case .success:
-                if reportSuccess {
-                    self?.systemReminderMessage = "系统提醒事项已移除"
-                    self?.systemReminderErrorMessage = nil
-                }
-            case .failure(let error):
-                if reportFailure {
-                    self?.systemReminderErrorMessage = error.localizedDescription
-                }
-            }
+        enqueueReminderOperation { viewModel in
+            await viewModel.performSystemReminderOperation(
+                .remove(id),
+                reportSuccess: reportSuccess,
+                reportFailure: reportFailure
+            )
         }
     }
 
@@ -381,53 +412,81 @@ class TodoViewModel: ObservableObject {
         reportSuccess: Bool,
         reportFailure: Bool
     ) {
-        switch SystemReminderProposalReconciler.operation(for: proposal) {
-        case .apply:
-            systemReminderWriter.applyProposal(proposal) { [weak self] result in
-                switch result {
-                case .success(let writeResult):
-                    self?.reminderModeStore.systemRemindersMayExist = true
-                    if reportSuccess {
-                        self?.systemReminderMessage = Self.systemReminderMessage(for: writeResult, proposal: proposal)
-                        self?.systemReminderErrorMessage = nil
-                    }
-                case .failure(let error):
-                    if reportFailure {
-                        self?.systemReminderErrorMessage = error.localizedDescription
-                    }
-                }
-            }
-        case .complete(let id):
-            systemReminderWriter.completeReminder(forTodoID: id) { [weak self] result in
-                switch result {
-                case .success:
-                    self?.reminderModeStore.systemRemindersMayExist = true
-                    if reportSuccess {
-                        self?.systemReminderMessage = "系统提醒事项已标记完成"
-                        self?.systemReminderErrorMessage = nil
-                    }
-                case .failure(let error):
-                    if reportFailure {
-                        self?.systemReminderErrorMessage = error.localizedDescription
-                    }
-                }
-            }
-        case .remove(let id):
-            if reportSuccess {
-                systemReminderMessage = proposal.reason
-                systemReminderErrorMessage = nil
-            }
-            removeSystemReminder(
-                for: id,
-                reportSuccess: false,
+        let operation = SystemReminderProposalReconciler.operation(for: proposal)
+        enqueueReminderOperation { viewModel in
+            await viewModel.performSystemReminderOperation(
+                operation,
+                proposal: proposal,
+                reportSuccess: reportSuccess,
                 reportFailure: reportFailure
             )
-        case .ignore:
-            if reportSuccess {
-                systemReminderMessage = proposal.reason
-                systemReminderErrorMessage = nil
+        }
+    }
+
+    @MainActor
+    private func performSystemReminderOperation(
+        _ operation: SystemReminderProposalOperation,
+        proposal: SystemReminderProposal? = nil,
+        reportSuccess: Bool,
+        reportFailure: Bool
+    ) async {
+        do {
+            switch operation {
+            case .apply(let proposal):
+                let writeResult = try await systemReminderWriter.applyProposal(proposal)
+                reminderModeStore.systemRemindersMayExist = true
+                if reportSuccess {
+                    systemReminderMessage = Self.systemReminderMessage(for: writeResult, proposal: proposal)
+                    systemReminderErrorMessage = nil
+                }
+            case .complete(let id):
+                try await systemReminderWriter.completeReminder(forTodoID: id)
+                reminderModeStore.systemRemindersMayExist = true
+                if reportSuccess {
+                    systemReminderMessage = "系统提醒事项已标记完成"
+                    systemReminderErrorMessage = nil
+                }
+            case .remove(let id):
+                try await systemReminderWriter.removeReminder(forTodoID: id)
+                if reportSuccess {
+                    systemReminderMessage = proposal?.reason ?? "系统提醒事项已移除"
+                    systemReminderErrorMessage = nil
+                }
+            case .ignore:
+                if reportSuccess {
+                    systemReminderMessage = proposal?.reason
+                    systemReminderErrorMessage = nil
+                }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            if reportFailure {
+                systemReminderErrorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func enqueueReminderOperation(
+        _ operation: @escaping @MainActor (TodoViewModel) async -> Void
+    ) {
+        reminderOperationLock.lock()
+        let previousTask = reminderOperationTask
+        let task = Task { @MainActor [weak self] in
+            await previousTask?.value
+            guard let self, !Task.isCancelled else {
+                return
+            }
+            await operation(self)
+        }
+        reminderOperationTask = task
+        reminderOperationLock.unlock()
+    }
+
+    private func currentReminderOperationTask() -> Task<Void, Never>? {
+        reminderOperationLock.lock()
+        defer { reminderOperationLock.unlock() }
+        return reminderOperationTask
     }
 
     private static func systemReminderMessage(

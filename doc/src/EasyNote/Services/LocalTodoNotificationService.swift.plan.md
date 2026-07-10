@@ -15,9 +15,9 @@
 ## Behavior Notes
 
 - Global enablement is read from `todo_notifications_enabled`.
-- Scheduling first checks current system notification settings, then writes a one-shot calendar notification for eligible todos.
-- Scheduling uses per-todo versions and a serial notification queue so async authorization callbacks and add completions cannot re-add reminders after a later cancel, completion, deletion, or global disable.
-- The serial notification queue waits for each `UNUserNotificationCenter.add` completion before processing later work, then re-checks the schedule version so stale adds are removed before newer same-identifier schedules run.
+- Scheduling first checks current system notification settings, then writes a one-shot calendar notification for eligible todos through native async UserNotifications APIs.
+- Scheduling uses per-todo versions so async writes cannot re-add reminders after a later cancel, completion, deletion, or global disable.
+- `UNUserNotificationCenter.add` errors are surfaced as `TodoNotificationError.schedulingFailed`; after a successful add the service re-checks the schedule version and removes stale requests.
 - Replacing a scheduled reminder removes both pending and delivered notifications for the stable todo identifier before adding the new request.
 - When authorization is unavailable, the service removes the stable identifier instead of leaving stale pending requests behind.
 - The service installs itself as `UNUserNotificationCenterDelegate` and opts EasyNote todo reminders into foreground banner/sound presentation.
@@ -27,5 +27,5 @@
 
 ## Tests
 
-- Service-level behavior is covered indirectly by project compilation.
+- An injectable `UserNotificationCenterProviding` adapter covers add failures without live permission prompts.
 - ViewModel unit tests use `TodoNotificationSchedulingProviding` fakes so CI does not require live notification permission prompts.
