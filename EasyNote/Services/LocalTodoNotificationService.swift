@@ -20,14 +20,31 @@ enum TodoNotificationAuthorizationStatus: String, Equatable {
     }
 }
 
-final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingProviding, UNUserNotificationCenterDelegate {
+enum TodoNotificationError: Error, Equatable, LocalizedError {
+    case authorizationDenied
+    case authorizationRequestFailed(String)
+    case schedulingFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .authorizationDenied:
+            return "未授予通知权限"
+        case .authorizationRequestFailed(let message):
+            return "请求通知权限失败: \(message)"
+        case .schedulingFailed(let message):
+            return "写入 EasyNote 通知失败: \(message)"
+        }
+    }
+}
+
+final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingProviding, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = LocalTodoNotificationService()
     static let enabledDefaultsKey = "todo_notifications_enabled"
 
-    private let notificationCenter: UNUserNotificationCenter
+    private let notificationCenter: any UserNotificationCenterProviding
     private let defaults: UserDefaults
     private let authorizationStatusSubject = CurrentValueSubject<TodoNotificationAuthorizationStatus, Never>(.notDetermined)
-    private let notificationQueue = DispatchQueue(label: "EasyNote.TodoNotifications")
+    private let mutationGate = TodoNotificationMutationGate()
     private let scheduleVersionLock = NSLock()
     private var scheduleVersions: [UUID: Int] = [:]
     private var bulkCancellationVersion = 0
@@ -36,40 +53,53 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         authorizationStatusSubject.eraseToAnyPublisher()
     }
 
-    init(
+    convenience init(
         notificationCenter: UNUserNotificationCenter = .current(),
         defaults: UserDefaults = .standard
     ) {
-        self.notificationCenter = notificationCenter
+        self.init(
+            notificationCenterAdapter: UserNotificationCenterAdapter(notificationCenter: notificationCenter),
+            defaults: defaults
+        )
+    }
+
+    init(
+        notificationCenterAdapter: any UserNotificationCenterProviding,
+        defaults: UserDefaults = .standard
+    ) {
+        self.notificationCenter = notificationCenterAdapter
         self.defaults = defaults
         super.init()
-        self.notificationCenter.delegate = self
-        refreshAuthorizationStatus()
+        self.notificationCenter.setDelegate(self)
     }
 
-    func refreshAuthorizationStatus() {
-        notificationCenter.getNotificationSettings { [weak self] settings in
-            let status = Self.mapAuthorizationStatus(settings.authorizationStatus)
-            DispatchQueue.main.async {
-                self?.authorizationStatusSubject.send(status)
-            }
+    func refreshAuthorizationStatus() async -> TodoNotificationAuthorizationStatus {
+        let status = await notificationCenter.authorizationStatus()
+        await publishAuthorizationStatus(status)
+        return status
+    }
+
+    func requestAuthorization() async throws {
+        let granted: Bool
+        do {
+            granted = try await notificationCenter.requestAuthorization(options: [.alert, .sound, .badge])
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw TodoNotificationError.authorizationRequestFailed(error.localizedDescription)
+        }
+
+        _ = await refreshAuthorizationStatus()
+        guard granted else {
+            throw TodoNotificationError.authorizationDenied
         }
     }
 
-    func requestAuthorization(completion: @escaping (Bool) -> Void) {
-        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, _ in
-            self?.refreshAuthorizationStatus()
-            DispatchQueue.main.async {
-                completion(granted)
-            }
-        }
-    }
-
-    func synchronizeNotification(for todo: TodoItem) {
+    func synchronizeNotification(for todo: TodoItem) async throws {
         guard defaults.bool(forKey: Self.enabledDefaultsKey),
               TodoNotificationPlanner.shouldScheduleNotification(for: todo),
               let deadline = todo.deadline else {
-            cancelNotification(forTodoID: todo.id)
+            await cancelNotification(forTodoID: todo.id)
             return
         }
 
@@ -78,88 +108,128 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         let notes = todo.notes
         invalidateBulkCancellation()
         let scheduleVersion = nextScheduleVersion(for: todoID)
+        let status = await notificationCenter.authorizationStatus()
+        await publishAuthorizationStatus(status)
 
-        notificationCenter.getNotificationSettings { [weak self] settings in
-            guard let self else { return }
-
-            let status = Self.mapAuthorizationStatus(settings.authorizationStatus)
-            DispatchQueue.main.async {
-                self.authorizationStatusSubject.send(status)
-            }
-
-            self.notificationQueue.async {
-                guard self.isCurrentScheduleVersion(scheduleVersion, for: todoID) else {
-                    return
-                }
-
-                let identifier = TodoNotificationPlanner.notificationIdentifier(for: todoID)
-
-                guard self.defaults.bool(forKey: Self.enabledDefaultsKey), deadline > Date() else {
-                    self.removeNotificationRequests(forTodoID: todoID)
-                    return
-                }
-
-                guard status.allowsScheduling else {
-                    self.removeNotificationRequests(forTodoID: todoID)
-                    return
-                }
-
-                self.removeNotificationRequests(forTodoID: todoID)
-
-                let content = UNMutableNotificationContent()
-                content.title = title.isEmpty ? "待办提醒" : title
-                content.body = notes.flatMap { $0.isEmpty ? nil : $0 } ?? "待办事项已到截止时间"
-                content.sound = .default
-                content.userInfo = ["todoID": todoID.uuidString]
-
-                var dateComponents = Calendar.current.dateComponents(
-                    [.year, .month, .day, .hour, .minute, .second],
-                    from: deadline
-                )
-                dateComponents.timeZone = Calendar.current.timeZone
-
-                let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-                let addCompletion = DispatchSemaphore(value: 0)
-                self.notificationCenter.add(request) { _ in
-                    addCompletion.signal()
-                }
-                addCompletion.wait()
-
-                guard self.isCurrentScheduleVersion(scheduleVersion, for: todoID),
-                      self.defaults.bool(forKey: Self.enabledDefaultsKey),
-                      deadline > Date() else {
-                    self.removeNotificationRequests(forTodoID: todoID)
-                    return
-                }
-            }
+        await mutationGate.acquire(for: todoID)
+        do {
+            try await writeNotification(
+                todoID: todoID,
+                title: title,
+                notes: notes,
+                deadline: deadline,
+                scheduleVersion: scheduleVersion,
+                status: status
+            )
+            await mutationGate.release(for: todoID)
+        } catch {
+            await mutationGate.release(for: todoID)
+            throw error
         }
     }
 
-    func reconcileNotifications(for todos: [TodoItem]) {
+    private func writeNotification(
+        todoID: UUID,
+        title: String,
+        notes: String?,
+        deadline: Date,
+        scheduleVersion: Int,
+        status: TodoNotificationAuthorizationStatus
+    ) async throws {
+        try Task.checkCancellation()
+
+        guard isCurrentScheduleVersion(scheduleVersion, for: todoID) else {
+            return
+        }
+
+        guard defaults.bool(forKey: Self.enabledDefaultsKey), deadline > Date() else {
+            removeNotificationRequests(forTodoID: todoID)
+            return
+        }
+
+        guard status.allowsScheduling else {
+            removeNotificationRequests(forTodoID: todoID)
+            throw TodoNotificationError.authorizationDenied
+        }
+
+        removeNotificationRequests(forTodoID: todoID)
+        let request = Self.makeNotificationRequest(
+            todoID: todoID,
+            title: title,
+            notes: notes,
+            deadline: deadline
+        )
+
+        do {
+            try await notificationCenter.add(request)
+        } catch is CancellationError {
+            removeNotificationRequests(forTodoID: todoID)
+            throw CancellationError()
+        } catch {
+            throw TodoNotificationError.schedulingFailed(error.localizedDescription)
+        }
+
+        guard !Task.isCancelled,
+              isCurrentScheduleVersion(scheduleVersion, for: todoID),
+              defaults.bool(forKey: Self.enabledDefaultsKey),
+              deadline > Date() else {
+            removeNotificationRequests(forTodoID: todoID)
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+            return
+        }
+    }
+
+    func reconcileNotifications(for todos: [TodoItem]) async throws {
         let retainedTodos = TodoNotificationPlanner.retainedNotificationTodos(from: todos)
         let retainedIDs = Set(retainedTodos.map(\.id))
 
-        todos
-            .filter { !retainedIDs.contains($0.id) }
-            .forEach { cancelNotification(forTodoID: $0.id) }
+        for todo in todos where !retainedIDs.contains(todo.id) {
+            await cancelNotification(forTodoID: todo.id)
+        }
 
-        retainedTodos.forEach { synchronizeNotification(for: $0) }
-    }
+        var firstError: Error?
+        for todo in retainedTodos {
+            do {
+                try Task.checkCancellation()
+                try await synchronizeNotification(for: todo)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if firstError == nil {
+                    firstError = error
+                }
+            }
+        }
 
-    func cancelNotification(forTodoID id: UUID) {
-        invalidateSchedule(for: id)
-        notificationQueue.async { [weak self] in
-            self?.removeNotificationRequests(forTodoID: id)
+        if let firstError {
+            throw firstError
         }
     }
 
-    func cancelAllTodoNotifications() {
+    func cancelNotification(forTodoID id: UUID) async {
+        invalidateSchedule(for: id)
+        removeNotificationRequests(forTodoID: id)
+    }
+
+    func cancelAllTodoNotifications() async {
         invalidateAllSchedules()
         let cancellationVersion = nextBulkCancellationVersion()
-        notificationQueue.async { [weak self] in
-            self?.removeAllTodoNotificationRequests(cancellationVersion: cancellationVersion)
+
+        let pendingIdentifiers = await notificationCenter.pendingNotificationRequests()
+            .map(\.identifier)
+            .filter { $0.hasPrefix(TodoNotificationPlanner.notificationIdentifierPrefix) }
+        let deliveredIdentifiers = await notificationCenter.deliveredNotifications()
+            .map(\.request.identifier)
+            .filter { $0.hasPrefix(TodoNotificationPlanner.notificationIdentifierPrefix) }
+
+        guard isCurrentBulkCancellationVersion(cancellationVersion) else {
+            return
         }
+
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: pendingIdentifiers)
+        notificationCenter.removeDeliveredNotifications(withIdentifiers: deliveredIdentifiers)
     }
 
     func userNotificationCenter(
@@ -172,6 +242,11 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         } else {
             completionHandler([])
         }
+    }
+
+    @MainActor
+    private func publishAuthorizationStatus(_ status: TodoNotificationAuthorizationStatus) {
+        authorizationStatusSubject.send(status)
     }
 
     private func nextScheduleVersion(for id: UUID) -> Int {
@@ -231,52 +306,57 @@ final class LocalTodoNotificationService: NSObject, TodoNotificationSchedulingPr
         notificationCenter.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
-    private func removeAllTodoNotificationRequests(cancellationVersion: Int) {
-        notificationCenter.getPendingNotificationRequests { [weak self] requests in
-            let identifiers = requests
-                .map(\.identifier)
-                .filter { $0.hasPrefix(TodoNotificationPlanner.notificationIdentifierPrefix) }
+    private static func makeNotificationRequest(
+        todoID: UUID,
+        title: String,
+        notes: String?,
+        deadline: Date
+    ) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = title.isEmpty ? "待办提醒" : title
+        content.body = notes.flatMap { $0.isEmpty ? nil : $0 } ?? "待办事项已到截止时间"
+        content.sound = .default
+        content.userInfo = ["todoID": todoID.uuidString]
 
-            self?.notificationQueue.async {
-                guard let self,
-                      self.isCurrentBulkCancellationVersion(cancellationVersion) else {
-                    return
-                }
+        var dateComponents = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: deadline
+        )
+        dateComponents.timeZone = Calendar.current.timeZone
 
-                self.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
-            }
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+        return UNNotificationRequest(
+            identifier: TodoNotificationPlanner.notificationIdentifier(for: todoID),
+            content: content,
+            trigger: trigger
+        )
+    }
+}
+
+private actor TodoNotificationMutationGate {
+    private var activeTodoIDs: Set<UUID> = []
+    private var waiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+
+    func acquire(for todoID: UUID) async {
+        guard activeTodoIDs.contains(todoID) else {
+            activeTodoIDs.insert(todoID)
+            return
         }
 
-        notificationCenter.getDeliveredNotifications { [weak self] notifications in
-            let identifiers = notifications
-                .map(\.request.identifier)
-                .filter { $0.hasPrefix(TodoNotificationPlanner.notificationIdentifierPrefix) }
-
-            self?.notificationQueue.async {
-                guard let self,
-                      self.isCurrentBulkCancellationVersion(cancellationVersion) else {
-                    return
-                }
-
-                self.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
-            }
+        await withCheckedContinuation { continuation in
+            waiters[todoID, default: []].append(continuation)
         }
     }
 
-    private static func mapAuthorizationStatus(_ status: UNAuthorizationStatus) -> TodoNotificationAuthorizationStatus {
-        switch status {
-        case .notDetermined:
-            return .notDetermined
-        case .denied:
-            return .denied
-        case .authorized:
-            return .authorized
-        case .provisional:
-            return .provisional
-        case .ephemeral:
-            return .ephemeral
-        @unknown default:
-            return .unknown
+    func release(for todoID: UUID) {
+        guard var todoWaiters = waiters[todoID], !todoWaiters.isEmpty else {
+            activeTodoIDs.remove(todoID)
+            waiters[todoID] = nil
+            return
         }
+
+        let next = todoWaiters.removeFirst()
+        waiters[todoID] = todoWaiters.isEmpty ? nil : todoWaiters
+        next.resume()
     }
 }

@@ -20,10 +20,12 @@
 - The v1 idempotency marker is `EasyNoteTodoID:<uuid>` appended to reminder notes.
 - Applying a proposal updates the first matching marked reminder, creates one when none exists, and removes extra EasyNote-marked duplicates for the same todo.
 - Completion and removal are no-op successes when the matching marked reminder is not found.
-- EventKit work is serialized on a dedicated queue and completion/status updates return to the main thread.
+- EventKit callbacks use a single-resume checked continuation. Fetch operations use a 10-second timeout; the user-controlled authorization prompt uses a separate five-minute timeout. Cancellation, timeout, and late callbacks cannot resume the continuation twice.
+- Complete EventKit read-modify-write operations are serialized by the executor so actor reentrancy cannot create duplicate marker writes.
+- Authorization status updates are published on the main actor; denied, restricted, timeout, missing-list, and EventKit system errors remain distinct.
 - EventKit failures must remain separate from SwiftData save failures; a system reminder write error should not roll back a saved todo.
 
 ## Tests
 
-- Unit tests should exercise EventKit-adjacent ViewModel behavior through `SystemReminderWritingProviding` fakes.
+- Unit tests exercise EventKit-adjacent behavior through `SystemReminderWritingProviding` and `SystemReminderEventStoreProviding` fakes, including timeout, late callback, cancellation, duplicate cleanup, and system errors.
 - Manual smoke should verify real Reminders permission, create/update idempotency, complete, delete, and marker notes on a simulator or device with Reminders available.

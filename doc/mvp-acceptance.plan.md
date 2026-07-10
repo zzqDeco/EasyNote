@@ -37,6 +37,8 @@ Current focused tests cover:
 - diary AI result application helpers that only mutate summary or transcription text after explicit confirmation
 - `SystemReminderAgent` lead-time and skip decisions for Apple Reminders proposals
 - `TodoViewModel` routing to fake local notification schedulers or fake system reminder writers based on the active reminder mode
+- reminder-service timeout, cancellation, late EventKit callback, duplicate marker, missing-list, system-error, and local notification add-error behavior through injected adapters
+- successful Todo SwiftData persistence when a local notification or system Reminders side effect fails
 
 When diary, todo, chat, or AI parsing behavior changes, add focused tests before relying on manual verification.
 

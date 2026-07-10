@@ -26,6 +26,7 @@ enum SystemReminderWriteResult: Equatable {
 enum SystemReminderError: Error, Equatable, LocalizedError {
     case notAuthorized
     case restricted
+    case timeout
     case missingDefaultReminderList
     case eventStore(String)
 
@@ -35,177 +36,225 @@ enum SystemReminderError: Error, Equatable, LocalizedError {
             return "未授予提醒事项权限"
         case .restricted:
             return "系统限制了提醒事项访问"
+        case .timeout:
+            return "提醒事项操作超时，请稍后重试"
         case .missingDefaultReminderList:
             return "没有可用的默认提醒事项列表"
         case .eventStore(let message):
-            return message
+            return "提醒事项系统错误: \(message)"
         }
     }
 }
 
-final class SystemReminderService: SystemReminderWritingProviding {
+final class SystemReminderService: SystemReminderWritingProviding, @unchecked Sendable {
     static let shared = SystemReminderService()
+    static let defaultAuthorizationTimeoutNanoseconds: UInt64 = 300_000_000_000
 
-    private let eventStore: EKEventStore
-    private let reminderQueue = DispatchQueue(label: "EasyNote.SystemReminders")
-    private let authorizationStatusSubject = CurrentValueSubject<SystemReminderAuthorizationStatus, Never>(.notDetermined)
+    private let eventStoreAdapter: any SystemReminderEventStoreProviding
+    private let executor: SystemReminderOperationExecutor
+    private let authorizationStatusSubject: CurrentValueSubject<SystemReminderAuthorizationStatus, Never>
 
     var authorizationStatusPublisher: AnyPublisher<SystemReminderAuthorizationStatus, Never> {
         authorizationStatusSubject.eraseToAnyPublisher()
     }
 
-    init(eventStore: EKEventStore = EKEventStore()) {
-        self.eventStore = eventStore
-        refreshAuthorizationStatus()
+    convenience init(eventStore: EKEventStore = EKEventStore()) {
+        self.init(eventStoreAdapter: EventKitReminderStoreAdapter(eventStore: eventStore))
     }
 
-    func refreshAuthorizationStatus() {
-        let status = Self.mapAuthorizationStatus(EKEventStore.authorizationStatus(for: .reminder))
-        DispatchQueue.main.async { [authorizationStatusSubject] in
-            authorizationStatusSubject.send(status)
-        }
-    }
-
-    func requestAuthorization(completion: @escaping (Bool) -> Void) {
-        eventStore.requestFullAccessToReminders { [weak self] granted, _ in
-            self?.refreshAuthorizationStatus()
-            DispatchQueue.main.async {
-                completion(granted)
-            }
-        }
-    }
-
-    func applyProposal(
-        _ proposal: SystemReminderProposal,
-        completion: @escaping (Result<SystemReminderWriteResult, SystemReminderError>) -> Void
+    init(
+        eventStoreAdapter: any SystemReminderEventStoreProviding,
+        callbackTimeoutNanoseconds: UInt64 = ReminderCallbackBridge.defaultTimeoutNanoseconds,
+        authorizationTimeoutNanoseconds: UInt64 = SystemReminderService.defaultAuthorizationTimeoutNanoseconds
     ) {
-        guard proposal.action == .createOrUpdate else {
-            DispatchQueue.main.async {
-                completion(.success(.skipped))
-            }
-            return
-        }
-
-        reminderQueue.async { [weak self] in
-            guard let self else { return }
-            let result = self.applyCreateOrUpdateProposal(proposal)
-            DispatchQueue.main.async {
-                completion(result)
-            }
-        }
+        self.eventStoreAdapter = eventStoreAdapter
+        self.executor = SystemReminderOperationExecutor(
+            eventStoreAdapter: eventStoreAdapter,
+            callbackTimeoutNanoseconds: callbackTimeoutNanoseconds,
+            authorizationTimeoutNanoseconds: authorizationTimeoutNanoseconds
+        )
+        self.authorizationStatusSubject = CurrentValueSubject(eventStoreAdapter.authorizationStatus)
     }
 
-    func completeReminder(
-        forTodoID id: UUID,
-        completion: ((Result<Void, SystemReminderError>) -> Void)? = nil
-    ) {
-        reminderQueue.async { [weak self] in
-            guard let self else { return }
-            let result: Result<Void, SystemReminderError>
-
-            do {
-                let reminders = try self.fetchEasyNoteReminders(forTodoID: id)
-                guard !reminders.isEmpty else {
-                    result = .success(())
-                    DispatchQueue.main.async { completion?(result) }
-                    return
-                }
-
-                for reminder in reminders {
-                    reminder.isCompleted = true
-                    try self.eventStore.save(reminder, commit: true)
-                }
-                result = .success(())
-            } catch let error as SystemReminderError {
-                result = .failure(error)
-            } catch {
-                result = .failure(.eventStore(error.localizedDescription))
-            }
-
-            DispatchQueue.main.async {
-                completion?(result)
-            }
-        }
+    func refreshAuthorizationStatus() async -> SystemReminderAuthorizationStatus {
+        let status = eventStoreAdapter.authorizationStatus
+        await publishAuthorizationStatus(status)
+        return status
     }
 
-    func removeReminder(
-        forTodoID id: UUID,
-        completion: ((Result<Void, SystemReminderError>) -> Void)? = nil
-    ) {
-        reminderQueue.async { [weak self] in
-            guard let self else { return }
-            let result: Result<Void, SystemReminderError>
-
-            do {
-                let reminders = try self.fetchEasyNoteReminders(forTodoID: id)
-                for reminder in reminders {
-                    try self.eventStore.remove(reminder, commit: true)
-                }
-                result = .success(())
-            } catch let error as SystemReminderError {
-                result = .failure(error)
-            } catch {
-                result = .failure(.eventStore(error.localizedDescription))
-            }
-
-            DispatchQueue.main.async {
-                completion?(result)
-            }
-        }
-    }
-
-    private func applyCreateOrUpdateProposal(
-        _ proposal: SystemReminderProposal
-    ) -> Result<SystemReminderWriteResult, SystemReminderError> {
+    func requestAuthorization() async throws {
         do {
-            try ensureWritable()
-            guard let calendar = eventStore.defaultCalendarForNewReminders() else {
-                return .failure(.missingDefaultReminderList)
+            try await executor.requestAuthorization()
+            _ = await refreshAuthorizationStatus()
+        } catch {
+            _ = await refreshAuthorizationStatus()
+            throw error
+        }
+    }
+
+    func applyProposal(_ proposal: SystemReminderProposal) async throws -> SystemReminderWriteResult {
+        do {
+            return try await executor.applyProposal(proposal)
+        } catch {
+            _ = await refreshAuthorizationStatus()
+            throw error
+        }
+    }
+
+    func completeReminder(forTodoID id: UUID) async throws {
+        do {
+            try await executor.completeReminder(forTodoID: id)
+        } catch {
+            _ = await refreshAuthorizationStatus()
+            throw error
+        }
+    }
+
+    func removeReminder(forTodoID id: UUID) async throws {
+        do {
+            try await executor.removeReminder(forTodoID: id)
+        } catch {
+            _ = await refreshAuthorizationStatus()
+            throw error
+        }
+    }
+
+    @MainActor
+    private func publishAuthorizationStatus(_ status: SystemReminderAuthorizationStatus) {
+        authorizationStatusSubject.send(status)
+    }
+}
+
+private actor SystemReminderOperationExecutor {
+    private let eventStoreAdapter: any SystemReminderEventStoreProviding
+    private let callbackTimeoutNanoseconds: UInt64
+    private let authorizationTimeoutNanoseconds: UInt64
+    private var operationInProgress = false
+    private var operationWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(
+        eventStoreAdapter: any SystemReminderEventStoreProviding,
+        callbackTimeoutNanoseconds: UInt64,
+        authorizationTimeoutNanoseconds: UInt64
+    ) {
+        self.eventStoreAdapter = eventStoreAdapter
+        self.callbackTimeoutNanoseconds = callbackTimeoutNanoseconds
+        self.authorizationTimeoutNanoseconds = authorizationTimeoutNanoseconds
+    }
+
+    func requestAuthorization() async throws {
+        await acquireOperationSlot()
+        defer { releaseOperationSlot() }
+        try Task.checkCancellation()
+
+        if eventStoreAdapter.authorizationStatus == .restricted {
+            throw SystemReminderError.restricted
+        }
+
+        let granted: Bool
+        do {
+            granted = try await ReminderCallbackBridge.value(
+                timeoutNanoseconds: authorizationTimeoutNanoseconds
+            ) { [eventStoreAdapter] completion in
+                eventStoreAdapter.requestFullAccessToReminders(completion: completion)
             }
+        } catch ReminderCallbackBridgeError.timedOut {
+            throw SystemReminderError.timeout
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw SystemReminderError.eventStore(error.localizedDescription)
+        }
 
-            var matchingReminders = try fetchEasyNoteReminders(marker: proposal.marker)
-            let reminder: EKReminder
-            let writeResult: SystemReminderWriteResult
-
-            if let existing = matchingReminders.first {
-                reminder = existing
-                matchingReminders.removeFirst()
-                writeResult = .updated
-            } else {
-                reminder = EKReminder(eventStore: eventStore)
-                writeResult = .created
+        guard granted else {
+            if eventStoreAdapter.authorizationStatus == .restricted {
+                throw SystemReminderError.restricted
             }
+            throw SystemReminderError.notAuthorized
+        }
+    }
 
-            reminder.calendar = calendar
-            reminder.title = proposal.title
-            reminder.notes = notesWithMarker(notes: proposal.notes, marker: proposal.marker)
-            reminder.dueDateComponents = dateComponents(for: proposal.dueDate)
-            reminder.priority = priorityValue(for: proposal.priority)
-            reminder.isCompleted = false
-            reminder.alarms?.forEach { reminder.removeAlarm($0) }
-            reminder.addAlarm(EKAlarm(absoluteDate: proposal.alarmDate))
+    func applyProposal(_ proposal: SystemReminderProposal) async throws -> SystemReminderWriteResult {
+        await acquireOperationSlot()
+        defer { releaseOperationSlot() }
+        try Task.checkCancellation()
 
-            try eventStore.save(reminder, commit: true)
+        guard proposal.action == .createOrUpdate else {
+            return .skipped
+        }
+
+        try ensureWritable()
+        guard let calendarIdentifier = eventStoreAdapter.defaultCalendarIdentifier() else {
+            throw SystemReminderError.missingDefaultReminderList
+        }
+
+        var matchingReminders = try await fetchEasyNoteReminders(marker: proposal.marker)
+        let existingIdentifier = matchingReminders.first?.identifier
+        if !matchingReminders.isEmpty {
+            matchingReminders.removeFirst()
+        }
+
+        do {
+            try eventStoreAdapter.saveReminder(
+                proposal: proposal,
+                existingIdentifier: existingIdentifier,
+                calendarIdentifier: calendarIdentifier
+            )
 
             for duplicate in matchingReminders {
-                try eventStore.remove(duplicate, commit: true)
+                try eventStoreAdapter.removeReminder(identifier: duplicate.identifier)
             }
-
-            return .success(writeResult)
         } catch let error as SystemReminderError {
-            return .failure(error)
+            throw error
         } catch {
-            return .failure(.eventStore(error.localizedDescription))
+            throw SystemReminderError.eventStore(error.localizedDescription)
+        }
+
+        return existingIdentifier == nil ? .created : .updated
+    }
+
+    func completeReminder(forTodoID id: UUID) async throws {
+        await acquireOperationSlot()
+        defer { releaseOperationSlot() }
+        try Task.checkCancellation()
+
+        let reminders = try await fetchEasyNoteReminders(
+            marker: SystemReminderAgent.marker(for: id)
+        )
+
+        do {
+            for reminder in reminders {
+                try eventStoreAdapter.markReminderCompleted(identifier: reminder.identifier)
+            }
+        } catch let error as SystemReminderError {
+            throw error
+        } catch {
+            throw SystemReminderError.eventStore(error.localizedDescription)
+        }
+    }
+
+    func removeReminder(forTodoID id: UUID) async throws {
+        await acquireOperationSlot()
+        defer { releaseOperationSlot() }
+        try Task.checkCancellation()
+
+        let reminders = try await fetchEasyNoteReminders(
+            marker: SystemReminderAgent.marker(for: id)
+        )
+
+        do {
+            for reminder in reminders {
+                try eventStoreAdapter.removeReminder(identifier: reminder.identifier)
+            }
+        } catch let error as SystemReminderError {
+            throw error
+        } catch {
+            throw SystemReminderError.eventStore(error.localizedDescription)
         }
     }
 
     private func ensureWritable() throws {
-        let status = Self.mapAuthorizationStatus(EKEventStore.authorizationStatus(for: .reminder))
-        DispatchQueue.main.async { [authorizationStatusSubject] in
-            authorizationStatusSubject.send(status)
-        }
-
-        switch status {
+        switch eventStoreAdapter.authorizationStatus {
         case .fullAccess:
             return
         case .restricted:
@@ -215,76 +264,44 @@ final class SystemReminderService: SystemReminderWritingProviding {
         }
     }
 
-    private func fetchEasyNoteReminders(forTodoID id: UUID) throws -> [EKReminder] {
-        try fetchEasyNoteReminders(marker: SystemReminderAgent.marker(for: id))
-    }
-
-    private func fetchEasyNoteReminders(marker: String) throws -> [EKReminder] {
+    private func fetchEasyNoteReminders(marker: String) async throws -> [SystemReminderRecord] {
         try ensureWritable()
 
-        return try fetchAllReminders().filter { reminder in
-            reminder.notes?.contains(marker) == true
+        let reminders: [SystemReminderRecord]
+        do {
+            reminders = try await ReminderCallbackBridge.value(
+                timeoutNanoseconds: callbackTimeoutNanoseconds
+            ) { [eventStoreAdapter] completion in
+                eventStoreAdapter.fetchReminders(completion: completion)
+            }
+        } catch ReminderCallbackBridgeError.timedOut {
+            throw SystemReminderError.timeout
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw SystemReminderError.eventStore(error.localizedDescription)
+        }
+
+        return reminders.filter { $0.notes?.contains(marker) == true }
+    }
+
+    private func acquireOperationSlot() async {
+        guard operationInProgress else {
+            operationInProgress = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            operationWaiters.append(continuation)
         }
     }
 
-    private func fetchAllReminders() throws -> [EKReminder] {
-        let predicate = eventStore.predicateForReminders(in: nil)
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var fetchedReminders: [EKReminder] = []
-
-        eventStore.fetchReminders(matching: predicate) { reminders in
-            fetchedReminders = reminders ?? []
-            semaphore.signal()
+    private func releaseOperationSlot() {
+        guard !operationWaiters.isEmpty else {
+            operationInProgress = false
+            return
         }
 
-        semaphore.wait()
-        return fetchedReminders
-    }
-
-    private func dateComponents(for date: Date) -> DateComponents {
-        var components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: date
-        )
-        components.timeZone = Calendar.current.timeZone
-        return components
-    }
-
-    private func notesWithMarker(notes: String?, marker: String) -> String {
-        let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if trimmedNotes.isEmpty {
-            return marker
-        }
-
-        return "\(trimmedNotes)\n\n\(marker)"
-    }
-
-    private func priorityValue(for priority: TodoItem.PriorityLevel) -> Int {
-        switch priority {
-        case .high:
-            return 1
-        case .medium:
-            return 5
-        case .low:
-            return 9
-        }
-    }
-
-    private static func mapAuthorizationStatus(_ status: EKAuthorizationStatus) -> SystemReminderAuthorizationStatus {
-        switch status {
-        case .notDetermined:
-            return .notDetermined
-        case .restricted:
-            return .restricted
-        case .denied:
-            return .denied
-        case .authorized, .fullAccess:
-            return .fullAccess
-        case .writeOnly:
-            return .denied
-        @unknown default:
-            return .unknown
-        }
+        operationWaiters.removeFirst().resume()
     }
 }

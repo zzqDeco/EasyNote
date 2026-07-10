@@ -15,6 +15,7 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
+| [reminder-service-async.plan.md](reminder-service-async.plan.md) | Replace semaphore-backed reminder operations with cancellable async service boundaries | Active |
 | [agent-system-reminders.plan.md](agent-system-reminders.plan.md) | Add agent-selected Apple Reminders writes as a higher-level todo reminder mode | Active |
 
 ## Delivered Or Recent References

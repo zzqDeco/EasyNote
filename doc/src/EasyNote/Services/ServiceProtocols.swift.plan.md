@@ -16,8 +16,8 @@
 - AI and speech state is exposed as erased `AnyPublisher` streams so ViewModels do not rely on concrete `@Published` storage.
 - Production initializers still default to concrete services; protocol injection exists for tests and future narrow refactors.
 - Backup export keeps a protocol-extension default for `exportedAt` so callers can keep using the current production path.
-- Todo notification scheduling is exposed through synchronize/cancel/reconcile operations so `TodoViewModel` does not import `UserNotifications`.
-- System Reminders writing is exposed through proposal apply, complete, remove, authorization status refresh, and permission request operations so `TodoViewModel` and Settings do not import EventKit.
+- Todo notification scheduling is exposed through async/throws synchronize/cancel/reconcile operations so `TodoViewModel` does not import `UserNotifications` and can surface scheduling errors after a successful save.
+- System Reminders writing is exposed through async/throws proposal apply, complete, remove, authorization refresh, and permission request operations so `TodoViewModel` and Settings do not import EventKit or own callback lifetimes.
 
 ## Tests
 

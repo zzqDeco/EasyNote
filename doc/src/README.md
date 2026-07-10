@@ -21,6 +21,7 @@ Source notes are required for public contracts, cross-module boundaries, persist
 - [CloudKitSyncPreflight](EasyNote/Services/CloudKitSyncPreflight.swift.plan.md)
 - [LocalTodoNotificationService](EasyNote/Services/LocalTodoNotificationService.swift.plan.md)
 - [OpenAIService](EasyNote/Services/OpenAIService.swift.plan.md)
+- [ReminderServiceAdapters](EasyNote/Services/ReminderServiceAdapters.swift.plan.md)
 - [ServiceProtocols](EasyNote/Services/ServiceProtocols.swift.plan.md)
 - [SpeechRecognitionService](EasyNote/Services/SpeechRecognitionService.swift.plan.md)
 - [SystemReminderService](EasyNote/Services/SystemReminderService.swift.plan.md)
