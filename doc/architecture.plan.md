@@ -34,6 +34,7 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - Todo system reminder proposals are derived through the pure `SystemReminderAgent`; `TodoViewModel` only asks the injected EventKit writer to create, update, complete, or remove Apple Reminders after successful SwiftData saves.
 - Todo list categories are projected through a pure `TodoFilter` helper before SwiftUI renders the selected segment.
 - Diary review insights are projected through a pure `DiaryReviewProjection` helper from the full diary entry set, independent of active diary search and filters. It reports distinct tag totals separately from capped top-tag trends and normalizes legacy numeric mood values before aggregation.
+- Existing-diary edits are staged in a pure `DiaryEditDraft`; `DiaryViewModel` applies content, mood, tags, and recording URL through one explicit save, while Cancel leaves the SwiftData model unchanged.
 
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
 Current service interactions are routed through narrow protocols for AI, speech recognition, CloudKit diary sync, backup import/export, local todo notification scheduling, and system Reminders writing so ViewModels and Settings can be tested with fakes without changing production defaults.

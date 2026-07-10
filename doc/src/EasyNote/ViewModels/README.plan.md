@@ -14,7 +14,9 @@
 ## Behavior Notes
 
 - `DiaryViewModel` owns diary CRUD, current entry state, speech save integration, AI diary actions, and CloudKit entry points.
+- `DiaryViewModel.commitEditDraft` applies existing-diary content, mood, tags, and audio URL through one injected SwiftData save; failure rolls back and exposes `errorMessage` without deleting either retryable draft audio or the original saved recording.
 - `DiaryViewModel` mirrors speech permission state and keeps transcription/AI-refined text separate from diary body content until the user explicitly inserts or replaces it.
+- `DiaryViewModel.cancelVoiceRecording` routes editor dismissal through the speech cancellation boundary so discarded recognition cannot repopulate shared transcription state.
 - `DiaryViewModel` records current-session AI action history and per-target/source pending AI results; diary summaries and transcription AI outputs require explicit apply before mutating `DiaryEntry.aiSummary` or `transcribedText`.
 - `DiaryViewModel` binds pending diary summary results to their source `DiaryEntry.id` and removes discarded pending results from current-session history.
 - `DiaryViewModel` clears stale pending results when a later AI action fails in the same target/source scope.
@@ -22,7 +24,7 @@
 - `DiaryViewModel` snapshots diary summary input before sending the AI request and uses that same snapshot for the result fingerprint.
 - `DiaryViewModel` runs refined-content analysis after the user applies an accepted transcription `.refine` result, preserving mood/tag suggestions without analyzing discarded output.
 - `DiaryViewModel` clears pending transcription AI results when the transcription buffer is reset or replaced, or when a new recording attempt starts; accepted editor-content results become the active transcription buffer for follow-up AI actions.
-- `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, existing-entry replacement, and deletion do not leave unreachable files.
+- `DiaryViewModel` owns cleanup helpers for captured local `.caf` diary recordings and legacy `.m4a` recordings so draft cancellation, successful existing-entry replacement, and deletion do not leave unreachable files. Failed existing-entry saves retain the pending replacement for retry until the draft is discarded.
 - `DiaryViewModel` consumes AI, speech, and CloudKit behavior through service protocols with production defaults, so tests can inject fakes without invoking provider, microphone, or cloud paths.
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
 - `TodoViewModel` owns focused todo CRUD, recurrence, todo list state, and post-save reminder routing through injected local-notification and system-reminder services.

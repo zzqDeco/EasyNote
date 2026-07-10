@@ -35,6 +35,7 @@ Current focused tests cover:
 - `ChatSession` and `SessionMessage` basic integrity
 - `AIActionResult` success/failure state and input preview generation
 - diary AI result application helpers that only mutate summary or transcription text after explicit confirmation
+- existing-diary draft commit, rollback, mood normalization, transcription isolation, and recording ownership
 - `SystemReminderAgent` lead-time and skip decisions for Apple Reminders proposals
 - `TodoViewModel` routing to fake local notification schedulers or fake system reminder writers based on the active reminder mode
 - reminder-service timeout, cancellation, late EventKit callback, duplicate marker, missing-list, system-error, and local notification add-error behavior through injected adapters
@@ -60,6 +61,9 @@ Before treating a branch as a usable app build, manually verify:
 
 - create a diary entry
 - edit diary content, mood, and tags
+- cancel an existing-diary edit after changing content, mood, and tags and confirm every persisted field remains unchanged
+- replace an existing diary recording, save, and confirm the old recording is removed only after the new URL persists
+- force or simulate an existing-diary save failure and confirm the editor remains open, the original recording remains usable, and the pending recording can be retried or discarded
 - search diary title, content, and tags
 - filter diaries by tag, mood, favorite state, and date range, then clear filters
 - open diary review and confirm monthly overview, tag trends, mood distribution, and recent favorites render from the full diary set

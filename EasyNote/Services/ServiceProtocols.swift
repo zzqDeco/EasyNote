@@ -30,6 +30,7 @@ protocol SpeechRecognitionProviding: AnyObject {
     func requestPermissions(completion: ((Bool) -> Void)?)
     func startRecording() throws
     func stopRecording() throws
+    func cancelRecording()
     func saveRecordingWithTranscription() -> (audioURL: URL?, transcription: String)
 }
 
