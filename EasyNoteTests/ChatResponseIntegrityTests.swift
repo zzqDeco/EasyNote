@@ -94,6 +94,20 @@ struct ChatResponseIntegrityTests {
         #expect(result?.message.contains("旅行") == false)
     }
 
+    @Test func localRecentSummaryStripsConnectorAfterCommandPrefix() {
+        let project = makeDiarySnapshot(title: "项目复盘", content: "完成第一阶段")
+        let unrelated = makeDiarySnapshot(title: "旅行", content: "去了杭州")
+
+        let result = LocalDiaryQueryAnalyzer.analyze(
+            query: "最近的项目日记",
+            entries: [unrelated, project]
+        )
+
+        #expect(result?.relatedEntryIDs == [project.id])
+        #expect(result?.message.contains("项目复盘") == true)
+        #expect(result?.message.contains("旅行") == false)
+    }
+
     @Test func localMoodSummaryAppliesTopicBeforeCounting() {
         let project = makeDiarySnapshot(title: "项目复盘", content: "完成第一阶段", mood: "满足")
         let unrelated = makeDiarySnapshot(title: "旅行", content: "遇到延误", mood: "焦虑")
@@ -106,6 +120,20 @@ struct ChatResponseIntegrityTests {
         #expect(result?.relatedEntryIDs == [project.id])
         #expect(result?.message.contains("满足：1 条记录") == true)
         #expect(result?.message.contains("焦虑") == false)
+    }
+
+    @Test func localMoodSummaryMatchesMoodMetadata() {
+        let happy = makeDiarySnapshot(title: "周末", content: "去公园散步", mood: "开心")
+        let calm = makeDiarySnapshot(title: "读书", content: "读完一章", mood: "平静")
+
+        let result = LocalDiaryQueryAnalyzer.analyze(
+            query: "开心的心情",
+            entries: [calm, happy]
+        )
+
+        #expect(result?.relatedEntryIDs == [happy.id])
+        #expect(result?.message.contains("开心：1 条记录") == true)
+        #expect(result?.message.contains("平静") == false)
     }
 
     @Test func builtInBroadSummaryPromptsRemainUnscoped() {
@@ -135,6 +163,19 @@ struct ChatResponseIntegrityTests {
         #expect(Set(moods?.relatedEntryIDs ?? []) == Set([first.id, second.id]))
         #expect(moods?.message.contains("满足：1 条记录") == true)
         #expect(moods?.message.contains("开心：1 条记录") == true)
+    }
+
+    @Test func naturalBroadMoodPromptsRemainUnscoped() {
+        let first = makeDiarySnapshot(title: "项目复盘", content: "完成第一阶段", mood: "满足")
+        let second = makeDiarySnapshot(title: "旅行", content: "去了杭州", mood: "开心")
+
+        for query in ["我最近心情如何", "我的心情怎么样"] {
+            let result = LocalDiaryQueryAnalyzer.analyze(query: query, entries: [first, second])
+
+            #expect(Set(result?.relatedEntryIDs ?? []) == Set([first.id, second.id]))
+            #expect(result?.message.contains("满足：1 条记录") == true)
+            #expect(result?.message.contains("开心：1 条记录") == true)
+        }
     }
 
     @Test func emptyKeyFailsClosedWithoutCallingProvider() async throws {

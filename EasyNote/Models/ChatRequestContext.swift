@@ -102,11 +102,12 @@ enum LocalDiaryQueryAnalyzer {
     private static let queryPrefixes = [
         "我的笔记中提到过哪些", "我的日记中提到过哪些", "我的记录中提到过哪些",
         "笔记中提到过哪些", "日记中提到过哪些", "记录中提到过哪些",
-        "最近写了哪些", "近期写了哪些", "请告诉我", "请帮我", "请查找", "请查看",
+        "最近写了哪些", "近期写了哪些", "我最近", "我近期", "请告诉我", "请帮我", "请查找", "请查看",
         "请包含", "帮我", "查找", "查看", "包含", "最近", "近期", "关于", "相关",
         "哪些", "什么", "我的"
     ]
     private static let querySuffixes = [
+        "心情怎么样", "情绪怎么样", "感受怎么样", "心情如何", "情绪如何", "感受如何",
         "相关的心情", "相关的情绪", "相关的感受", "的日记中", "的记录中", "的笔记中",
         "日记中", "记录中", "笔记中", "的日记", "的记录", "的笔记", "的心情", "的情绪",
         "的感受", "提到过", "提到", "日记", "记录", "笔记", "心情", "情绪", "感受",
@@ -121,9 +122,8 @@ enum LocalDiaryQueryAnalyzer {
         guard !terms.isEmpty else { return [] }
 
         return entries.filter { entry in
-            let searchableValues = [entry.title, entry.content] + entry.tags
             return terms.contains { term in
-                searchableValues.contains { value in
+                searchableValues(for: entry).contains { value in
                     value.localizedCaseInsensitiveContains(term)
                 }
             }
@@ -139,8 +139,9 @@ enum LocalDiaryQueryAnalyzer {
         let topicTerms = topicSearchTerms(from: query)
         let topicEntries = matchingEntries(for: topicTerms, in: entries)
         let scopedEntries = topicTerms.isEmpty ? entries : topicEntries
+        let isMoodQuery = query.contains("心情") || query.contains("情绪") || query.contains("感受")
 
-        if query.contains("最近") || query.contains("近期") {
+        if (query.contains("最近") || query.contains("近期")), !isMoodQuery {
             guard !scopedEntries.isEmpty else { return nil }
             let recentEntries = Array(scopedEntries.sorted { $0.creationDate > $1.creationDate }.prefix(5))
             return LocalDiaryQueryResult(
@@ -153,7 +154,7 @@ enum LocalDiaryQueryAnalyzer {
             )
         }
 
-        if query.contains("心情") || query.contains("情绪") || query.contains("感受") {
+        if isMoodQuery {
             guard !scopedEntries.isEmpty else { return nil }
             let moodCounts = scopedEntries.reduce(into: [String: Int]()) { counts, entry in
                 guard let mood = entry.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -233,10 +234,16 @@ enum LocalDiaryQueryAnalyzer {
         guard term.count >= 2, !ignoredQueryTerms.contains(term) else { return nil }
 
         var changed = true
+        var removedPrefix = false
         while changed {
             changed = false
             if let prefix = queryPrefixes.first(where: { term.hasPrefix($0) }) {
                 term.removeFirst(prefix.count)
+                changed = true
+                removedPrefix = true
+            }
+            if removedPrefix, term.hasPrefix("的") {
+                term.removeFirst()
                 changed = true
             }
             if let suffix = querySuffixes.first(where: { term.hasSuffix($0) }) {
@@ -255,10 +262,17 @@ enum LocalDiaryQueryAnalyzer {
     ) -> [ChatDiaryEntrySnapshot] {
         guard !terms.isEmpty else { return [] }
         return entries.filter { entry in
-            let searchableValues = [entry.title, entry.content] + entry.tags
             return terms.contains { term in
-                searchableValues.contains { $0.localizedCaseInsensitiveContains(term) }
+                searchableValues(for: entry).contains { $0.localizedCaseInsensitiveContains(term) }
             }
+        }
+    }
+
+    private static func searchableValues(for entry: ChatDiaryEntrySnapshot) -> [String] {
+        [entry.title, entry.content] + entry.tags + [entry.mood].compactMap { mood in
+            guard let mood = mood?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !mood.isEmpty else { return nil }
+            return mood
         }
     }
 
