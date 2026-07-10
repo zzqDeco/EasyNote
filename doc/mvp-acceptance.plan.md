@@ -33,6 +33,7 @@ Current focused tests cover:
 - `TodoItem.RecurringInterval.nextDate`
 - `ChatSession.generateSummary`
 - `ChatSession` and `SessionMessage` basic integrity
+- chat requests remain bound to their captured session across switching/deletion, and provider failure never produces fabricated diary claims
 - `AIActionResult` success/failure state and input preview generation
 - diary AI result application helpers that only mutate summary or transcription text after explicit confirmation
 - existing-diary draft commit, rollback, mood normalization, transcription isolation, and recording ownership
@@ -86,6 +87,8 @@ Before treating a branch as a usable app build, manually verify:
 - configure and clear the DeepSeek API key in Settings
 - open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible
+- send a note-exploration request, switch or delete the originating session before completion, and confirm no response appears in another session
+- simulate an unavailable AI provider and confirm only factual local diary results are shown; unmatched queries show a retry action instead of an invented answer
 - generate a diary AI summary with a configured key and confirm the diary summary is unchanged until Apply is tapped
 - generate a transcription refine, expand, or summary result and confirm transcription text is unchanged until Apply is tapped
 - copy a pending AI result and confirm no diary or transcription field changes

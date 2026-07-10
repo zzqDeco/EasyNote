@@ -17,6 +17,7 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 |---|---|---|
 | [reminder-service-async.plan.md](reminder-service-async.plan.md) | Replace semaphore-backed reminder operations with cancellable async service boundaries | Active |
 | [diary-edit-transaction.plan.md](diary-edit-transaction.plan.md) | Make existing-diary editing an explicit atomic draft transaction | Active |
+| [chat-response-integrity.plan.md](chat-response-integrity.plan.md) | Bind exploration requests to one session and remove fabricated AI fallbacks | Active |
 | [agent-system-reminders.plan.md](agent-system-reminders.plan.md) | Add agent-selected Apple Reminders writes as a higher-level todo reminder mode | Active |
 
 ## Delivered Or Recent References

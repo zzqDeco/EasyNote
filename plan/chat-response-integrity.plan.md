@@ -1,0 +1,36 @@
+# Chat Response Integrity
+
+## Summary
+
+- Bind every exploration request and persisted response to the session that originated it.
+- Replace random provider-failure text with deterministic results derived only from captured diary facts.
+
+## Scope
+
+- Add immutable chat request, conversation, and diary snapshots.
+- Move request task ownership, cancellation, retry, and explicit-session message writes into `ChatSessionViewModel`.
+- Keep provider configuration, AI privacy consent, and persistent AI history changes outside this slice.
+
+## Implementation
+
+- Persist the user message before starting the provider request, then use the captured session UUID for every completion.
+- Cancel or invalidate requests when their session is switched away from, cleared, or deleted.
+- Store processing and failure state per session so independent requests cannot overwrite each other.
+- Preserve completed retry state across navigation, propagate cancellation into provider subscriptions, and defer destructive cancellation until the corresponding save succeeds.
+- Track whether a failed request saved its user message so retry cannot create an orphan assistant response.
+- Use `LocalDiaryQueryAnalyzer` only for titles, dates, previews, tags, moods, and counts present in the captured snapshots; unmatched failures remain retryable UI errors.
+- Remove query command phrases only at term boundaries so real subjects such as `中国` remain searchable.
+- Treat diary, note, and record suffixes consistently, and apply topic scopes before recent or mood fallback summaries.
+- Keep built-in broad summary prompts unscoped and retain retry state while a retried provider request can still be cancelled.
+- Keep natural broad mood prompts unscoped, include mood metadata in matching, and remove connector particles left by command wrappers.
+- Preserve non-stop-word single-character CJK topics and strip mention-question and natural mood wrappers as complete boundaries.
+
+## Test Plan
+
+- Cover explicit-session writes, switching/deletion cancellation, independent concurrent sessions, save failure, empty keys, and provider failures with and without matching facts.
+- Run whitespace, documentation links, project listing, Debug/Release generic builds, and hosted unit tests.
+
+## Assumptions
+
+- Switching away from a session intentionally cancels its active request.
+- Retry reuses the captured facts and conversation but receives a new request UUID and does not duplicate the user message.

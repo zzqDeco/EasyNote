@@ -15,6 +15,7 @@
 - `DiaryEntry` owns diary content, metadata, optional audio URL, and AI summary.
 - `DiaryEditDraft` owns pure existing-entry edit state and pending recording ownership; `MoodCatalog` owns canonical picker-to-storage mood mapping.
 - `AIActionResult` owns current-session AI action result metadata and apply eligibility; it is not a persisted SwiftData model.
+- `ChatRequestContext` snapshots the target session, conversation, and diary facts used by one exploration request.
 - `DiaryEntryQuery` owns pure diary list search, filter, and sort behavior.
 - `DiaryReviewProjection` owns pure diary review aggregation for monthly summaries, fixed windows, tags, moods, and recent favorites. It keeps full distinct-tag counts separate from capped trend lists and normalizes numeric mood strings before counting.
 - `TodoItem` owns recurrence through `RecurringInterval.rawValue` stored as `String`.

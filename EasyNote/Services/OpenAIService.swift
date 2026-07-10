@@ -32,9 +32,6 @@ class OpenAIService: ObservableObject {
     
     @Published var isProcessing = false
     
-    // 存储Combine订阅的集合
-    private var cancellables = Set<AnyCancellable>()
-    
     init() {
         // 初始化时不需要传入API密钥，而是从UserDefaults读取
     }
@@ -138,24 +135,11 @@ class OpenAIService: ObservableObject {
     
     // 聊天功能
     func chat(prompt: String) async throws -> String {
-        // 创建一个返回异步结果的方法
-        return try await withCheckedThrowingContinuation { continuation in
-            sendRequest(prompt: prompt)
-                .sink(
-                    receiveCompletion: { completion in
-                        switch completion {
-                        case .finished:
-                            break
-                        case .failure(let error):
-                            continuation.resume(throwing: error)
-                        }
-                    },
-                    receiveValue: { response in
-                        continuation.resume(returning: response)
-                    }
-                )
-                .store(in: &cancellables)
+        for try await response in sendRequest(prompt: prompt).values {
+            try Task.checkCancellation()
+            return response
         }
+        throw OpenAIError.invalidResponse
     }
     
     // 根据用户最近的日记生成推荐的活动和待办事项
@@ -288,6 +272,10 @@ class OpenAIService: ObservableObject {
             }
             .handleEvents(receiveCompletion: { [weak self] _ in
                 // 确保在主线程上更新UI状态
+                DispatchQueue.main.async {
+                    self?.isProcessing = false
+                }
+            }, receiveCancel: { [weak self] in
                 DispatchQueue.main.async {
                     self?.isProcessing = false
                 }

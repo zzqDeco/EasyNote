@@ -27,7 +27,7 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - `DiaryViewModel` owns diary list/current-entry state, speech integration, AI diary actions, and CloudKit sync entry points.
 - `TodoViewModel` owns focused todo CRUD, recurrence behavior, todo list state, and post-save routing to the active todo reminder mode.
 - `ExploreViewModel` owns recommendation generation and recommendation cache state; it does not own todo CRUD.
-- `ChatSessionViewModel` owns persisted chat sessions and message history.
+- `ChatSessionViewModel` owns persisted chat sessions, session-bound request tasks, message history, and per-session request failures. Provider prompts and deterministic local fallbacks consume immutable diary/conversation snapshots rather than execution-time selection state.
 - `ContentView` passes the shared SwiftData `ModelContext` into stable app-level ViewModels through its root view instead of relying on production nil-context fallback stores.
 - Recurring todo completion is planned through a shared helper so todo entry points do not duplicate next-occurrence creation rules.
 - Todo local reminder eligibility is derived through a pure planner; `TodoViewModel` only asks the injected notification scheduler to synchronize or cancel after successful SwiftData saves.

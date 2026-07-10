@@ -5,6 +5,7 @@
 - Own the DeepSeek OpenAI-compatible chat-completions HTTP boundary.
 - Build prompts for diary summary, transcription refinement, diary analysis, text expansion, summarization, chat, and recommendations.
 - Normalize request failures into `OpenAIError`.
+- Bridge chat publishers through their async sequence so cancelling a session request cancels the underlying subscription and clears processing state.
 - Delegate model-content parsing for diary analysis and recommendations to `AIResponseParser`.
 
 ## Boundaries
