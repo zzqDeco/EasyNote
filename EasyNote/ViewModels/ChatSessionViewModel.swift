@@ -255,7 +255,6 @@ final class ChatSessionViewModel: ObservableObject {
             chatRequestSessions.removeValue(forKey: requestID)
         }
         pendingChatSessionIDs.remove(sessionID)
-        chatRequestFailures[sessionID] = nil
     }
 
     private func startResponseRequest(
@@ -345,12 +344,12 @@ final class ChatSessionViewModel: ObservableObject {
     @discardableResult
     func deleteSession(_ session: ChatSession) -> Bool {
         let sessionID = session.id
-        cancelChatRequests(forSessionID: sessionID)
-
         modelContext.delete(session)
         guard saveContext() else {
             return false
         }
+        cancelChatRequests(forSessionID: sessionID)
+        chatRequestFailures[sessionID] = nil
 
         // 在本地列表中删除
         if let index = sessions.firstIndex(where: { $0.id == session.id }) {
@@ -376,7 +375,9 @@ final class ChatSessionViewModel: ObservableObject {
         guard let session = currentSession else { return false }
         
         let sessionID = session.id
-        cancelChatRequests(forSessionID: sessionID)
+        let previousMessages = session.messages
+        let previousTitle = session.title
+        let previousModifiedDate = session.lastModifiedDate
         
         // 删除所有消息
         for message in session.messages {
@@ -387,9 +388,15 @@ final class ChatSessionViewModel: ObservableObject {
         session.messages.removeAll()
         session.title = "新会话"
         session.updateLastModified()
-        guard saveContext() else {
+        guard saveContext(onFailure: {
+            session.messages = previousMessages
+            session.title = previousTitle
+            session.lastModifiedDate = previousModifiedDate
+        }) else {
             return false
         }
+        cancelChatRequests(forSessionID: sessionID)
+        chatRequestFailures[sessionID] = nil
         
         return true
     }

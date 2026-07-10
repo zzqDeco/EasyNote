@@ -83,9 +83,16 @@ struct LocalDiaryQueryResult: Equatable, Sendable {
 }
 
 enum LocalDiaryQueryAnalyzer {
-    private static let ignoredQueryFragments = [
+    private static let ignoredQueryTerms: Set<String> = [
         "我的", "笔记", "日记", "查找", "查看", "包含", "关于", "相关",
         "哪些", "什么", "请", "帮我", "一下", "记录", "提到过", "提到", "中"
+    ]
+    private static let queryPrefixes = [
+        "请帮我", "帮我", "查找", "查看", "包含", "关于", "相关", "哪些", "什么", "我的", "请"
+    ]
+    private static let querySuffixes = [
+        "的日记中", "的记录中", "日记中", "记录中", "的日记", "的记录",
+        "提到过", "提到", "日记", "记录", "相关", "一下"
     ]
 
     static func matchingEntries(
@@ -173,15 +180,30 @@ enum LocalDiaryQueryAnalyzer {
             candidates.append(normalized)
         }
 
-        let terms = candidates.compactMap { candidate -> String? in
-            let reduced = ignoredQueryFragments.reduce(candidate) { partial, fragment in
-                partial.replacingOccurrences(of: fragment, with: "")
-            }
-            let cleaned = reduced.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
-            return cleaned.count >= 2 ? cleaned : nil
-        }
+        let terms = candidates.compactMap(cleanedSearchTerm)
 
         return Array(Set(terms)).sorted()
+    }
+
+    private static func cleanedSearchTerm(_ candidate: String) -> String? {
+        var term = candidate.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
+        guard !ignoredQueryTerms.contains(term) else { return nil }
+
+        var changed = true
+        while changed {
+            changed = false
+            if let prefix = queryPrefixes.first(where: { term.hasPrefix($0) && term != $0 }) {
+                term.removeFirst(prefix.count)
+                changed = true
+            }
+            if let suffix = querySuffixes.first(where: { term.hasSuffix($0) && term != $0 }) {
+                term.removeLast(suffix.count)
+                changed = true
+            }
+            term = term.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
+        }
+
+        return term.count >= 2 && !ignoredQueryTerms.contains(term) ? term : nil
     }
 
     private static func labeledMessage(

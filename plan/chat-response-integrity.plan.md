@@ -16,7 +16,9 @@
 - Persist the user message before starting the provider request, then use the captured session UUID for every completion.
 - Cancel or invalidate requests when their session is switched away from, cleared, or deleted.
 - Store processing and failure state per session so independent requests cannot overwrite each other.
+- Preserve completed retry state across navigation, propagate cancellation into provider subscriptions, and defer destructive cancellation until the corresponding save succeeds.
 - Use `LocalDiaryQueryAnalyzer` only for titles, dates, previews, tags, moods, and counts present in the captured snapshots; unmatched failures remain retryable UI errors.
+- Remove query command phrases only at term boundaries so real subjects such as `中国` remain searchable.
 
 ## Test Plan
 

@@ -51,6 +51,16 @@ struct ChatResponseIntegrityTests {
         #expect(message.contains("没有找到"))
     }
 
+    @Test func localDiarySearchPreservesStopWordsInsideRealTerms() {
+        let entry = makeDiarySnapshot(title: "中国旅行", content: "参观博物馆")
+
+        #expect(LocalDiaryQueryAnalyzer.matchingEntries(for: "中国", in: [entry]).map(\.id) == [entry.id])
+        #expect(LocalDiaryQueryAnalyzer.matchingEntries(
+            for: "请帮我查找关于中国的日记",
+            in: [entry]
+        ).map(\.id) == [entry.id])
+    }
+
     @Test func emptyKeyFailsClosedWithoutCallingProvider() async throws {
         let provider = ImmediateChatProvider(apiKey: "", result: .success("不应调用"))
         let outcome = await ChatResponseGenerator.generate(
@@ -105,6 +115,26 @@ struct ChatResponseIntegrityTests {
         #expect(!viewModel.isProcessingChatRequest(forSessionID: firstSession.id))
     }
 
+    @Test func switchingSessionsPreservesRetryableFailure() async throws {
+        let context = try makeModelContext()
+        let viewModel = ChatSessionViewModel(modelContext: context)
+        let firstSession = try #require(viewModel.currentSession)
+        let provider = ImmediateChatProvider(result: .failure(ChatProviderTestError.failed))
+
+        #expect(viewModel.submitChatRequest(
+            makeRequestContext(sessionID: firstSession.id, query: "无本地匹配"),
+            provider: provider
+        ))
+        await viewModel.waitForPendingChatRequests()
+        let failure = try #require(viewModel.chatRequestFailure(forSessionID: firstSession.id))
+
+        let secondSession = try #require(viewModel.createNewSession(title: "第二会话"))
+        viewModel.switchToSession(firstSession)
+        viewModel.switchToSession(secondSession)
+
+        #expect(viewModel.chatRequestFailure(forSessionID: firstSession.id) == failure)
+    }
+
     @Test func deletingSessionCancelsStaleResponse() async throws {
         let context = try makeModelContext()
         let viewModel = ChatSessionViewModel(modelContext: context)
@@ -120,6 +150,36 @@ struct ChatResponseIntegrityTests {
 
         #expect(viewModel.session(withID: session.id) == nil)
         #expect(!viewModel.isProcessingChatRequest(forSessionID: session.id))
+    }
+
+    @Test func failedSessionDeletionKeepsInFlightRequest() async throws {
+        let context = try makeModelContext()
+        var shouldFailSave = false
+        let viewModel = ChatSessionViewModel(
+            modelContext: context,
+            saveAction: { modelContext in
+                if shouldFailSave { throw ChatProviderTestError.failed }
+                try modelContext.save()
+            }
+        )
+        let session = try #require(viewModel.currentSession)
+        let provider = ControllableChatProvider()
+
+        #expect(viewModel.submitChatRequest(
+            makeRequestContext(sessionID: session.id, query: "项目"),
+            provider: provider
+        ))
+        await provider.waitUntilRequestStarted()
+        shouldFailSave = true
+        #expect(!viewModel.deleteSession(session))
+        #expect(viewModel.isProcessingChatRequest(forSessionID: session.id))
+
+        shouldFailSave = false
+        provider.resumeNext(with: .success("继续完成的回复"))
+        await viewModel.waitForPendingChatRequests()
+
+        #expect(viewModel.session(withID: session.id) != nil)
+        #expect(session.messages.map(\.content) == ["项目", "继续完成的回复"])
     }
 
     @Test func concurrentRequestsRemainBoundToTheirOwnSessions() async throws {
