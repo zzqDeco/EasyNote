@@ -179,6 +179,7 @@ struct DiaryEditView: View {
                 )
             }
         }
+        .interactiveDismissDisabled(draft.hasChanges || viewModel.isRecording)
         .onAppear {
             setupOnAppear()
         }
