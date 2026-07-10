@@ -196,7 +196,8 @@ final class ChatSessionViewModel: ObservableObject {
         guard session(withID: context.sessionID) != nil else {
             chatRequestFailures[context.sessionID] = ChatRequestFailure(
                 context: context,
-                message: "目标会话不存在，无法发送消息。"
+                message: "目标会话不存在，无法发送消息。",
+                userMessageWasSaved: false
             )
             return false
         }
@@ -212,7 +213,8 @@ final class ChatSessionViewModel: ObservableObject {
         ) != nil else {
             chatRequestFailures[context.sessionID] = ChatRequestFailure(
                 context: context,
-                message: errorMessage ?? "保存用户消息失败，请重试。"
+                message: errorMessage ?? "保存用户消息失败，请重试。",
+                userMessageWasSaved: false
             )
             return false
         }
@@ -232,8 +234,24 @@ final class ChatSessionViewModel: ObservableObject {
         }
 
         let retryContext = failure.context.retrying()
-        chatRequestFailures[sessionID] = nil
         cancelChatRequests(forSessionID: retryContext.sessionID)
+
+        if !failure.userMessageWasSaved,
+           addMessage(
+               toSessionID: retryContext.sessionID,
+               content: retryContext.userQuery,
+               isUser: true,
+               relatedEntryIDs: retryContext.relatedEntryIDs
+           ) == nil {
+            chatRequestFailures[sessionID] = ChatRequestFailure(
+                context: retryContext,
+                message: errorMessage ?? "保存用户消息失败，请重试。",
+                userMessageWasSaved: false
+            )
+            return false
+        }
+
+        chatRequestFailures[sessionID] = nil
         startResponseRequest(retryContext, provider: provider)
         return true
     }

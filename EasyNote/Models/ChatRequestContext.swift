@@ -73,6 +73,17 @@ struct ChatRequestContext: Equatable, Sendable {
 struct ChatRequestFailure: Equatable, Identifiable, Sendable {
     let context: ChatRequestContext
     let message: String
+    let userMessageWasSaved: Bool
+
+    init(
+        context: ChatRequestContext,
+        message: String,
+        userMessageWasSaved: Bool = true
+    ) {
+        self.context = context
+        self.message = message
+        self.userMessageWasSaved = userMessageWasSaved
+    }
 
     var id: UUID { context.requestID }
 }
@@ -180,14 +191,15 @@ enum LocalDiaryQueryAnalyzer {
             candidates.append(normalized)
         }
 
-        let terms = candidates.compactMap(cleanedSearchTerm)
+        let terms = candidates.flatMap { searchTerms(for: $0) }
 
         return Array(Set(terms)).sorted()
     }
 
-    private static func cleanedSearchTerm(_ candidate: String) -> String? {
-        var term = candidate.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
-        guard !ignoredQueryTerms.contains(term) else { return nil }
+    private static func searchTerms(for candidate: String) -> [String] {
+        let original = candidate.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
+        guard original.count >= 2, !ignoredQueryTerms.contains(original) else { return [] }
+        var term = original
 
         var changed = true
         while changed {
@@ -203,7 +215,10 @@ enum LocalDiaryQueryAnalyzer {
             term = term.trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
         }
 
-        return term.count >= 2 && !ignoredQueryTerms.contains(term) ? term : nil
+        guard term.count >= 2, !ignoredQueryTerms.contains(term), term != original else {
+            return [original]
+        }
+        return [original, term]
     }
 
     private static func labeledMessage(

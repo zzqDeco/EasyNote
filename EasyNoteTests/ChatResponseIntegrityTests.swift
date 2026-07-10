@@ -52,9 +52,10 @@ struct ChatResponseIntegrityTests {
     }
 
     @Test func localDiarySearchPreservesStopWordsInsideRealTerms() {
-        let entry = makeDiarySnapshot(title: "中国旅行", content: "参观博物馆")
+        let entry = makeDiarySnapshot(title: "中国旅行与请假安排", content: "参观博物馆")
 
         #expect(LocalDiaryQueryAnalyzer.matchingEntries(for: "中国", in: [entry]).map(\.id) == [entry.id])
+        #expect(LocalDiaryQueryAnalyzer.matchingEntries(for: "请假", in: [entry]).map(\.id) == [entry.id])
         #expect(LocalDiaryQueryAnalyzer.matchingEntries(
             for: "请帮我查找关于中国的日记",
             in: [entry]
@@ -214,10 +215,11 @@ struct ChatResponseIntegrityTests {
         let existingSession = ChatSession(title: "已有会话")
         context.insert(existingSession)
         try context.save()
-        let viewModel = ChatSessionViewModel(
-            modelContext: context,
-            saveAction: { _ in throw ChatProviderTestError.failed }
-        )
+        var shouldFailSave = true
+        let viewModel = ChatSessionViewModel(modelContext: context) { modelContext in
+            if shouldFailSave { throw ChatProviderTestError.failed }
+            try modelContext.save()
+        }
         let provider = ImmediateChatProvider(result: .success("不应生成"))
         let request = makeRequestContext(sessionID: existingSession.id, query: "保存失败")
 
@@ -225,6 +227,13 @@ struct ChatResponseIntegrityTests {
         #expect(provider.callCount == 0)
         #expect(viewModel.chatRequestFailure(forSessionID: existingSession.id)?.message.contains("保存会话失败") == true)
         #expect(existingSession.messages.isEmpty)
+
+        shouldFailSave = false
+        #expect(viewModel.retryFailedChatRequest(forSessionID: existingSession.id, provider: provider))
+        await viewModel.waitForPendingChatRequests()
+
+        #expect(provider.callCount == 1)
+        #expect(existingSession.messages.map(\.content) == ["保存失败", "不应生成"])
     }
 
     @Test func loadedSessionMessagesAreNormalizedChronologically() async throws {

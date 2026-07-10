@@ -29,7 +29,7 @@
 - `DiaryViewModel.entries` is derived from the full `diaryEntries` source list through `DiaryEntryQuery`; search and filters must not overwrite the source list.
 - `TodoViewModel` owns focused todo CRUD, recurrence, todo list state, and post-save reminder routing through injected local-notification and system-reminder services.
 - `ExploreViewModel` owns recommendation generation, cached recommendation state, current-session recommendation AI history, and shared user-facing recommendation error mapping through the AI service protocol.
-- `ChatSessionViewModel` owns persisted chat sessions, explicit-session message writes, session-scoped request tasks, cancellation, and retryable failures. Session navigation preserves completed failures, and destructive mutations cancel active requests only after their save succeeds.
+- `ChatSessionViewModel` owns persisted chat sessions, explicit-session message writes, session-scoped request tasks, cancellation, and retryable failures. Session navigation preserves completed failures, destructive mutations cancel active requests only after their save succeeds, and retries re-save a user message when the original failure happened before it persisted.
 - `ChatResponseGenerator` maps provider results to provider/local/failure/cancelled outcomes; `LocalDiaryQueryAnalyzer` is the only offline fallback and may use only captured diary facts. Query command phrases are removed at term boundaries rather than as arbitrary substrings.
 - `ChatSessionViewModel` uses an in-memory fallback context only when no context is injected.
 - `ContentView` keeps stable app-level ViewModel instances by constructing them from the SwiftUI environment `ModelContext` in its root view.
