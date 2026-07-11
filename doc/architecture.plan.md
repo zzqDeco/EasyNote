@@ -21,7 +21,7 @@ SwiftData is the source of truth for local app data:
 - `TabSelectionManager`: transient UI coordination, not a persisted model.
 
 The current store is created under the app documents directory as `EasyNote.store`.
-`EasyNoteSchemaV1` is the first versioned schema and retains the existing four-model layout without field changes. `EasyNoteMigrationPlan` currently contains V1 with no migration stages.
+`EasyNoteSchemaV1` is the first versioned schema. It owns frozen nested model definitions that retain the existing four entity names, fields, and relationships; file-scope aliases keep the app-facing `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` names unchanged. Current startup opens V1 without a staged migration plan so an identical pre-versioned store is adopted and stamped without rebuilding. `EasyNoteMigrationPlan` contains V1 with no stages and is reserved for an adopted store and future schema versions.
 
 Store-open failure never falls back to a new persistent store or resets files automatically. A user-confirmed rebuild first copies every existing `EasyNote.store`, `EasyNote.store-wal`, and `EasyNote.store-shm` component into a timestamped `Documents/EasyNoteRecovery` directory. Copy failure leaves the source untouched; rebuild failure keeps the recovery copy and remains visible for retry.
 

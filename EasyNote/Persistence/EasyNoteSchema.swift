@@ -7,10 +7,10 @@ enum EasyNoteSchemaV1: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         [
-            DiaryEntry.self,
-            TodoItem.self,
-            ChatSession.self,
-            SessionMessage.self
+            EasyNoteSchemaV1.DiaryEntry.self,
+            EasyNoteSchemaV1.TodoItem.self,
+            EasyNoteSchemaV1.ChatSession.self,
+            EasyNoteSchemaV1.SessionMessage.self
         ]
     }
 

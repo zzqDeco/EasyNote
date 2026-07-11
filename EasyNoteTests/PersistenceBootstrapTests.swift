@@ -5,40 +5,19 @@ import Testing
 
 @MainActor
 struct PersistenceBootstrapTests {
-    @Test func versionedSchemaOpensStoreCreatedWithExistingModelLayout() throws {
+    @Test func legacyStoreIsAdoptedAsV1ThenReopensWithMigrationPlan() throws {
         let paths = try makeStoreFiles(components: [:])
         defer { try? FileManager.default.removeItem(at: paths.root) }
 
-        do {
-            let legacySchema = Schema([
-                DiaryEntry.self,
-                TodoItem.self,
-                ChatSession.self,
-                SessionMessage.self
-            ])
-            let configuration = ModelConfiguration(
-                "EasyNote",
-                schema: legacySchema,
-                url: paths.store,
-                allowsSave: true,
-                cloudKitDatabase: .none
-            )
-            let container = try ModelContainer(for: legacySchema, configurations: [configuration])
-            container.mainContext.insert(DiaryEntry(title: "Existing entry"))
-            try container.mainContext.save()
-        }
+        let legacySchema = LegacyUnversionedSchema.schema
+        let expectedEntityNames = ["ChatSession", "DiaryEntry", "SessionMessage", "TodoItem"]
+        #expect(legacySchema.entities.map(\.name).sorted() == expectedEntityNames)
+        #expect(EasyNoteSchemaV1.schema.entities.map(\.name).sorted() == expectedEntityNames)
 
-        let bootstrap = PersistenceBootstrap(
-            storeURL: paths.store,
-            recoveryRootURL: paths.recoveryRoot
-        )
-        bootstrap.loadIfNeeded()
-
-        guard case .ready(let container) = bootstrap.state else {
-            Issue.record("Expected V1 schema to open the existing model layout")
-            return
-        }
-        #expect(try container.mainContext.fetch(FetchDescriptor<DiaryEntry>()).map(\.title) == ["Existing entry"])
+        try createLegacyStore(at: paths.store, schema: legacySchema)
+        #expect(try adoptLegacyStoreAsV1(at: paths.store) == ["Existing entry"])
+        #expect(try reopenAdoptedStoreWithMigrationPlan(at: paths.store) == ["Existing entry"])
+        #expect(FileManager.default.fileExists(atPath: paths.store.path))
         #expect(!FileManager.default.fileExists(atPath: paths.recoveryRoot.path))
     }
 
@@ -78,6 +57,7 @@ struct PersistenceBootstrapTests {
             return
         }
         #expect(failure.recoveryURL == nil)
+        #expect(!FileManager.default.fileExists(atPath: paths.recoveryRoot.path))
 
         bootstrap.retry()
 
@@ -205,9 +185,173 @@ struct PersistenceBootstrapTests {
     private func makeInMemoryContainer() throws -> ModelContainer {
         try ModelContainer(
             for: EasyNoteSchemaV1.schema,
-            migrationPlan: EasyNoteMigrationPlan.self,
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
+    }
+
+    private func createLegacyStore(at storeURL: URL, schema: Schema) throws {
+        try autoreleasepool {
+            let configuration = persistentConfiguration(at: storeURL, schema: schema)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            container.mainContext.insert(LegacyUnversionedSchema.DiaryEntry(title: "Existing entry"))
+            try container.mainContext.save()
+        }
+    }
+
+    private func adoptLegacyStoreAsV1(at storeURL: URL) throws -> [String] {
+        try autoreleasepool {
+            let configuration = persistentConfiguration(at: storeURL, schema: EasyNoteSchemaV1.schema)
+            let container = try ModelContainer(
+                for: EasyNoteSchemaV1.schema,
+                configurations: [configuration]
+            )
+            return try container.mainContext.fetch(FetchDescriptor<DiaryEntry>()).map(\.title)
+        }
+    }
+
+    private func reopenAdoptedStoreWithMigrationPlan(at storeURL: URL) throws -> [String] {
+        try autoreleasepool {
+            let configuration = persistentConfiguration(at: storeURL, schema: EasyNoteSchemaV1.schema)
+            let container = try ModelContainer(
+                for: EasyNoteSchemaV1.schema,
+                migrationPlan: EasyNoteMigrationPlan.self,
+                configurations: [configuration]
+            )
+            return try container.mainContext.fetch(FetchDescriptor<DiaryEntry>()).map(\.title)
+        }
+    }
+
+    private func persistentConfiguration(at storeURL: URL, schema: Schema) -> ModelConfiguration {
+        ModelConfiguration(
+            "EasyNote",
+            schema: schema,
+            url: storeURL,
+            allowsSave: true,
+            cloudKitDatabase: .none
+        )
+    }
+}
+
+private enum LegacyUnversionedSchema {
+    static let schema = Schema([
+        DiaryEntry.self,
+        TodoItem.self,
+        ChatSession.self,
+        SessionMessage.self
+    ])
+
+    @Model
+    final class DiaryEntry {
+        var id: UUID
+        var title: String
+        var content: String
+        var mood: String?
+        var tags: [String]
+        var creationDate: Date
+        var lastModified: Date
+        var isFavorite: Bool
+        var audioURL: URL?
+        var aiSummary: String?
+
+        init(
+            id: UUID = UUID(),
+            title: String,
+            content: String = "",
+            mood: String? = nil,
+            tags: [String] = [],
+            isFavorite: Bool = false
+        ) {
+            self.id = id
+            self.title = title
+            self.content = content
+            self.mood = mood
+            self.tags = tags
+            self.creationDate = Date()
+            self.lastModified = Date()
+            self.isFavorite = isFavorite
+        }
+    }
+
+    @Model
+    final class TodoItem {
+        var id: UUID
+        var title: String
+        var isCompleted: Bool
+        var priority: PriorityLevel
+        var deadline: Date?
+        var notes: String?
+        var isRecurring: Bool
+        var recurringInterval: String?
+        var creationDate: Date
+
+        init(
+            id: UUID = UUID(),
+            title: String,
+            isCompleted: Bool = false,
+            priority: PriorityLevel = .medium,
+            deadline: Date? = nil,
+            notes: String? = nil,
+            isRecurring: Bool = false,
+            recurringInterval: String? = nil
+        ) {
+            self.id = id
+            self.title = title
+            self.isCompleted = isCompleted
+            self.priority = priority
+            self.deadline = deadline
+            self.notes = notes
+            self.isRecurring = isRecurring
+            self.recurringInterval = recurringInterval
+            self.creationDate = Date()
+        }
+
+        enum PriorityLevel: String, Codable, Equatable {
+            case high, medium, low
+        }
+    }
+
+    @Model
+    final class ChatSession {
+        var id: UUID
+        var title: String
+        var creationDate: Date
+        var lastModifiedDate: Date
+        var messages: [LegacyUnversionedSchema.SessionMessage] = []
+
+        init(
+            id: UUID = UUID(),
+            title: String = "New session",
+            messages: [LegacyUnversionedSchema.SessionMessage] = []
+        ) {
+            self.id = id
+            self.title = title
+            self.creationDate = Date()
+            self.lastModifiedDate = Date()
+            self.messages = messages
+        }
+    }
+
+    @Model
+    final class SessionMessage {
+        var id: UUID
+        var content: String
+        var isUser: Bool
+        var timestamp: Date
+        var relatedEntryIds: [String]
+
+        init(
+            id: UUID = UUID(),
+            content: String,
+            isUser: Bool,
+            timestamp: Date = Date(),
+            relatedEntryIds: [String] = []
+        ) {
+            self.id = id
+            self.content = content
+            self.isUser = isUser
+            self.timestamp = timestamp
+            self.relatedEntryIds = relatedEntryIds
+        }
     }
 }
 

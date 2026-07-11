@@ -26,7 +26,6 @@ struct PersistenceBootstrapDependencies {
         makeContainer: { schema, configuration in
             try ModelContainer(
                 for: schema,
-                migrationPlan: EasyNoteMigrationPlan.self,
                 configurations: [configuration]
             )
         },

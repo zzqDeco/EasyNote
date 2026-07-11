@@ -11,7 +11,8 @@
 
 ## Behavior Notes
 
-- Tests cover pre-versioned store open, injected startup failure/retry, exact store/WAL/SHM recovery copies, and rebuild failure preservation.
+- A separate plain-schema fixture freezes the legacy layout. Tests assert entity-name equality, create legacy data, adopt it with V1 without a plan, and then reopen it with `EasyNoteMigrationPlan` while retaining data.
+- Tests also cover injected startup failure/retry, exact store/WAL/SHM recovery copies, and rebuild failure preservation.
 
 ## Tests
 

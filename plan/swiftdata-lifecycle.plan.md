@@ -18,7 +18,8 @@
 
 ## Implementation
 
-- `EasyNoteSchemaV1` lists the existing diary, todo, chat-session, and session-message models under version `1.0.0`; `EasyNoteMigrationPlan` contains V1 and no migration stages.
+- `EasyNoteSchemaV1` owns frozen nested definitions of the existing diary, todo, chat-session, and session-message models under version `1.0.0`; file-scope type aliases preserve existing app call sites and entity names.
+- The current release opens V1 without a staged migration plan so an identical pre-versioned store can be adopted and stamped non-destructively. `EasyNoteMigrationPlan` remains defined with V1 and no stages for stores that have completed adoption and for future V2 work.
 - `PersistenceBootstrap` owns `loading`, `ready(ModelContainer)`, and `failed` state. Its container factory, clock, and file operations are injectable for focused tests.
 - Retry reopens the same store without modifying files. Recovery first copies every existing store component, aborts without deletion if copying fails, then removes the original components and attempts a fresh open.
 - A failed rebuild remains user-visible and reports the recovery-copy location. Recovery is never triggered automatically.
@@ -26,6 +27,7 @@
 
 ## Test Plan
 
+- Cover a plain-schema legacy store opening with V1, retaining data, and then reopening with `EasyNoteMigrationPlan`; verify legacy and V1 entity names match.
 - Cover existing-store open, startup failure followed by retry, recovery copies of store/WAL/SHM, and rebuild failure.
 - Cover successful session deletion leaving no `SessionMessage` rows and failed deletion restoring both session and messages.
 - Cover real chat integrity constraints: non-empty session title, non-empty message content, and non-future timestamps.
@@ -33,6 +35,6 @@
 
 ## Assumptions
 
-- The current `EasyNote.store` file format remains compatible because V1 uses the existing model classes unchanged.
+- The current `EasyNote.store` file format remains compatible because V1 freezes the same entity names, fields, and relationships as the pre-versioned model layout.
 - A recovery directory may remain after a failed copy or rebuild so diagnostics and copied data are not destroyed.
 - Restoring a recovery copy in place is a separate manual support workflow; this slice guarantees preservation before rebuild but does not add an import UI for SQLite files.

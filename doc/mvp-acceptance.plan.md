@@ -34,7 +34,7 @@ Current focused tests cover:
 - todo draft cancellation without SwiftData insertion, legacy/current recurrence parsing, persistence dismissal decisions, and idempotent keyboard observer registration
 - `ChatSession.generateSummary`
 - `ChatSession` and `SessionMessage` basic integrity
-- V1 versioned-schema compatibility with the existing model layout
+- frozen V1 entity-name compatibility and the full plain-schema legacy store -> V1 adoption -> migration-plan reopen sequence with retained data
 - persistence startup success/failure/retry, recovery copying of store/WAL/SHM, and visible rebuild failure through injected container/file seams
 - explicit chat-session/message deletion and rollback after an injected save failure
 - chat requests remain bound to their captured session across switching/deletion, and provider failure never produces fabricated diary claims
@@ -64,7 +64,7 @@ The first blocking CI gate runs unit tests only. Hosted UI smoke is available th
 
 Before treating a branch as a usable app build, manually verify:
 
-- launch with an existing local store and confirm all existing diary, todo, and chat data remains available
+- launch with an existing pre-versioned local store, confirm V1 adopts it without recovery or deletion, and confirm all existing diary, todo, and chat data remains available
 - force or simulate store-open failure and confirm the app shows retry instead of terminating or creating a replacement store
 - confirm the rebuild action requires destructive confirmation and creates a timestamped `Documents/EasyNoteRecovery` copy containing the store and any existing WAL/SHM sidecars before rebuilding
 - force or simulate rebuild failure and confirm the recovery location remains visible and its files remain intact
