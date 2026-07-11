@@ -45,7 +45,7 @@ struct AIFunctionsView: View {
                     }
                     
                     // 介绍文本
-                    Text("只有在您明确授权后，所选日记文本才会发送给 DeepSeek；录音音频文件不会发送。")
+                    Text("只有在您明确授权后，所选日记文本或生成推荐所需的近期日记才会发送给 DeepSeek；录音音频文件不会发送。")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)

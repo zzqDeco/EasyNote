@@ -146,7 +146,7 @@ Current request contract:
 
 Before creating the request publisher, `OpenAIService` must read a non-empty credential and observe granted consent. The injected `AIHTTPClientProviding` boundary must not be called when either condition fails. Consent is app-wide but revocable; revocation blocks subsequent requests immediately without deleting the Keychain credential.
 
-Only the selected diary or transcription text is placed in the prompt body. Recording audio files are never attached. The DeepSeek API key is transmitted only in the HTTP Authorization header required for provider authentication and is never included in prompt content, response history, SwiftData, backups, or logs.
+Selected diary or transcription text is placed in the corresponding prompt body. Recommendation generation may also include recent diary titles, content, moods, and tags. Recording audio files are never attached. The DeepSeek API key is transmitted only in the HTTP Authorization header required for provider authentication and is never included in prompt content, response history, SwiftData, backups, or logs.
 
 `CredentialStoreProviding` exposes throwing read, save, delete, and legacy-migration operations. `KeychainCredentialStore` performs Security.framework CRUD through an injectable adapter. Duplicate adds update only `kSecValueData`; deletes treat `errSecItemNotFound` as success. Migration preserves an existing non-empty Keychain value as authoritative, performs a write plus exact read-back, and removes the legacy defaults value only after verification.
 

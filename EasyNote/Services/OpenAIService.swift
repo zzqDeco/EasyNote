@@ -14,6 +14,7 @@ enum OpenAIError: Error, LocalizedError {
     case requestFailed(Error)
     case decodingFailed(Error)
     case apiError(String)
+    case consentRequired
 
     var errorDescription: String? {
         switch self {
@@ -27,6 +28,8 @@ enum OpenAIError: Error, LocalizedError {
             return "DeepSeek 响应解析失败：\(error.localizedDescription)"
         case let .apiError(message):
             return message
+        case .consentRequired:
+            return AIContentConsentPolicy.requiredMessage
         }
     }
 }
@@ -226,7 +229,7 @@ class OpenAIService: ObservableObject {
         }
 
         guard consentStore.isGranted else {
-            return Fail(error: OpenAIError.apiError(AIContentConsentPolicy.requiredMessage))
+            return Fail(error: OpenAIError.consentRequired)
                 .eraseToAnyPublisher()
         }
         

@@ -89,7 +89,7 @@ struct AISettingsSection: View {
         } header: {
             Text("AI")
         } footer: {
-            Text("密钥仅存储在本机钥匙串。只有明确授权后，所选日记或转写文本才会发送给 DeepSeek；录音音频文件和密钥不会作为 AI 内容发送，密钥仅在 Authorization 请求头中用于鉴权。")
+            Text("密钥仅存储在本机钥匙串。只有明确授权后，所选日记、转写文本或生成推荐所需的近期日记才会发送给 DeepSeek；录音音频文件和密钥不会作为 AI 内容发送，密钥仅在 Authorization 请求头中用于鉴权。")
         }
         .onAppear(perform: loadState)
         .alert("允许向 DeepSeek 发送内容？", isPresented: $showsConsentPrompt) {

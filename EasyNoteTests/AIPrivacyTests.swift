@@ -99,11 +99,11 @@ struct AIPrivacyTests {
 
         let error = await publisherFailure(service.generateSummary(from: "private diary"))
 
-        guard case let .apiError(message) = try #require(error) else {
+        guard case .consentRequired = try #require(error) else {
             Issue.record("Expected consent denial to produce OpenAIError.apiError")
             return
         }
-        #expect(message == AIContentConsentPolicy.requiredMessage)
+        #expect(error?.localizedDescription == AIContentConsentPolicy.requiredMessage)
         #expect(httpClient.requestCount == 0)
     }
 

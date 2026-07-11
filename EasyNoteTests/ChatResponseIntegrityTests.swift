@@ -231,6 +231,19 @@ struct ChatResponseIntegrityTests {
         #expect(provider.callCount == 0)
     }
 
+    @Test func deniedConsentIsShownInsteadOfUsingLocalFallback() async throws {
+        let context = makeRequestContext(
+            query: "项目",
+            entries: [makeDiarySnapshot(title: "项目记录", content: "完成第一阶段")]
+        )
+        let provider = ImmediateChatProvider(result: .failure(OpenAIError.consentRequired))
+
+        let outcome = await ChatResponseGenerator.generate(context: context, provider: provider)
+
+        #expect(outcome == .failure(AIContentConsentPolicy.requiredMessage))
+        #expect(provider.callCount == 1)
+    }
+
     @Test func responseIsPersistedToCapturedSessionRatherThanCurrentSession() async throws {
         let context = try makeModelContext()
         let viewModel = ChatSessionViewModel(modelContext: context)

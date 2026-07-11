@@ -48,7 +48,7 @@ Current service interactions are routed through narrow protocols for AI, AI cred
 ## Service Layer
 
 - `KeychainCredentialStore` owns the DeepSeek credential, Security.framework CRUD, and verified migration from the legacy `UserDefaults` key. Its generic-password item is device-only and available only while the device is unlocked.
-- `AIContentConsentStore` owns a separate default-denied, revocable permission to send selected diary or transcription text to DeepSeek. Credential presence or migration never grants consent.
+- `AIContentConsentStore` owns a separate default-denied, revocable permission to send selected diary or transcription text, plus recent diary fields used for recommendations, to DeepSeek. Credential presence or migration never grants consent.
 - `OpenAIService` is the DeepSeek-compatible chat-completions client. It reads credentials and consent through injected protocols and must reject missing-key or unconsented requests before delegating to its injected HTTP client.
 - `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
 - `LocalTodoNotificationService` owns iOS local notification authorization state and async todo reminder scheduling/cancellation through an injectable UserNotifications adapter.

@@ -3,7 +3,7 @@
 ## Summary
 
 - Move the DeepSeek API key from plaintext `UserDefaults` storage into the iOS Keychain.
-- Require explicit, revocable consent before any diary or transcription text can be sent to DeepSeek.
+- Require explicit, revocable consent before diary, transcription, or recent-diary recommendation inputs can be sent to DeepSeek.
 
 ## Scope
 
@@ -22,7 +22,7 @@
 - Migration treats an existing Keychain credential as authoritative, performs a Keychain write and matching read-back, and removes `UserDefaults["openai_api_key"]` only after verification succeeds. Repeated migration after success is a no-op.
 - `AIContentConsentProviding` persists a separate boolean decision that defaults to denied. Saving or migrating a key never grants consent; revocation immediately returns the network boundary to fail-closed behavior.
 - `AISettingsSection` keeps typed input transient, never re-renders the stored secret, and presents explicit save, clear, grant, and revoke actions with user-visible errors.
-- The consent disclosure states that selected diary or transcription text is sent to DeepSeek, audio files are not sent, and the API key is used only as the authorization credential rather than prompt content.
+- The consent disclosure states that selected diary or transcription text and recent diary fields used for recommendations may be sent to DeepSeek, audio files are not sent, and the API key is used only as the authorization credential rather than prompt content.
 - `OpenAIService` reads credentials through the store, checks consent, and only then delegates to its injected HTTP client.
 
 ## Test Plan
