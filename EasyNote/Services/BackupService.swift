@@ -72,9 +72,62 @@ struct BackupSummary: Equatable {
     var audioAssetCount: Int
 }
 
+struct BackupLimits: Equatable, Sendable {
+    var maxFileBytes: Int
+    var maxSingleAudioBytes: Int
+    var maxTotalAudioBytes: Int
+    var maxDiaryEntries: Int
+    var maxTodoItems: Int
+    var maxChatSessions: Int
+    var maxSessionMessages: Int
+    var maxAudioAssets: Int
+
+    static let `default` = BackupLimits()
+
+    init(
+        maxFileBytes: Int = 64 * 1_024 * 1_024,
+        maxSingleAudioBytes: Int = 16 * 1_024 * 1_024,
+        maxTotalAudioBytes: Int = 48 * 1_024 * 1_024,
+        maxDiaryEntries: Int = 10_000,
+        maxTodoItems: Int = 50_000,
+        maxChatSessions: Int = 5_000,
+        maxSessionMessages: Int = 100_000,
+        maxAudioAssets: Int = 500
+    ) {
+        self.maxFileBytes = maxFileBytes
+        self.maxSingleAudioBytes = maxSingleAudioBytes
+        self.maxTotalAudioBytes = maxTotalAudioBytes
+        self.maxDiaryEntries = maxDiaryEntries
+        self.maxTodoItems = maxTodoItems
+        self.maxChatSessions = maxChatSessions
+        self.maxSessionMessages = maxSessionMessages
+        self.maxAudioAssets = maxAudioAssets
+    }
+}
+
+enum BackupResourceLimit: String, Equatable, Sendable {
+    case fileBytes
+    case singleAudioBytes
+    case totalAudioBytes
+    case diaryEntries
+    case todoItems
+    case chatSessions
+    case sessionMessages
+    case audioAssets
+}
+
+enum BackupFileOperation: Equatable {
+    case stageWrite(UUID)
+    case preserveExisting(URL)
+    case installStaged(URL)
+    case cleanupManaged(URL)
+}
+
 enum BackupServiceError: LocalizedError, Equatable {
     case unsupportedVersion(Int)
     case invalidBackup(String)
+    case resourceLimitExceeded(BackupResourceLimit, maximum: Int, actual: Int)
+    case fileOperationFailed(String)
     case saveFailed(String)
 
     var errorDescription: String? {
@@ -83,6 +136,10 @@ enum BackupServiceError: LocalizedError, Equatable {
             return "不支持的备份版本: \(version)"
         case .invalidBackup(let message):
             return "备份文件无效: \(message)"
+        case .resourceLimitExceeded(let limit, let maximum, let actual):
+            return "备份超出资源限制（\(limit.rawValue)）：最大 \(maximum)，实际 \(actual)"
+        case .fileOperationFailed(let message):
+            return "备份文件操作失败: \(message)"
         case .saveFailed(let message):
             return "保存备份数据失败: \(message)"
         }
@@ -101,82 +158,65 @@ struct BackupService {
 
     private let fileManager: FileManager
     private let documentsDirectory: URL
+    private let limits: BackupLimits
+    private let saveModelContext: @MainActor (ModelContext) throws -> Void
+    private let backgroundWorkObserver: (() -> Void)?
+    private let fileOperationHook: ((BackupFileOperation) throws -> Void)?
 
     init(
         fileManager: FileManager = .default,
-        documentsDirectory: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        documentsDirectory: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0],
+        limits: BackupLimits = .default,
+        saveModelContext: @escaping @MainActor (ModelContext) throws -> Void = { try $0.save() },
+        backgroundWorkObserver: (() -> Void)? = nil,
+        fileOperationHook: ((BackupFileOperation) throws -> Void)? = nil
     ) {
         self.fileManager = fileManager
         self.documentsDirectory = documentsDirectory
+        self.limits = limits
+        self.saveModelContext = saveModelContext
+        self.backgroundWorkObserver = backgroundWorkObserver
+        self.fileOperationHook = fileOperationHook
     }
 
-    func exportBackup(from modelContext: ModelContext, exportedAt: Date = Date()) throws -> EasyNoteBackupV1 {
-        let diaryEntries = try modelContext.fetch(FetchDescriptor<DiaryEntry>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        ))
-        let todoItems = try modelContext.fetch(FetchDescriptor<TodoItem>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        ))
-        let chatSessions = try modelContext.fetch(FetchDescriptor<ChatSession>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        ))
-
-        let audioExport = exportAudioAssets(for: diaryEntries)
-        let chatExport = exportChatData(from: chatSessions)
-
-        let backup = EasyNoteBackupV1(
-            version: Self.supportedVersion,
-            exportedAt: exportedAt,
-            diaryEntries: diaryEntries.map { entry in
-                BackupDiaryEntry(
-                    id: entry.id,
-                    title: entry.title,
-                    content: entry.content,
-                    mood: entry.mood,
-                    tags: entry.tags,
-                    creationDate: entry.creationDate,
-                    lastModified: entry.lastModified,
-                    isFavorite: entry.isFavorite,
-                    aiSummary: entry.aiSummary,
-                    audioAssetId: audioExport.entryAudioAssetIds[entry.id]
-                )
-            },
-            todoItems: todoItems.map { item in
-                BackupTodoItem(
-                    id: item.id,
-                    title: item.title,
-                    isCompleted: item.isCompleted,
-                    priority: item.priority,
-                    deadline: item.deadline,
-                    notes: item.notes,
-                    isRecurring: item.isRecurring,
-                    recurringInterval: item.recurringInterval,
-                    creationDate: item.creationDate
-                )
-            },
-            chatSessions: chatExport.sessions,
-            sessionMessages: chatExport.messages,
-            audioAssets: audioExport.assets
-        )
-
-        try validate(backup)
-        return backup
+    @MainActor
+    func exportBackup(from modelContext: ModelContext, exportedAt: Date = Date()) async throws -> EasyNoteBackupV1 {
+        let snapshot = try snapshot(from: modelContext, exportedAt: exportedAt)
+        return try await performBackground {
+            try buildBackup(from: snapshot)
+        }
     }
 
-    func encodeBackup(_ backup: EasyNoteBackupV1) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .custom(Self.encodeBackupDate)
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(backup)
+    func encodeBackup(_ backup: EasyNoteBackupV1) async throws -> Data {
+        try await performBackground {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .custom { date, encoder in
+                try Self.encodeBackupDate(date, encoder: encoder)
+            }
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(backup)
+            try validateRawFileSize(data.count)
+            return data
+        }
     }
 
-    func decodeAndValidateBackup(from data: Data) throws -> EasyNoteBackupV1 {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.decodeBackupDate)
-        let decodedBackup = try decoder.decode(EasyNoteBackupV1.self, from: data)
-        let backup = Self.normalizedLegacySharedMessages(in: decodedBackup)
-        try validate(backup)
-        return backup
+    func decodeAndValidateBackup(from data: Data) async throws -> EasyNoteBackupV1 {
+        try validateRawFileSize(data.count)
+        return try await performBackground {
+            try decodeAndValidateBackupSynchronously(from: data)
+        }
+    }
+
+    func readAndDecodeBackup(from url: URL) async throws -> EasyNoteBackupV1 {
+        try await performBackground {
+            let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+            if let fileSize = resourceValues.fileSize {
+                try validateRawFileSize(fileSize)
+            }
+            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            try validateRawFileSize(data.count)
+            return try decodeAndValidateBackupSynchronously(from: data)
+        }
     }
 
     func summary(for backup: EasyNoteBackupV1) -> BackupSummary {
@@ -189,148 +229,72 @@ struct BackupService {
         )
     }
 
+    @MainActor
     @discardableResult
-    func importBackupData(_ data: Data, into modelContext: ModelContext) throws -> BackupImportResult {
-        let backup = try decodeAndValidateBackup(from: data)
-        return try importBackup(backup, into: modelContext)
+    func importBackupData(_ data: Data, into modelContext: ModelContext) async throws -> BackupImportResult {
+        let backup = try await decodeAndValidateBackup(from: data)
+        return try await importBackup(backup, into: modelContext)
     }
 
+    @MainActor
     @discardableResult
-    func importBackup(_ backup: EasyNoteBackupV1, into modelContext: ModelContext) throws -> BackupImportResult {
-        let normalizedBackup = Self.normalizedLegacySharedMessages(in: backup)
-        var restoredAudioURLs: [URL] = []
+    func importBackup(_ backup: EasyNoteBackupV1, into modelContext: ModelContext) async throws -> BackupImportResult {
+        let normalizedBackup = try await performBackground {
+            let normalized = Self.normalizedLegacySharedMessages(in: backup)
+            try validate(normalized)
+            return normalized
+        }
+
+        let preparedAudio = try await performBackground {
+            try prepareAudioImport(for: normalizedBackup.audioAssets)
+        }
 
         do {
-            try validate(normalizedBackup)
-
-            let existingDiaryEntries = try fetchByID(DiaryEntry.self, modelContext: modelContext)
-            let existingTodoItems = try fetchByID(TodoItem.self, modelContext: modelContext)
-            var messagesByID = try fetchByID(SessionMessage.self, modelContext: modelContext)
-            let existingSessions = try fetchByID(ChatSession.self, modelContext: modelContext)
-
-            var restoredAudioByAssetID: [UUID: URL] = [:]
-            for asset in normalizedBackup.audioAssets {
-                let restoredURL = try restoreAudioAsset(asset)
-                restoredAudioURLs.append(restoredURL)
-                restoredAudioByAssetID[asset.id] = restoredURL
-            }
-
-            for messageDTO in normalizedBackup.sessionMessages {
-                let message = messagesByID[messageDTO.id] ?? SessionMessage(
-                    id: messageDTO.id,
-                    content: messageDTO.content,
-                    isUser: messageDTO.isUser,
-                    timestamp: messageDTO.timestamp,
-                    relatedEntryIds: messageDTO.relatedEntryIds
-                )
-
-                message.content = messageDTO.content
-                message.isUser = messageDTO.isUser
-                message.timestamp = messageDTO.timestamp
-                message.relatedEntryIds = messageDTO.relatedEntryIds
-
-                if messagesByID[messageDTO.id] == nil {
-                    modelContext.insert(message)
-                    messagesByID[messageDTO.id] = message
-                }
-            }
-
-            for entryDTO in normalizedBackup.diaryEntries {
-                let entry = existingDiaryEntries[entryDTO.id] ?? DiaryEntry(
-                    id: entryDTO.id,
-                    title: entryDTO.title,
-                    content: entryDTO.content,
-                    mood: entryDTO.mood,
-                    tags: entryDTO.tags,
-                    isFavorite: entryDTO.isFavorite
-                )
-
-                entry.title = entryDTO.title
-                entry.content = entryDTO.content
-                entry.mood = entryDTO.mood
-                entry.tags = entryDTO.tags
-                entry.creationDate = entryDTO.creationDate
-                entry.lastModified = entryDTO.lastModified
-                entry.isFavorite = entryDTO.isFavorite
-                entry.aiSummary = entryDTO.aiSummary
-                entry.audioURL = entryDTO.audioAssetId.flatMap { restoredAudioByAssetID[$0] }
-
-                if existingDiaryEntries[entryDTO.id] == nil {
-                    modelContext.insert(entry)
-                }
-            }
-
-            for todoDTO in normalizedBackup.todoItems {
-                let item = existingTodoItems[todoDTO.id] ?? TodoItem(
-                    id: todoDTO.id,
-                    title: todoDTO.title,
-                    isCompleted: todoDTO.isCompleted,
-                    priority: todoDTO.priority,
-                    deadline: todoDTO.deadline,
-                    notes: todoDTO.notes,
-                    isRecurring: todoDTO.isRecurring,
-                    recurringInterval: todoDTO.recurringInterval
-                )
-
-                item.title = todoDTO.title
-                item.isCompleted = todoDTO.isCompleted
-                item.priority = todoDTO.priority
-                item.deadline = todoDTO.deadline
-                item.notes = todoDTO.notes
-                item.isRecurring = todoDTO.isRecurring
-                item.recurringInterval = todoDTO.recurringInterval
-                item.creationDate = todoDTO.creationDate
-
-                if existingTodoItems[todoDTO.id] == nil {
-                    modelContext.insert(item)
-                }
-            }
-
-            for sessionDTO in normalizedBackup.chatSessions {
-                let session = existingSessions[sessionDTO.id] ?? ChatSession(
-                    id: sessionDTO.id,
-                    title: sessionDTO.title
-                )
-
-                let existingSession = existingSessions[sessionDTO.id]
-                let mergedMessages = mergedSessionMessages(
-                    importedMessageIDs: sessionDTO.messageIds,
-                    messagesByID: messagesByID,
-                    existingSession: existingSession
-                )
-
-                session.title = sessionDTO.title
-                session.creationDate = sessionDTO.creationDate
-                session.lastModifiedDate = mergedLastModifiedDate(
-                    importedLastModifiedDate: sessionDTO.lastModifiedDate,
-                    existingSession: existingSession,
-                    messages: mergedMessages
-                )
-                session.messages = mergedMessages
-
-                if existingSessions[sessionDTO.id] == nil {
-                    modelContext.insert(session)
-                }
-            }
-
-            try modelContext.save()
-
-            return BackupImportResult(summary: summary(for: normalizedBackup))
-        } catch let error as BackupServiceError {
-            modelContext.rollback()
-            removeRestoredAudioFiles(restoredAudioURLs)
-            throw error
+            try apply(
+                normalizedBackup,
+                restoredAudioByAssetID: preparedAudio.restoredAudioByAssetID,
+                to: modelContext
+            )
+            try saveModelContext(modelContext)
         } catch {
             modelContext.rollback()
-            removeRestoredAudioFiles(restoredAudioURLs)
+            do {
+                try await performBackground {
+                    try rollbackAudioImport(preparedAudio.transaction)
+                }
+            } catch let rollbackError {
+                throw BackupServiceError.saveFailed(
+                    "\(error.localizedDescription)；录音回滚失败: \(rollbackError.localizedDescription)"
+                )
+            }
+
+            if let backupError = error as? BackupServiceError {
+                throw backupError
+            }
             throw BackupServiceError.saveFailed(error.localizedDescription)
         }
+
+        let referencedAudioPaths = try? referencedAudioPaths(in: modelContext)
+        try? await performBackground {
+            try? finalizeAudioImport(preparedAudio.transaction)
+            if let referencedAudioPaths {
+                try? removeUnreferencedManagedRecordings(referencedPaths: referencedAudioPaths)
+            }
+        }
+
+        return BackupImportResult(summary: summary(for: normalizedBackup))
     }
 
     func validate(_ backup: EasyNoteBackupV1) throws {
         guard backup.version == Self.supportedVersion else {
             throw BackupServiceError.unsupportedVersion(backup.version)
         }
+
+        try validateCount(backup.diaryEntries.count, maximum: limits.maxDiaryEntries, limit: .diaryEntries)
+        try validateCount(backup.todoItems.count, maximum: limits.maxTodoItems, limit: .todoItems)
+        try validateCount(backup.chatSessions.count, maximum: limits.maxChatSessions, limit: .chatSessions)
+        try validateCount(backup.sessionMessages.count, maximum: limits.maxSessionMessages, limit: .sessionMessages)
+        try validateCount(backup.audioAssets.count, maximum: limits.maxAudioAssets, limit: .audioAssets)
 
         try ensureUnique(backup.diaryEntries.map(\.id), name: "日记 ID")
         try ensureUnique(backup.todoItems.map(\.id), name: "待办 ID")
@@ -363,6 +327,7 @@ struct BackupService {
             throw BackupServiceError.invalidBackup("消息内容不能为空")
         }
 
+        var totalAudioBytes = 0
         for asset in backup.audioAssets {
             let pathExtension = asset.pathExtension.lowercased()
             if !Self.supportedAudioExtensions.contains(pathExtension) {
@@ -372,49 +337,431 @@ struct BackupService {
             if asset.byteCount != asset.data.count {
                 throw BackupServiceError.invalidBackup("录音资产大小不匹配")
             }
+
+            try validateCount(
+                asset.data.count,
+                maximum: limits.maxSingleAudioBytes,
+                limit: .singleAudioBytes
+            )
+            totalAudioBytes = try addingWithoutOverflow(totalAudioBytes, asset.data.count)
         }
+        try validateCount(totalAudioBytes, maximum: limits.maxTotalAudioBytes, limit: .totalAudioBytes)
     }
 
-    private func exportAudioAssets(for entries: [DiaryEntry]) -> (assets: [BackupAudioAsset], entryAudioAssetIds: [UUID: UUID]) {
-        var assets: [BackupAudioAsset] = []
-        var entryAudioAssetIds: [UUID: UUID] = [:]
+    @MainActor
+    private func snapshot(from modelContext: ModelContext, exportedAt: Date) throws -> BackupSnapshot {
+        let diaryEntries = try modelContext.fetch(FetchDescriptor<DiaryEntry>(
+            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
+        ))
+        let todoItems = try modelContext.fetch(FetchDescriptor<TodoItem>(
+            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
+        ))
+        let chatSessions = try modelContext.fetch(FetchDescriptor<ChatSession>(
+            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
+        ))
 
-        for entry in entries {
-            guard let audioURL = entry.audioURL,
-                  audioURL.isFileURL,
-                  Self.supportedAudioExtensions.contains(audioURL.pathExtension.lowercased()),
-                  fileManager.fileExists(atPath: audioURL.path),
-                  let data = try? Data(contentsOf: audioURL) else {
+        let chatExport = exportChatData(from: chatSessions)
+        let diarySnapshots = diaryEntries.map { entry in
+            let audioSource: BackupAudioSource?
+            if let audioURL = entry.audioURL,
+               audioURL.isFileURL,
+               Self.supportedAudioExtensions.contains(audioURL.pathExtension.lowercased()) {
+                audioSource = BackupAudioSource(assetID: UUID(), url: audioURL)
+            } else {
+                audioSource = nil
+            }
+
+            return BackupDiarySnapshot(
+                entry: BackupDiaryEntry(
+                    id: entry.id,
+                    title: entry.title,
+                    content: entry.content,
+                    mood: entry.mood,
+                    tags: entry.tags,
+                    creationDate: entry.creationDate,
+                    lastModified: entry.lastModified,
+                    isFavorite: entry.isFavorite,
+                    aiSummary: entry.aiSummary,
+                    audioAssetId: audioSource?.assetID
+                ),
+                audioSource: audioSource
+            )
+        }
+
+        return BackupSnapshot(
+            exportedAt: exportedAt,
+            diarySnapshots: diarySnapshots,
+            todoItems: todoItems.map { item in
+                BackupTodoItem(
+                    id: item.id,
+                    title: item.title,
+                    isCompleted: item.isCompleted,
+                    priority: item.priority,
+                    deadline: item.deadline,
+                    notes: item.notes,
+                    isRecurring: item.isRecurring,
+                    recurringInterval: item.recurringInterval,
+                    creationDate: item.creationDate
+                )
+            },
+            chatSessions: chatExport.sessions,
+            sessionMessages: chatExport.messages
+        )
+    }
+
+    private func buildBackup(from snapshot: BackupSnapshot) throws -> EasyNoteBackupV1 {
+        try validateCount(snapshot.diarySnapshots.count, maximum: limits.maxDiaryEntries, limit: .diaryEntries)
+        try validateCount(snapshot.todoItems.count, maximum: limits.maxTodoItems, limit: .todoItems)
+        try validateCount(snapshot.chatSessions.count, maximum: limits.maxChatSessions, limit: .chatSessions)
+        try validateCount(snapshot.sessionMessages.count, maximum: limits.maxSessionMessages, limit: .sessionMessages)
+
+        var audioAssets: [BackupAudioAsset] = []
+        var exportedAudioIDs = Set<UUID>()
+        var totalAudioBytes = 0
+
+        for source in snapshot.diarySnapshots.compactMap(\.audioSource) {
+            guard fileManager.fileExists(atPath: source.url.path),
+                  let resourceValues = try? source.url.resourceValues(forKeys: [.fileSizeKey]) else {
                 continue
             }
 
-            let assetID = UUID()
-            assets.append(BackupAudioAsset(
-                id: assetID,
-                originalFilename: audioURL.lastPathComponent,
-                pathExtension: audioURL.pathExtension.lowercased(),
+            let fileSize = resourceValues.fileSize ?? 0
+            try validateCount(fileSize, maximum: limits.maxSingleAudioBytes, limit: .singleAudioBytes)
+            let projectedTotal = try addingWithoutOverflow(totalAudioBytes, fileSize)
+            try validateCount(projectedTotal, maximum: limits.maxTotalAudioBytes, limit: .totalAudioBytes)
+
+            guard let data = try? Data(contentsOf: source.url, options: .mappedIfSafe) else {
+                continue
+            }
+            try validateCount(data.count, maximum: limits.maxSingleAudioBytes, limit: .singleAudioBytes)
+            totalAudioBytes = try addingWithoutOverflow(totalAudioBytes, data.count)
+            try validateCount(totalAudioBytes, maximum: limits.maxTotalAudioBytes, limit: .totalAudioBytes)
+
+            audioAssets.append(BackupAudioAsset(
+                id: source.assetID,
+                originalFilename: source.url.lastPathComponent,
+                pathExtension: source.url.pathExtension.lowercased(),
                 byteCount: data.count,
                 data: data
             ))
-            entryAudioAssetIds[entry.id] = assetID
+            exportedAudioIDs.insert(source.assetID)
         }
 
-        return (assets, entryAudioAssetIds)
+        let backup = EasyNoteBackupV1(
+            version: Self.supportedVersion,
+            exportedAt: snapshot.exportedAt,
+            diaryEntries: snapshot.diarySnapshots.map { snapshot in
+                var entry = snapshot.entry
+                if let audioAssetID = entry.audioAssetId, !exportedAudioIDs.contains(audioAssetID) {
+                    entry.audioAssetId = nil
+                }
+                return entry
+            },
+            todoItems: snapshot.todoItems,
+            chatSessions: snapshot.chatSessions,
+            sessionMessages: snapshot.sessionMessages,
+            audioAssets: audioAssets
+        )
+        try validate(backup)
+        return backup
     }
 
-    private func restoreAudioAsset(_ asset: BackupAudioAsset) throws -> URL {
-        try fileManager.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
-
-        let restoredURL = availableRestoredAudioURL(for: asset)
-
-        try asset.data.write(to: restoredURL, options: .atomic)
-        return restoredURL
-    }
-
-    private func removeRestoredAudioFiles(_ urls: [URL]) {
-        for url in urls where fileManager.fileExists(atPath: url.path) {
-            try? fileManager.removeItem(at: url)
+    private func decodeAndValidateBackupSynchronously(from data: Data) throws -> EasyNoteBackupV1 {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            try Self.decodeBackupDate(decoder)
         }
+        let decodedBackup = try decoder.decode(EasyNoteBackupV1.self, from: data)
+        let backup = Self.normalizedLegacySharedMessages(in: decodedBackup)
+        try validate(backup)
+        return backup
+    }
+
+    @MainActor
+    private func apply(
+        _ backup: EasyNoteBackupV1,
+        restoredAudioByAssetID: [UUID: URL],
+        to modelContext: ModelContext
+    ) throws {
+        let existingDiaryEntries = try fetchByID(DiaryEntry.self, modelContext: modelContext)
+        let existingTodoItems = try fetchByID(TodoItem.self, modelContext: modelContext)
+        var messagesByID = try fetchByID(SessionMessage.self, modelContext: modelContext)
+        let existingSessions = try fetchByID(ChatSession.self, modelContext: modelContext)
+
+        for messageDTO in backup.sessionMessages {
+            let message = messagesByID[messageDTO.id] ?? SessionMessage(
+                id: messageDTO.id,
+                content: messageDTO.content,
+                isUser: messageDTO.isUser,
+                timestamp: messageDTO.timestamp,
+                relatedEntryIds: messageDTO.relatedEntryIds
+            )
+
+            message.content = messageDTO.content
+            message.isUser = messageDTO.isUser
+            message.timestamp = messageDTO.timestamp
+            message.relatedEntryIds = messageDTO.relatedEntryIds
+
+            if messagesByID[messageDTO.id] == nil {
+                modelContext.insert(message)
+                messagesByID[messageDTO.id] = message
+            }
+        }
+
+        for entryDTO in backup.diaryEntries {
+            let entry = existingDiaryEntries[entryDTO.id] ?? DiaryEntry(
+                id: entryDTO.id,
+                title: entryDTO.title,
+                content: entryDTO.content,
+                mood: entryDTO.mood,
+                tags: entryDTO.tags,
+                isFavorite: entryDTO.isFavorite
+            )
+
+            entry.title = entryDTO.title
+            entry.content = entryDTO.content
+            entry.mood = entryDTO.mood
+            entry.tags = entryDTO.tags
+            entry.creationDate = entryDTO.creationDate
+            entry.lastModified = entryDTO.lastModified
+            entry.isFavorite = entryDTO.isFavorite
+            entry.aiSummary = entryDTO.aiSummary
+            entry.audioURL = entryDTO.audioAssetId.flatMap { restoredAudioByAssetID[$0] }
+
+            if existingDiaryEntries[entryDTO.id] == nil {
+                modelContext.insert(entry)
+            }
+        }
+
+        for todoDTO in backup.todoItems {
+            let item = existingTodoItems[todoDTO.id] ?? TodoItem(
+                id: todoDTO.id,
+                title: todoDTO.title,
+                isCompleted: todoDTO.isCompleted,
+                priority: todoDTO.priority,
+                deadline: todoDTO.deadline,
+                notes: todoDTO.notes,
+                isRecurring: todoDTO.isRecurring,
+                recurringInterval: todoDTO.recurringInterval
+            )
+
+            item.title = todoDTO.title
+            item.isCompleted = todoDTO.isCompleted
+            item.priority = todoDTO.priority
+            item.deadline = todoDTO.deadline
+            item.notes = todoDTO.notes
+            item.isRecurring = todoDTO.isRecurring
+            item.recurringInterval = todoDTO.recurringInterval
+            item.creationDate = todoDTO.creationDate
+
+            if existingTodoItems[todoDTO.id] == nil {
+                modelContext.insert(item)
+            }
+        }
+
+        for sessionDTO in backup.chatSessions {
+            let session = existingSessions[sessionDTO.id] ?? ChatSession(
+                id: sessionDTO.id,
+                title: sessionDTO.title
+            )
+
+            let existingSession = existingSessions[sessionDTO.id]
+            let mergedMessages = mergedSessionMessages(
+                importedMessageIDs: sessionDTO.messageIds,
+                messagesByID: messagesByID,
+                existingSession: existingSession
+            )
+
+            session.title = sessionDTO.title
+            session.creationDate = sessionDTO.creationDate
+            session.lastModifiedDate = mergedLastModifiedDate(
+                importedLastModifiedDate: sessionDTO.lastModifiedDate,
+                existingSession: existingSession,
+                messages: mergedMessages
+            )
+            session.messages = mergedMessages
+
+            if existingSessions[sessionDTO.id] == nil {
+                modelContext.insert(session)
+            }
+        }
+    }
+
+    private func prepareAudioImport(for assets: [BackupAudioAsset]) throws -> PreparedAudioImport {
+        guard !assets.isEmpty else {
+            return PreparedAudioImport(transaction: nil, restoredAudioByAssetID: [:])
+        }
+
+        let root = documentsDirectory.appendingPathComponent(
+            ".EasyNoteBackupImport-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let stagingDirectory = root.appendingPathComponent("staging", isDirectory: true)
+        let rollbackDirectory = root.appendingPathComponent("rollback", isDirectory: true)
+        var transaction = AudioFileTransaction(
+            rootDirectory: root,
+            touchedTargets: [],
+            rollbackCopies: [:]
+        )
+        var restoredAudioByAssetID: [UUID: URL] = [:]
+
+        do {
+            try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
+
+            for asset in assets.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+                let filename = restoredAudioFilename(for: asset)
+                let stagedURL = stagingDirectory.appendingPathComponent(filename)
+                let targetURL = documentsDirectory.appendingPathComponent(filename)
+                let rollbackURL = rollbackDirectory.appendingPathComponent(filename)
+
+                try fileOperationHook?(.stageWrite(asset.id))
+                try asset.data.write(to: stagedURL, options: .atomic)
+
+                if fileManager.fileExists(atPath: targetURL.path) {
+                    try fileOperationHook?(.preserveExisting(targetURL))
+                    try fileManager.copyItem(at: targetURL, to: rollbackURL)
+                    transaction.rollbackCopies[targetURL] = rollbackURL
+                }
+
+                transaction.touchedTargets.append(targetURL)
+                try fileOperationHook?(.installStaged(targetURL))
+                if fileManager.fileExists(atPath: targetURL.path) {
+                    try fileManager.removeItem(at: targetURL)
+                }
+                try fileManager.moveItem(at: stagedURL, to: targetURL)
+                restoredAudioByAssetID[asset.id] = targetURL
+            }
+
+            return PreparedAudioImport(
+                transaction: transaction,
+                restoredAudioByAssetID: restoredAudioByAssetID
+            )
+        } catch {
+            do {
+                try rollbackAudioImport(transaction)
+            } catch let rollbackError {
+                throw BackupServiceError.fileOperationFailed(
+                    "\(error.localizedDescription)；录音回滚失败: \(rollbackError.localizedDescription)"
+                )
+            }
+            throw BackupServiceError.fileOperationFailed(error.localizedDescription)
+        }
+    }
+
+    private func rollbackAudioImport(_ transaction: AudioFileTransaction?) throws {
+        guard let transaction else { return }
+
+        for targetURL in transaction.touchedTargets.reversed() {
+            if fileManager.fileExists(atPath: targetURL.path) {
+                try fileManager.removeItem(at: targetURL)
+            }
+            if let rollbackURL = transaction.rollbackCopies[targetURL],
+               fileManager.fileExists(atPath: rollbackURL.path) {
+                try fileManager.copyItem(at: rollbackURL, to: targetURL)
+            }
+        }
+
+        if fileManager.fileExists(atPath: transaction.rootDirectory.path) {
+            try fileManager.removeItem(at: transaction.rootDirectory)
+        }
+    }
+
+    private func finalizeAudioImport(_ transaction: AudioFileTransaction?) throws {
+        guard let transaction,
+              fileManager.fileExists(atPath: transaction.rootDirectory.path) else { return }
+        try fileManager.removeItem(at: transaction.rootDirectory)
+    }
+
+    private func removeUnreferencedManagedRecordings(referencedPaths: Set<String>) throws {
+        guard fileManager.fileExists(atPath: documentsDirectory.path) else { return }
+
+        let children = try fileManager.contentsOfDirectory(
+            at: documentsDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        for url in children where isManagedRecording(url) {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+                continue
+            }
+            let path = url.standardizedFileURL.path
+            guard !referencedPaths.contains(path) else { continue }
+            try fileOperationHook?(.cleanupManaged(url))
+            try fileManager.removeItem(at: url)
+        }
+    }
+
+    private func isManagedRecording(_ url: URL) -> Bool {
+        let filename = url.lastPathComponent
+        let supportedExtension = Self.supportedAudioExtensions.contains(url.pathExtension.lowercased())
+        return supportedExtension
+            && (filename.hasPrefix("recording_") || filename.hasPrefix("restored_recording_"))
+    }
+
+    @MainActor
+    private func referencedAudioPaths(in modelContext: ModelContext) throws -> Set<String> {
+        let entries = try modelContext.fetch(FetchDescriptor<DiaryEntry>())
+        return Set(entries.compactMap { $0.audioURL?.standardizedFileURL.path })
+    }
+
+    private func restoredAudioFilename(for asset: BackupAudioAsset) -> String {
+        "restored_recording_\(asset.id.uuidString).\(asset.pathExtension.lowercased())"
+    }
+
+    private func validateRawFileSize(_ byteCount: Int) throws {
+        try validateCount(byteCount, maximum: limits.maxFileBytes, limit: .fileBytes)
+    }
+
+    private func validateCount(_ actual: Int, maximum: Int, limit: BackupResourceLimit) throws {
+        guard actual <= maximum else {
+            throw BackupServiceError.resourceLimitExceeded(limit, maximum: maximum, actual: actual)
+        }
+    }
+
+    private func addingWithoutOverflow(_ lhs: Int, _ rhs: Int) throws -> Int {
+        let (value, overflow) = lhs.addingReportingOverflow(rhs)
+        guard !overflow else {
+            throw BackupServiceError.resourceLimitExceeded(.totalAudioBytes, maximum: limits.maxTotalAudioBytes, actual: .max)
+        }
+        return value
+    }
+
+    private func performBackground<T>(_ operation: @escaping () throws -> T) async throws -> T {
+        let observer = backgroundWorkObserver
+        return try await Task.detached(priority: .userInitiated) {
+            observer?()
+            return try operation()
+        }.value
+    }
+
+    private struct BackupAudioSource {
+        var assetID: UUID
+        var url: URL
+    }
+
+    private struct BackupDiarySnapshot {
+        var entry: BackupDiaryEntry
+        var audioSource: BackupAudioSource?
+    }
+
+    private struct BackupSnapshot {
+        var exportedAt: Date
+        var diarySnapshots: [BackupDiarySnapshot]
+        var todoItems: [BackupTodoItem]
+        var chatSessions: [BackupChatSession]
+        var sessionMessages: [BackupSessionMessage]
+    }
+
+    private struct AudioFileTransaction {
+        var rootDirectory: URL
+        var touchedTargets: [URL]
+        var rollbackCopies: [URL: URL]
+    }
+
+    private struct PreparedAudioImport {
+        var transaction: AudioFileTransaction?
+        var restoredAudioByAssetID: [UUID: URL]
     }
 
     private func exportChatData(
@@ -552,18 +899,6 @@ struct BackupService {
         }
         dates.append(contentsOf: messages.map(\.timestamp))
         return dates.max() ?? importedLastModifiedDate
-    }
-
-    private func availableRestoredAudioURL(for asset: BackupAudioAsset) -> URL {
-        let pathExtension = asset.pathExtension.lowercased()
-        let baseFilename = "restored_recording_\(asset.id.uuidString)"
-        let preferredURL = documentsDirectory.appendingPathComponent("\(baseFilename).\(pathExtension)")
-
-        guard fileManager.fileExists(atPath: preferredURL.path) else {
-            return preferredURL
-        }
-
-        return documentsDirectory.appendingPathComponent("\(baseFilename)_\(UUID().uuidString).\(pathExtension)")
     }
 
     private func fetchByID<T: PersistentModel & Identifiable>(

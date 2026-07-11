@@ -38,15 +38,17 @@ struct BackupSettingsSection: View {
     @State private var showImportConfirmation = false
     @State private var backupMessage: String?
     @State private var backupErrorMessage: String?
+    @State private var isBackupOperationInProgress = false
 
     var body: some View {
         Section {
             Button {
-                prepareBackupExport()
+                Task { await prepareBackupExport() }
             } label: {
                 Label("导出备份", systemImage: "square.and.arrow.up")
             }
             .accessibilityIdentifier("settings.exportBackupButton")
+            .disabled(isBackupOperationInProgress)
 
             Button {
                 isImportingBackup = true
@@ -54,6 +56,7 @@ struct BackupSettingsSection: View {
                 Label("导入备份", systemImage: "square.and.arrow.down")
             }
             .accessibilityIdentifier("settings.importBackupButton")
+            .disabled(isBackupOperationInProgress)
 
             if let backupMessage {
                 Text(backupMessage)
@@ -98,7 +101,7 @@ struct BackupSettingsSection: View {
             presenting: pendingImportSummary
         ) { _ in
             Button("确认导入") {
-                importPendingBackup()
+                Task { await importPendingBackup() }
             }
             Button("取消", role: .cancel) {
                 pendingImportBackup = nil
@@ -115,10 +118,14 @@ struct BackupSettingsSection: View {
         return "EasyNoteBackup-\(formatter.string(from: Date()))"
     }
 
-    private func prepareBackupExport() {
+    @MainActor
+    private func prepareBackupExport() async {
+        isBackupOperationInProgress = true
+        defer { isBackupOperationInProgress = false }
+
         do {
-            let backup = try backupService.exportBackup(from: modelContext)
-            backupDocument = EasyNoteBackupDocument(data: try backupService.encodeBackup(backup))
+            let backup = try await backupService.exportBackup(from: modelContext)
+            backupDocument = EasyNoteBackupDocument(data: try await backupService.encodeBackup(backup))
             isExportingBackup = true
             backupMessage = "已准备导出：\(importPreviewText(backupService.summary(for: backup)))"
             backupErrorMessage = nil
@@ -134,15 +141,28 @@ struct BackupSettingsSection: View {
                 return
             }
 
-            let didAccess = url.startAccessingSecurityScopedResource()
-            defer {
-                if didAccess {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
+            Task { await loadBackupForConfirmation(from: url) }
+        } catch {
+            pendingImportBackup = nil
+            pendingImportSummary = nil
+            backupErrorMessage = "读取备份失败: \(error.localizedDescription)"
+        }
+    }
 
-            let data = try Data(contentsOf: url)
-            let backup = try backupService.decodeAndValidateBackup(from: data)
+    @MainActor
+    private func loadBackupForConfirmation(from url: URL) async {
+        isBackupOperationInProgress = true
+        defer { isBackupOperationInProgress = false }
+
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            let backup = try await backupService.readAndDecodeBackup(from: url)
             pendingImportBackup = backup
             pendingImportSummary = backupService.summary(for: backup)
             backupErrorMessage = nil
@@ -154,14 +174,18 @@ struct BackupSettingsSection: View {
         }
     }
 
-    private func importPendingBackup() {
+    @MainActor
+    private func importPendingBackup() async {
         guard let pendingImportBackup else {
             backupErrorMessage = "没有可导入的备份"
             return
         }
 
+        isBackupOperationInProgress = true
+        defer { isBackupOperationInProgress = false }
+
         do {
-            let result = try backupService.importBackup(pendingImportBackup, into: modelContext)
+            let result = try await backupService.importBackup(pendingImportBackup, into: modelContext)
             backupMessage = "导入完成：\(importPreviewText(result.summary))"
             backupErrorMessage = nil
             self.pendingImportBackup = nil

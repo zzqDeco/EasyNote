@@ -44,16 +44,20 @@ protocol CloudKitDiarySyncProviding: AnyObject {
 }
 
 protocol BackupServiceProviding {
-    func exportBackup(from modelContext: ModelContext, exportedAt: Date) throws -> EasyNoteBackupV1
-    func encodeBackup(_ backup: EasyNoteBackupV1) throws -> Data
-    func decodeAndValidateBackup(from data: Data) throws -> EasyNoteBackupV1
+    @MainActor
+    func exportBackup(from modelContext: ModelContext, exportedAt: Date) async throws -> EasyNoteBackupV1
+    func encodeBackup(_ backup: EasyNoteBackupV1) async throws -> Data
+    func decodeAndValidateBackup(from data: Data) async throws -> EasyNoteBackupV1
+    func readAndDecodeBackup(from url: URL) async throws -> EasyNoteBackupV1
     func summary(for backup: EasyNoteBackupV1) -> BackupSummary
-    func importBackup(_ backup: EasyNoteBackupV1, into modelContext: ModelContext) throws -> BackupImportResult
+    @MainActor
+    func importBackup(_ backup: EasyNoteBackupV1, into modelContext: ModelContext) async throws -> BackupImportResult
 }
 
 extension BackupServiceProviding {
-    func exportBackup(from modelContext: ModelContext) throws -> EasyNoteBackupV1 {
-        try exportBackup(from: modelContext, exportedAt: Date())
+    @MainActor
+    func exportBackup(from modelContext: ModelContext) async throws -> EasyNoteBackupV1 {
+        try await exportBackup(from: modelContext, exportedAt: Date())
     }
 }
 
