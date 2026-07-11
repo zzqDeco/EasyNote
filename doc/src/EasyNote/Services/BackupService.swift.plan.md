@@ -20,10 +20,11 @@
 - Audio assets are encoded as base64 JSON data and restored under Documents as `restored_recording_<uuid>.<ext>`.
 - Exported chat messages must be reachable from exported chat sessions; orphaned `SessionMessage` records are not user-visible and are not included.
 - Legacy messages referenced by multiple sessions are exported as independent backup message IDs with copied payloads, preserving every conversation while keeping the generated backup importable.
-- Validation rejects a message ID referenced by more than one chat session because the SwiftData relationship has a single owning session.
+- Decode and import normalize shared references in older V1 files before strict validation, preserving V1 restore compatibility without recreating unsupported shared SwiftData relationships.
+- Validation rejects any cross-session message reference that remains after compatibility normalization.
 - Import validates the full backup before writing; failed import rolls back the `ModelContext` and removes newly restored audio files.
 - Import preserves local records absent from the backup, including existing messages attached to an imported session, without moving that session behind newer preserved messages in the session list.
 
 ## Tests
 
-- Unit tests cover encode/decode, export shape, legacy shared-message normalization, audio export/restore, invalid and cross-session message rejection, no-write failure behavior, upsert import behavior, orphaned message exclusion, app-compatible blank titles, and preserved local message timestamps.
+- Unit tests cover encode/decode, export shape, legacy shared-message export and import normalization, audio export/restore, invalid reference rejection, no-write failure behavior, upsert import behavior, orphaned message exclusion, app-compatible blank titles, and preserved local message timestamps.

@@ -26,6 +26,7 @@
 - A failed rebuild remains user-visible and reports the recovery-copy location. Recovery is never triggered automatically.
 - `ChatSessionViewModel.deleteSession` performs the session and unshared-message deletes in a short-lived `ModelContext`; message UUIDs still referenced by another legacy session are retained, and a failed save discards that context without contaminating the UI context or invoking Xcode 16.4's crashing versioned-relationship rollback path.
 - Backup export converts those legacy cross-session references into independent backup-only message UUIDs while preserving payloads, keeping generated backups valid under the no-shared-message import contract.
+- Older V1 backups receive the same compatibility normalization before validation and import.
 
 ## Test Plan
 
@@ -33,6 +34,7 @@
 - Cover existing-store open, startup failure followed by retry, recovery copies of store/WAL/SHM, and rebuild failure.
 - Cover successful session deletion leaving no unshared `SessionMessage` rows, preserving IDs referenced by another legacy session, and failed deletion restoring both session and messages.
 - Cover deterministic normalization of legacy shared message IDs during backup export.
+- Cover restoration of older V1 backups containing shared message references.
 - Run the hosted SwiftData unit target without parallel test runners so independent in-memory containers do not race inside the shared test host.
 - Cover real chat integrity constraints: non-empty session title, non-empty message content, and non-future timestamps.
 - Run `git diff --check`, Markdown link validation, `xcodebuild -list`, generic-simulator build-for-testing, Release generic-device build, and focused tests when a compatible simulator runtime is available.

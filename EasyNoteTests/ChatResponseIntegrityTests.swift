@@ -436,10 +436,10 @@ struct ChatResponseIntegrityTests {
         context.insert(existingSession)
         try context.save()
         var shouldFailSave = true
-        let viewModel = ChatSessionViewModel(modelContext: context) { modelContext in
+        let viewModel = ChatSessionViewModel(modelContext: context, saveAction: { modelContext in
             if shouldFailSave { throw ChatProviderTestError.failed }
             try modelContext.save()
-        }
+        })
         let provider = ImmediateChatProvider(result: .success("不应生成"))
         let request = makeRequestContext(sessionID: existingSession.id, query: "保存失败")
 

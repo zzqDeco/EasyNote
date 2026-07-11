@@ -2344,7 +2344,7 @@ struct EasyNoteTests {
         #expect(todos.map(\.title) == ["本地待办"])
     }
 
-    @Test func backupImportRejectsMessagesSharedAcrossSessionsWithoutWriting() async throws {
+    @Test func backupImportNormalizesLegacyMessagesSharedAcrossSessions() async throws {
         let context = try makeModelContext()
         let messageID = UUID()
         let backup = EasyNoteBackupV1(
@@ -2380,17 +2380,14 @@ struct EasyNoteTests {
             audioAssets: []
         )
 
-        do {
-            _ = try BackupService().importBackup(backup, into: context)
-            Issue.record("Expected shared message references to fail validation")
-        } catch BackupServiceError.invalidBackup(let message) {
-            #expect(message == "消息不能同时属于多个会话")
-        } catch {
-            Issue.record("Unexpected error: \(error)")
-        }
+        _ = try BackupService().importBackup(backup, into: context)
 
-        #expect(try context.fetch(FetchDescriptor<ChatSession>()).isEmpty)
-        #expect(try context.fetch(FetchDescriptor<SessionMessage>()).isEmpty)
+        let sessions = try context.fetch(FetchDescriptor<ChatSession>())
+        let messages = try context.fetch(FetchDescriptor<SessionMessage>())
+        #expect(sessions.count == 2)
+        #expect(messages.count == 2)
+        #expect(Set(sessions.flatMap { $0.messages.map(\.id) }).count == 2)
+        #expect(messages.allSatisfy { $0.content == "不能共享的消息" })
     }
 
     @Test func backupImportUpsertsSameIDAndPreservesUnmentionedLocalRecords() async throws {
