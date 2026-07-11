@@ -350,6 +350,18 @@ struct ChatResponseIntegrityTests {
         #expect(!(try verificationContext.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
     }
 
+    @Test func deletingSessionPreservesMessageIDsReferencedByOtherSessions() {
+        let sharedMessageID = UUID()
+        let privateMessageID = UUID()
+
+        let messageIDsToDelete = ChatSessionViewModel.messageIDsSafeToDelete(
+            targetMessageIDs: [sharedMessageID, privateMessageID],
+            remainingSessionMessageIDs: [[sharedMessageID]]
+        )
+
+        #expect(messageIDsToDelete == [privateMessageID])
+    }
+
     @Test func failedSessionDeletionRollsBackSessionAndMessages() async throws {
         let context = try makeModelContext()
         let viewModel = ChatSessionViewModel(

@@ -456,11 +456,25 @@ final class ChatSessionViewModel: ObservableObject {
         guard let session = sessions.first(where: { $0.id == sessionID }) else {
             return
         }
-        for message in session.messages {
+        let messageIDsToDelete = messageIDsSafeToDelete(
+            targetMessageIDs: session.messages.map(\.id),
+            remainingSessionMessageIDs: sessions
+                .filter { $0.id != sessionID }
+                .map { $0.messages.map(\.id) }
+        )
+        for message in session.messages where messageIDsToDelete.contains(message.id) {
             deletionContext.delete(message)
         }
         deletionContext.delete(session)
         try deletionContext.save()
+    }
+
+    static func messageIDsSafeToDelete(
+        targetMessageIDs: [UUID],
+        remainingSessionMessageIDs: [[UUID]]
+    ) -> Set<UUID> {
+        let retainedMessageIDs = Set(remainingSessionMessageIDs.joined())
+        return Set(targetMessageIDs).subtracting(retainedMessageIDs)
     }
 
     private func normalizeMessageOrder(in session: ChatSession) {
