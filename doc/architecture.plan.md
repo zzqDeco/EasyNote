@@ -6,6 +6,7 @@ EasyNote is a SwiftUI iOS app organized around a small set of UI, state, persist
 
 - `EasyNoteApp` owns app startup and the shared SwiftData `ModelContainer`.
 - `ContentView` owns tab-level composition, shared theme state, and stable app-level ViewModel instances.
+- `SettingsView` is the Settings composition root: it forwards `ModelContext`, `ScenePhase`, theme state, and one `SettingsDependencies` bundle to feature-owned sections.
 - SwiftUI views receive ViewModels explicitly where possible and use environment objects for app-wide tab/theme state.
 - UIKit/AppKit-style helpers should stay isolated in `Extensions/` or small view adapters.
 
@@ -37,7 +38,7 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - Existing-diary edits are staged in a pure `DiaryEditDraft`; `DiaryViewModel` applies content, mood, tags, and recording URL through one explicit save, while Cancel leaves the SwiftData model unchanged.
 
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
-Current service interactions are routed through narrow protocols for AI, speech recognition, CloudKit diary sync, backup import/export, local todo notification scheduling, and system Reminders writing so ViewModels and Settings can be tested with fakes without changing production defaults.
+Current service interactions are routed through narrow protocols for AI, speech recognition, CloudKit diary sync, backup import/export, local todo notification scheduling, and system Reminders writing so ViewModels and Settings sections can be tested with fakes without changing production defaults. `SettingsDependencies` groups the existing Settings protocols and stores but does not add service ownership or alter production implementations.
 
 ## Service Layer
 
@@ -58,7 +59,7 @@ SwiftUI views are grouped by feature:
 - Diary: list, create, edit, detail, mood/tag/editor helpers, markdown rendering.
 - Todo and recommendations: todo detail/edit, unified add flow, Explore screen.
 - AI exploration: chat screen and session list.
-- Settings: theme and API key configuration.
+- Settings: a composition shell plus feature-owned appearance, AI key, reminder, backup, and sync-preflight sections.
 
 Views should remain presentation-focused. Persistence, AI calls, and recurrence behavior belong in ViewModels or services.
 

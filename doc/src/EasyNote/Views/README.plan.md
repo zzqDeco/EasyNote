@@ -24,7 +24,7 @@
 - Diary create/edit/detail-delete views dismiss only after their ViewModel mutation succeeds and preserve retryable input on failure.
 - `KeyboardObserver` owns exact cancellable keyboard notification subscriptions for views that need keyboard lifecycle state; repeated appearance must not duplicate subscriptions.
 - Chat views cover AI exploration and persisted session selection; they construct immutable request snapshots and render processing/failure state for the selected session without owning network tasks.
-- Settings owns local theme and DeepSeek API key entry.
+- `SettingsView` only composes the form and forwards environment/dependency values; appearance, DeepSeek API key, reminder, backup, and sync-preflight UI state belongs to dedicated Settings sections.
 
 ## Tests
 

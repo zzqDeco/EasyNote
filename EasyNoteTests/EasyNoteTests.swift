@@ -2569,6 +2569,29 @@ struct EasyNoteTests {
         #expect(report.check(withID: "manual-validation")?.severity == .blocked)
     }
 
+    @Test func settingsDependenciesPreserveInjectedCoordinationBoundaries() async throws {
+        let scheduler = FakeTodoNotificationScheduler()
+        let writer = FakeSystemReminderWriter()
+        let reminderModeStore = FakeTodoReminderModeStore(mode: .systemReminderAgent)
+        let report = CloudKitSyncPreflight.evaluate(.currentProject)
+
+        let dependencies = SettingsDependencies(
+            backupService: BackupService(),
+            todoNotificationScheduler: scheduler,
+            systemReminderAgent: SystemReminderAgent(),
+            systemReminderWriter: writer,
+            reminderModeStore: reminderModeStore,
+            cloudKitPreflightReport: report
+        )
+
+        #expect(dependencies.backupService is BackupService)
+        #expect(dependencies.todoNotificationScheduler === scheduler)
+        #expect(dependencies.systemReminderAgent is SystemReminderAgent)
+        #expect(dependencies.systemReminderWriter === writer)
+        #expect(dependencies.reminderModeStore === reminderModeStore)
+        #expect(dependencies.cloudKitPreflightReport == report)
+    }
+
     @Test func cloudKitPreflightPassesServiceManagedReadyConfiguration() async throws {
         let configuration = CloudKitSyncPreflight.Configuration(
             expectedContainerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier,

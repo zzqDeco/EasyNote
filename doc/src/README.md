@@ -42,6 +42,12 @@ Source notes are required for public contracts, cross-module boundaries, persist
 - [KeyboardObserver](EasyNote/Views/KeyboardObserver.swift.plan.md)
 - [ChatExploreView](EasyNote/Views/ChatExploreView.swift.plan.md)
 - [SettingsView](EasyNote/Views/SettingsView.swift.plan.md)
+- [SettingsDependencies](EasyNote/Views/SettingsDependencies.swift.plan.md)
+- [AISettingsSection](EasyNote/Views/AISettingsSection.swift.plan.md)
+- [AppearanceSettingsSection](EasyNote/Views/AppearanceSettingsSection.swift.plan.md)
+- [BackupSettingsSection](EasyNote/Views/BackupSettingsSection.swift.plan.md)
+- [ReminderSettingsSection](EasyNote/Views/ReminderSettingsSection.swift.plan.md)
+- [SyncSettingsSection](EasyNote/Views/SyncSettingsSection.swift.plan.md)
 - [TranscriptionDisplayView](EasyNote/Views/TranscriptionDisplayView.swift.plan.md)
 
 ## Tests And CI
