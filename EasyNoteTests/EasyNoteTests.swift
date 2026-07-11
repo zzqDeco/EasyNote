@@ -2234,6 +2234,19 @@ struct EasyNoteTests {
         #expect(backup.sessionMessages.map(\.content) == ["可见消息"])
     }
 
+    @Test func backupExportNormalizesLegacySharedMessageIDs() throws {
+        let sharedMessageID = UUID()
+        let duplicateMessageID = UUID()
+
+        let normalizedIDs = BackupService.normalizedMessageIDs(
+            for: [[sharedMessageID], [sharedMessageID]],
+            makeDuplicateID: { duplicateMessageID }
+        )
+
+        #expect(normalizedIDs == [[sharedMessageID], [duplicateMessageID]])
+        #expect(Set(normalizedIDs.flatMap { $0 }).count == 2)
+    }
+
     @Test func backupExportSkipsMissingAudioWithoutDroppingDiary() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()

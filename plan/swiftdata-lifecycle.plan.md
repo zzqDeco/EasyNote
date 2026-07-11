@@ -25,12 +25,14 @@
 - Retry reopens the same store without modifying files. Recovery first copies every existing store component, aborts without deletion if copying fails, then removes the original components and attempts a fresh open.
 - A failed rebuild remains user-visible and reports the recovery-copy location. Recovery is never triggered automatically.
 - `ChatSessionViewModel.deleteSession` performs the session and unshared-message deletes in a short-lived `ModelContext`; message UUIDs still referenced by another legacy session are retained, and a failed save discards that context without contaminating the UI context or invoking Xcode 16.4's crashing versioned-relationship rollback path.
+- Backup export converts those legacy cross-session references into independent backup-only message UUIDs while preserving payloads, keeping generated backups valid under the no-shared-message import contract.
 
 ## Test Plan
 
 - Cover a plain-schema legacy store opening with V1, retaining data, and then reopening with `EasyNoteMigrationPlan`; verify legacy and V1 entity names match.
 - Cover existing-store open, startup failure followed by retry, recovery copies of store/WAL/SHM, and rebuild failure.
 - Cover successful session deletion leaving no unshared `SessionMessage` rows, preserving IDs referenced by another legacy session, and failed deletion restoring both session and messages.
+- Cover deterministic normalization of legacy shared message IDs during backup export.
 - Run the hosted SwiftData unit target without parallel test runners so independent in-memory containers do not race inside the shared test host.
 - Cover real chat integrity constraints: non-empty session title, non-empty message content, and non-future timestamps.
 - Run `git diff --check`, Markdown link validation, `xcodebuild -list`, generic-simulator build-for-testing, Release generic-device build, and focused tests when a compatible simulator runtime is available.

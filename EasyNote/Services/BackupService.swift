@@ -122,7 +122,7 @@ struct BackupService {
         ))
 
         let audioExport = exportAudioAssets(for: diaryEntries)
-        let sessionMessages = sessionMessages(from: chatSessions)
+        let chatExport = exportChatData(from: chatSessions)
 
         let backup = EasyNoteBackupV1(
             version: Self.supportedVersion,
@@ -154,24 +154,8 @@ struct BackupService {
                     creationDate: item.creationDate
                 )
             },
-            chatSessions: chatSessions.map { session in
-                BackupChatSession(
-                    id: session.id,
-                    title: session.title,
-                    creationDate: session.creationDate,
-                    lastModifiedDate: session.lastModifiedDate,
-                    messageIds: session.messages.map(\.id)
-                )
-            },
-            sessionMessages: sessionMessages.map { message in
-                BackupSessionMessage(
-                    id: message.id,
-                    content: message.content,
-                    isUser: message.isUser,
-                    timestamp: message.timestamp,
-                    relatedEntryIds: message.relatedEntryIds
-                )
-            },
+            chatSessions: chatExport.sessions,
+            sessionMessages: chatExport.messages,
             audioAssets: audioExport.assets
         )
 
@@ -431,22 +415,60 @@ struct BackupService {
         }
     }
 
-    private func sessionMessages(from sessions: [ChatSession]) -> [SessionMessage] {
-        var seen = Set<UUID>()
-        var messages: [SessionMessage] = []
+    private func exportChatData(
+        from sessions: [ChatSession]
+    ) -> (sessions: [BackupChatSession], messages: [BackupSessionMessage]) {
+        let normalizedMessageIDs = Self.normalizedMessageIDs(
+            for: sessions.map { $0.messages.map(\.id) }
+        )
+        var exportedMessages: [BackupSessionMessage] = []
 
-        for session in sessions {
-            for message in session.messages where !seen.contains(message.id) {
-                seen.insert(message.id)
-                messages.append(message)
-            }
+        let exportedSessions = zip(sessions, normalizedMessageIDs).map { session, messageIDs in
+            exportedMessages.append(contentsOf: zip(session.messages, messageIDs).map { message, messageID in
+                BackupSessionMessage(
+                    id: messageID,
+                    content: message.content,
+                    isUser: message.isUser,
+                    timestamp: message.timestamp,
+                    relatedEntryIds: message.relatedEntryIds
+                )
+            })
+            return BackupChatSession(
+                id: session.id,
+                title: session.title,
+                creationDate: session.creationDate,
+                lastModifiedDate: session.lastModifiedDate,
+                messageIds: messageIDs
+            )
         }
 
-        return messages.sorted { lhs, rhs in
+        exportedMessages.sort { lhs, rhs in
             if lhs.timestamp == rhs.timestamp {
                 return lhs.id.uuidString < rhs.id.uuidString
             }
             return lhs.timestamp < rhs.timestamp
+        }
+        return (exportedSessions, exportedMessages)
+    }
+
+    static func normalizedMessageIDs(
+        for sessionMessageIDs: [[UUID]],
+        makeDuplicateID: () -> UUID = UUID.init
+    ) -> [[UUID]] {
+        var seenMessageIDs = Set<UUID>()
+
+        return sessionMessageIDs.map { messageIDs in
+            messageIDs.map { messageID in
+                guard !seenMessageIDs.insert(messageID).inserted else {
+                    return messageID
+                }
+
+                var duplicateID = makeDuplicateID()
+                while !seenMessageIDs.insert(duplicateID).inserted {
+                    duplicateID = makeDuplicateID()
+                }
+                return duplicateID
+            }
         }
     }
 
