@@ -6,17 +6,23 @@ import Testing
 @MainActor
 struct PersistenceBootstrapTests {
     @Test func legacyStoreIsAdoptedAsV1ThenReopensWithMigrationPlan() throws {
+        traceAdoptionPhase("start")
         let paths = try makeStoreFiles(components: [:])
         defer { try? FileManager.default.removeItem(at: paths.root) }
 
+        traceAdoptionPhase("build legacy schema")
         let legacySchema = LegacyUnversionedSchema.schema
         let expectedEntityNames = ["ChatSession", "DiaryEntry", "SessionMessage", "TodoItem"]
         #expect(legacySchema.entities.map(\.name).sorted() == expectedEntityNames)
         #expect(EasyNoteSchemaV1.schema.entities.map(\.name).sorted() == expectedEntityNames)
 
+        traceAdoptionPhase("create legacy store")
         try createLegacyStore(at: paths.store, schema: legacySchema)
+        traceAdoptionPhase("adopt legacy store as V1")
         #expect(try adoptLegacyStoreAsV1(at: paths.store) == ["Existing entry"])
+        traceAdoptionPhase("reopen with migration plan")
         #expect(try reopenAdoptedStoreWithMigrationPlan(at: paths.store) == ["Existing entry"])
+        traceAdoptionPhase("complete")
         #expect(FileManager.default.fileExists(atPath: paths.store.path))
         #expect(!FileManager.default.fileExists(atPath: paths.recoveryRoot.path))
     }
@@ -229,6 +235,10 @@ struct PersistenceBootstrapTests {
             allowsSave: true,
             cloudKitDatabase: .none
         )
+    }
+
+    private func traceAdoptionPhase(_ phase: String) {
+        FileHandle.standardError.write(Data("PERSISTENCE_ADOPTION_PHASE: \(phase)\n".utf8))
     }
 }
 

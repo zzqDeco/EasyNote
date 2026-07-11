@@ -92,9 +92,19 @@ jobs:
 
       - name: Run unit tests
         run: |
+          set +e
           xcodebuild test \
             -project EasyNote.xcodeproj \
             -scheme EasyNote \
             -only-testing:EasyNoteTests \
             -destination "id=${SIMULATOR_UDID}" \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            xcrun xcresulttool get test-results summary --path TestResults.xcresult || true
+            find "$HOME/Library/Logs/DiagnosticReports" \
+              "$HOME/Library/Developer/CoreSimulator/Devices/${SIMULATOR_UDID}/data/Library/Logs/CrashReporter" \
+              -type f -mmin -10 -print -exec tail -n 300 {} \; 2>/dev/null || true
+          fi
+          exit "$status"
