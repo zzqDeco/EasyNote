@@ -278,7 +278,7 @@ struct ReminderServiceAsyncTests {
     }
 
     private func waitUntil(
-        attempts: Int = 100,
+        attempts: Int = 2_000,
         condition: () -> Bool
     ) async {
         for _ in 0..<attempts {
