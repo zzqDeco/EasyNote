@@ -367,19 +367,22 @@ final class ChatSessionViewModel: ObservableObject {
     func deleteSession(_ session: ChatSession) -> Bool {
         let sessionID = session.id
         let messages = session.messages
+        let previousUndoManager = modelContext.undoManager
+        let deletionUndoManager = UndoManager()
+        modelContext.undoManager = deletionUndoManager
+        deletionUndoManager.beginUndoGrouping()
         for message in messages {
             modelContext.delete(message)
         }
         modelContext.delete(session)
+        deletionUndoManager.endUndoGrouping()
         guard saveContext(onFailure: {
-            for message in messages {
-                self.modelContext.insert(message)
-            }
-            self.modelContext.insert(session)
-            session.messages = messages
+            deletionUndoManager.undo()
         }, rollbackOnFailure: false) else {
+            modelContext.undoManager = previousUndoManager
             return false
         }
+        modelContext.undoManager = previousUndoManager
         cancelChatRequests(forSessionID: sessionID)
         chatRequestFailures[sessionID] = nil
 
