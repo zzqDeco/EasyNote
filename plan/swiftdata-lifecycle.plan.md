@@ -19,7 +19,7 @@
 
 ## Implementation
 
-- `EasyNoteSchemaV1` owns frozen nested definitions of the existing diary, todo, chat-session, and session-message models under version `1.0.0`; file-scope type aliases preserve existing app call sites and entity names.
+- `EasyNoteSchemaV1` registers the existing top-level diary, todo, chat-session, and session-message storage types under version `1.0.0`. A frozen fixture and schema-signature test enforce the V1 layout because Xcode 16.4 crashes when relationship-bearing nested versioned models are rolled back.
 - The current release opens V1 without a staged migration plan so an identical pre-versioned store can be adopted and stamped non-destructively. `EasyNoteMigrationPlan` remains defined with V1 and no stages for stores that have completed adoption and for future V2 work.
 - `PersistenceBootstrap` owns `loading`, `ready(ModelContainer)`, and `failed` state. Its container factory, clock, and file operations are injectable for focused tests.
 - Retry reopens the same store without modifying files. Recovery first copies every existing store component, aborts without deletion if copying fails, then removes the original components and attempts a fresh open.

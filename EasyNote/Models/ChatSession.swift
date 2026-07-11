@@ -9,7 +9,6 @@ final class ChatSession {
     var creationDate: Date
     var lastModifiedDate: Date
     var messages: [SessionMessage] = []
-
     init(
         id: UUID = UUID(),
         title: String = "新会话",

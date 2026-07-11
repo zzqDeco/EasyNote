@@ -7,12 +7,12 @@
 
 ## Boundaries
 
-- The top-level `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` storage types are the immutable V1 contract and must retain their persisted entity names, fields, and relationships.
+- The top-level `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` storage types are the immutable V1 contract and must retain their persisted entity names, fields, optionality, and relationships.
 - Add a new schema version and documented migration stage before changing persisted layout; do not rewrite V1.
 
 ## Behavior Notes
 
-- V1 is version `1.0.0` and registers the existing top-level storage types. They remain top-level to preserve legacy entity identity and SwiftData relationship/rollback behavior.
+- V1 is version `1.0.0` and registers the existing top-level storage types. Frozen fixture and schema-signature tests prevent persisted layout changes from silently rewriting V1; Xcode 16.4 cannot safely roll back relationship-bearing nested versioned models.
 - The migration plan currently has no stages because there is only one unchanged schema version.
 
 ## Tests

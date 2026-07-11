@@ -6,8 +6,9 @@ enum EasyNoteSchemaV1: VersionedSchema {
     }
 
     static var models: [any PersistentModel.Type] {
-        // These top-level storage types define V1 and must remain unchanged.
-        // Persisted layout changes require a new VersionedSchema and migration stage.
+        // SwiftData on Xcode 16.4 crashes when relationship-bearing nested
+        // versioned models are rolled back. Keep these V1 storage types top-level
+        // and enforce their immutable layout with the frozen contract tests.
         [
             DiaryEntry.self,
             TodoItem.self,

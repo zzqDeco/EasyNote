@@ -21,6 +21,18 @@ struct PersistenceBootstrapTests {
         #expect(!FileManager.default.fileExists(atPath: paths.recoveryRoot.path))
     }
 
+    @Test func v1SchemaMatchesFrozenLegacyPropertyContract() throws {
+        let legacyEntities = LegacyUnversionedSchema.schema.entitiesByName
+        let v1Entities = EasyNoteSchemaV1.schema.entitiesByName
+
+        #expect(Set(v1Entities.keys) == Set(legacyEntities.keys))
+        for entityName in legacyEntities.keys {
+            let legacyEntity = try #require(legacyEntities[entityName])
+            let v1Entity = try #require(v1Entities[entityName])
+            #expect(propertySignatures(in: v1Entity) == propertySignatures(in: legacyEntity))
+        }
+    }
+
     @Test func existingStoreOpensWithoutRecoveryOrDeletion() throws {
         let paths = try makeStoreFiles(components: ["EasyNote.store": "existing"])
         defer { try? FileManager.default.removeItem(at: paths.root) }
@@ -166,6 +178,19 @@ struct PersistenceBootstrapTests {
                 now: { Date(timeIntervalSince1970: 1_750_000_000) }
             )
         )
+    }
+
+    private func propertySignatures(in entity: Schema.Entity) -> [String] {
+        entity.properties.map { property in
+            [
+                property.name,
+                "attribute:\(property.isAttribute)",
+                "relationship:\(property.isRelationship)",
+                "optional:\(property.isOptional)",
+                "unique:\(property.isUnique)",
+                "transient:\(property.isTransient)"
+            ].joined(separator: "|")
+        }.sorted()
     }
 
     private func makeStoreFiles(components: [String: String]) throws -> StorePaths {
