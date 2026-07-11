@@ -5,6 +5,8 @@ import SwiftUI
 
 @MainActor
 final class ChatSessionViewModel: ObservableObject {
+    typealias SessionDeletionAction = (ModelContainer, UUID) throws -> Void
+
     // 模型上下文
     private var modelContext: ModelContext
     
@@ -18,14 +20,17 @@ final class ChatSessionViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var chatRequestTasks: [UUID: Task<Void, Never>] = [:]
     private var chatRequestSessions: [UUID: UUID] = [:]
+    private let sessionDeletionAction: SessionDeletionAction
     private let saveAction: (ModelContext) throws -> Void
     
     // MARK: - 初始化方法
     
     init(
         modelContext: ModelContext?,
+        sessionDeletionAction: @escaping SessionDeletionAction = ChatSessionViewModel.deleteSessionPersistently,
         saveAction: @escaping (ModelContext) throws -> Void = { try $0.save() }
     ) {
+        self.sessionDeletionAction = sessionDeletionAction
         self.saveAction = saveAction
         if let context = modelContext {
             self.modelContext = context
@@ -366,23 +371,13 @@ final class ChatSessionViewModel: ObservableObject {
     @discardableResult
     func deleteSession(_ session: ChatSession) -> Bool {
         let sessionID = session.id
-        let messages = session.messages
-        let previousUndoManager = modelContext.undoManager
-        let deletionUndoManager = UndoManager()
-        modelContext.undoManager = deletionUndoManager
-        deletionUndoManager.beginUndoGrouping()
-        for message in messages {
-            modelContext.delete(message)
-        }
-        modelContext.delete(session)
-        deletionUndoManager.endUndoGrouping()
-        guard saveContext(onFailure: {
-            deletionUndoManager.undo()
-        }, rollbackOnFailure: false) else {
-            modelContext.undoManager = previousUndoManager
+        do {
+            try sessionDeletionAction(modelContext.container, sessionID)
+            errorMessage = nil
+        } catch {
+            errorMessage = "删除会话失败: \(error.localizedDescription)"
             return false
         }
-        modelContext.undoManager = previousUndoManager
         cancelChatRequests(forSessionID: sessionID)
         chatRequestFailures[sessionID] = nil
 
@@ -438,22 +433,34 @@ final class ChatSessionViewModel: ObservableObject {
     
     // 保存上下文
     @discardableResult
-    private func saveContext(
-        onFailure: (() -> Void)? = nil,
-        rollbackOnFailure: Bool = true
-    ) -> Bool {
+    private func saveContext(onFailure: (() -> Void)? = nil) -> Bool {
         do {
             try saveAction(modelContext)
             errorMessage = nil
             return true
         } catch {
             onFailure?()
-            if rollbackOnFailure {
-                modelContext.rollback()
-            }
+            modelContext.rollback()
             errorMessage = "保存会话失败: \(error.localizedDescription)"
             return false
         }
+    }
+
+    private static func deleteSessionPersistently(
+        in container: ModelContainer,
+        sessionID: UUID
+    ) throws {
+        let deletionContext = ModelContext(container)
+        deletionContext.autosaveEnabled = false
+        let sessions = try deletionContext.fetch(FetchDescriptor<ChatSession>())
+        guard let session = sessions.first(where: { $0.id == sessionID }) else {
+            return
+        }
+        for message in session.messages {
+            deletionContext.delete(message)
+        }
+        deletionContext.delete(session)
+        try deletionContext.save()
     }
 
     private func normalizeMessageOrder(in session: ChatSession) {

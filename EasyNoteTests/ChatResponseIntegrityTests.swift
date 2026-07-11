@@ -345,25 +345,21 @@ struct ChatResponseIntegrityTests {
 
         #expect(viewModel.deleteSession(session))
 
-        #expect(try context.fetch(FetchDescriptor<SessionMessage>()).isEmpty)
-        #expect(!(try context.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
+        let verificationContext = ModelContext(context.container)
+        #expect(try verificationContext.fetch(FetchDescriptor<SessionMessage>()).isEmpty)
+        #expect(!(try verificationContext.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
     }
 
     @Test func failedSessionDeletionRollsBackSessionAndMessages() async throws {
         let context = try makeModelContext()
-        var shouldFailSave = false
         let viewModel = ChatSessionViewModel(
             modelContext: context,
-            saveAction: { modelContext in
-                if shouldFailSave { throw ChatProviderTestError.failed }
-                try modelContext.save()
-            }
+            sessionDeletionAction: { _, _ in throw ChatProviderTestError.failed }
         )
         let session = try #require(viewModel.currentSession)
         _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "保留一", isUser: true))
         _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "保留二", isUser: false))
 
-        shouldFailSave = true
         #expect(!viewModel.deleteSession(session))
 
         #expect((try context.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
@@ -373,13 +369,9 @@ struct ChatResponseIntegrityTests {
 
     @Test func failedSessionDeletionKeepsInFlightRequest() async throws {
         let context = try makeModelContext()
-        var shouldFailSave = false
         let viewModel = ChatSessionViewModel(
             modelContext: context,
-            saveAction: { modelContext in
-                if shouldFailSave { throw ChatProviderTestError.failed }
-                try modelContext.save()
-            }
+            sessionDeletionAction: { _, _ in throw ChatProviderTestError.failed }
         )
         let session = try #require(viewModel.currentSession)
         let provider = ControllableChatProvider()
@@ -389,11 +381,9 @@ struct ChatResponseIntegrityTests {
             provider: provider
         ))
         await provider.waitUntilRequestStarted()
-        shouldFailSave = true
         #expect(!viewModel.deleteSession(session))
         #expect(viewModel.isProcessingChatRequest(forSessionID: session.id))
 
-        shouldFailSave = false
         provider.resumeNext(with: .success("继续完成的回复"))
         await viewModel.waitForPendingChatRequests()
 

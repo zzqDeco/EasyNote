@@ -24,7 +24,7 @@
 - `PersistenceBootstrap` owns `loading`, `ready(ModelContainer)`, and `failed` state. Its container factory, clock, and file operations are injectable for focused tests.
 - Retry reopens the same store without modifying files. Recovery first copies every existing store component, aborts without deletion if copying fails, then removes the original components and attempts a fresh open.
 - A failed rebuild remains user-visible and reports the recovery-copy location. Recovery is never triggered automatically.
-- `ChatSessionViewModel.deleteSession` stages explicit message and session deletes in a dedicated undo group; on save failure it undoes that group because Xcode 16.4 crashes when `ModelContext.rollback()` snapshots a versioned relationship delete.
+- `ChatSessionViewModel.deleteSession` performs the message and session deletes in a short-lived `ModelContext`; a failed save discards that context without contaminating the UI context or invoking Xcode 16.4's crashing versioned-relationship rollback path.
 
 ## Test Plan
 
