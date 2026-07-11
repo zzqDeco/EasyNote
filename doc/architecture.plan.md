@@ -4,7 +4,8 @@ EasyNote is a SwiftUI iOS app organized around a small set of UI, state, persist
 
 ## App Composition
 
-- `EasyNoteApp` owns app startup and the shared SwiftData `ModelContainer`.
+- `EasyNoteApp` owns app startup and delegates shared SwiftData `ModelContainer` creation to `PersistenceBootstrap`.
+- `PersistenceBootstrap` publishes loading, ready, and failed startup state; `PersistenceRootView` installs the ready container or presents explicit retry/recovery actions.
 - `ContentView` owns tab-level composition, shared theme state, and stable app-level ViewModel instances.
 - `SettingsView` is the Settings composition root: it forwards `ModelContext`, `ScenePhase`, theme state, and one `SettingsDependencies` bundle to feature-owned sections.
 - SwiftUI views receive ViewModels explicitly where possible and use environment objects for app-wide tab/theme state.
@@ -20,6 +21,9 @@ SwiftData is the source of truth for local app data:
 - `TabSelectionManager`: transient UI coordination, not a persisted model.
 
 The current store is created under the app documents directory as `EasyNote.store`.
+`EasyNoteSchemaV1` is the first versioned schema. It owns frozen nested model definitions that retain the existing four entity names, fields, and relationships; file-scope aliases keep the app-facing `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` names unchanged. Current startup opens V1 without a staged migration plan so an identical pre-versioned store is adopted and stamped without rebuilding. `EasyNoteMigrationPlan` contains V1 with no stages and is reserved for an adopted store and future schema versions.
+
+Store-open failure never falls back to a new persistent store or resets files automatically. A user-confirmed rebuild first copies every existing `EasyNote.store`, `EasyNote.store-wal`, and `EasyNote.store-shm` component into a timestamped `Documents/EasyNoteRecovery` directory. Copy failure leaves the source untouched; rebuild failure keeps the recovery copy and remains visible for retry.
 
 ## ViewModel Layer
 
@@ -29,6 +33,7 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - `TodoViewModel` owns focused todo CRUD, recurrence behavior, todo list state, and post-save routing to the active todo reminder mode.
 - `ExploreViewModel` owns recommendation generation and recommendation cache state; it does not own todo CRUD.
 - `ChatSessionViewModel` owns persisted chat sessions, session-bound request tasks, message history, and per-session request failures. Provider prompts and deterministic local fallbacks consume immutable diary/conversation snapshots rather than execution-time selection state.
+- Chat-session deletion explicitly stages deletion of every related `SessionMessage` and the `ChatSession` in one context save; save failure rolls back the complete deletion.
 - `ContentView` passes the shared SwiftData `ModelContext` into stable app-level ViewModels through its root view instead of relying on production nil-context fallback stores.
 - Recurring todo completion is planned through a shared helper so todo entry points do not duplicate next-occurrence creation rules.
 - Todo local reminder eligibility is derived through a pure planner; `TodoViewModel` only asks the injected notification scheduler to synchronize or cancel after successful SwiftData saves.

@@ -13,7 +13,7 @@ final class TodoItem {
     var isRecurring: Bool
     var recurringInterval: String?
     var creationDate: Date
-    
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -34,10 +34,10 @@ final class TodoItem {
         self.recurringInterval = recurringInterval
         self.creationDate = Date()
     }
-    
+
     enum PriorityLevel: String, Codable, Equatable {
         case high, medium, low
-        
+
         var color: Color {
             switch self {
             case .high: return .red
@@ -46,7 +46,7 @@ final class TodoItem {
             }
         }
     }
-    
+
     // 循环间隔枚举
     enum RecurringInterval: String, Codable, Equatable {
         case daily = "每天"
@@ -74,7 +74,7 @@ final class TodoItem {
         var displayText: String {
             "\(rawValue)重复"
         }
-        
+
         // 获取下一个日期
         func nextDate(from date: Date) -> Date {
             let calendar = Calendar.current
@@ -90,7 +90,7 @@ final class TodoItem {
             }
         }
     }
-    
+
     var priorityIcon: String {
         switch priority {
         case .high: return "exclamationmark.circle.fill"

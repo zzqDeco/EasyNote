@@ -5,6 +5,8 @@ import SwiftUI
 
 @MainActor
 final class ChatSessionViewModel: ObservableObject {
+    typealias SessionDeletionAction = (ModelContainer, UUID) throws -> Void
+
     // 模型上下文
     private var modelContext: ModelContext
     
@@ -18,14 +20,17 @@ final class ChatSessionViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var chatRequestTasks: [UUID: Task<Void, Never>] = [:]
     private var chatRequestSessions: [UUID: UUID] = [:]
+    private let sessionDeletionAction: SessionDeletionAction
     private let saveAction: (ModelContext) throws -> Void
     
     // MARK: - 初始化方法
     
     init(
         modelContext: ModelContext?,
+        sessionDeletionAction: @escaping SessionDeletionAction = ChatSessionViewModel.deleteSessionPersistently,
         saveAction: @escaping (ModelContext) throws -> Void = { try $0.save() }
     ) {
+        self.sessionDeletionAction = sessionDeletionAction
         self.saveAction = saveAction
         if let context = modelContext {
             self.modelContext = context
@@ -366,8 +371,11 @@ final class ChatSessionViewModel: ObservableObject {
     @discardableResult
     func deleteSession(_ session: ChatSession) -> Bool {
         let sessionID = session.id
-        modelContext.delete(session)
-        guard saveContext() else {
+        do {
+            try sessionDeletionAction(modelContext.container, sessionID)
+            errorMessage = nil
+        } catch {
+            errorMessage = "删除会话失败: \(error.localizedDescription)"
             return false
         }
         cancelChatRequests(forSessionID: sessionID)
@@ -436,6 +444,37 @@ final class ChatSessionViewModel: ObservableObject {
             errorMessage = "保存会话失败: \(error.localizedDescription)"
             return false
         }
+    }
+
+    private static func deleteSessionPersistently(
+        in container: ModelContainer,
+        sessionID: UUID
+    ) throws {
+        let deletionContext = ModelContext(container)
+        deletionContext.autosaveEnabled = false
+        let sessions = try deletionContext.fetch(FetchDescriptor<ChatSession>())
+        guard let session = sessions.first(where: { $0.id == sessionID }) else {
+            return
+        }
+        let messageIDsToDelete = messageIDsSafeToDelete(
+            targetMessageIDs: session.messages.map(\.id),
+            remainingSessionMessageIDs: sessions
+                .filter { $0.id != sessionID }
+                .map { $0.messages.map(\.id) }
+        )
+        for message in session.messages where messageIDsToDelete.contains(message.id) {
+            deletionContext.delete(message)
+        }
+        deletionContext.delete(session)
+        try deletionContext.save()
+    }
+
+    static func messageIDsSafeToDelete(
+        targetMessageIDs: [UUID],
+        remainingSessionMessageIDs: [[UUID]]
+    ) -> Set<UUID> {
+        let retainedMessageIDs = Set(remainingSessionMessageIDs.joined())
+        return Set(targetMessageIDs).subtracting(retainedMessageIDs)
     }
 
     private func normalizeMessageOrder(in session: ChatSession) {

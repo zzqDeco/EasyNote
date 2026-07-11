@@ -29,9 +29,11 @@
 - `SystemReminderAgent` derives Apple Reminders proposals from existing `TodoItem` fields without changing SwiftData schema.
 - `ChatSession` owns session messages and generates short titles from the latest user message.
 - `SessionMessage.relatedEntryIds` stores diary UUID strings instead of SwiftData relationships.
+- Persisted model definitions are nested under `EasyNoteSchemaV1`; file-scope aliases retain the existing app-facing type names while preventing V1 from following later mutable global model declarations.
+- Chat integrity checks enforce non-empty titles/content and non-future timestamps; a UUID compared with a newly generated random UUID is not an integrity constraint.
 - `TabSelectionManager` is transient UI coordination and not a persisted domain object.
 
 ## Tests
 
-- `EasyNoteTests` covers diary query/review projections, todo recurrence, todo reminder mode/agent behavior, and chat-session summary/integrity.
+- `EasyNoteTests` covers diary query/review projections, todo recurrence, todo reminder mode/agent behavior, and real chat-session/message integrity constraints.
 - Add migration notes and tests before changing persisted fields or raw-value formats.

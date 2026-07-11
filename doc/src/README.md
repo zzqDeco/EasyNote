@@ -9,6 +9,8 @@ Source notes are required for public contracts, cross-module boundaries, persist
 ## App Entry And Models
 
 - [EasyNoteApp](EasyNote/EasyNoteApp.swift.plan.md)
+- [EasyNoteSchema](EasyNote/Persistence/EasyNoteSchema.swift.plan.md)
+- [PersistenceBootstrap](EasyNote/Persistence/PersistenceBootstrap.swift.plan.md)
 - [AIActionResult](EasyNote/Models/AIActionResult.swift.plan.md)
 - [DiaryEditDraft](EasyNote/Models/DiaryEditDraft.swift.plan.md)
 - [TodoDraft](EasyNote/Models/TodoDraft.swift.plan.md)
@@ -49,10 +51,13 @@ Source notes are required for public contracts, cross-module boundaries, persist
 - [ReminderSettingsSection](EasyNote/Views/ReminderSettingsSection.swift.plan.md)
 - [SyncSettingsSection](EasyNote/Views/SyncSettingsSection.swift.plan.md)
 - [TranscriptionDisplayView](EasyNote/Views/TranscriptionDisplayView.swift.plan.md)
+- [PersistenceRecoveryView](EasyNote/Views/PersistenceRecoveryView.swift.plan.md)
 
 ## Tests And CI
 
 - [Unit Tests](EasyNoteTests/EasyNoteTests.swift.plan.md)
+- [Chat Response Integrity Tests](EasyNoteTests/ChatResponseIntegrityTests.swift.plan.md)
+- [Persistence Bootstrap Tests](EasyNoteTests/PersistenceBootstrapTests.swift.plan.md)
 - [UI Tests](EasyNoteUITests/EasyNoteUITests.swift.plan.md)
 - [GitHub CI Workflow](.github/workflows/ci.yml.plan.md)
 - [GitHub UI Smoke Workflow](.github/workflows/ui-smoke.yml.plan.md)

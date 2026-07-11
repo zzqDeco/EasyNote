@@ -15,7 +15,7 @@
 - Current tests cover legacy/current recurrence parsing, unsubmitted todo draft cancellation, persistence dismissal decisions, and idempotent keyboard observer registration.
 - Current tests cover todo notification eligibility and `TodoViewModel` scheduler integration through fakes.
 - Current tests cover system reminder agent skip/lead-time decisions, reminder mode migration, and `TodoViewModel` EventKit-writer routing through fakes.
-- Current tests cover chat-session title summary and basic integrity behavior.
+- Current tests cover chat-session title summary plus non-empty title/content and non-future timestamp integrity behavior.
 - Current tests cover AI action result success/failure records, input matching, per-target/source pending state, stale pending cleanup after failures, source-bound diary summary application, stale result rejection, and explicit diary/transcription application behavior.
 - Current tests cover CloudKit preflight readiness as pure local logic; they do not contact CloudKit.
 - Current tests cover existing-diary draft save/discard/rollback, canonical mood storage, transcription isolation, and original/pending recording ownership.

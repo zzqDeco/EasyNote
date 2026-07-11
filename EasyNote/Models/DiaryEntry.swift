@@ -13,7 +13,7 @@ final class DiaryEntry {
     var isFavorite: Bool
     var audioURL: URL?
     var aiSummary: String?
-    
+
     init(id: UUID = UUID(), title: String, content: String = "", mood: String? = nil, tags: [String] = [], isFavorite: Bool = false) {
         self.id = id
         self.title = title
@@ -24,4 +24,4 @@ final class DiaryEntry {
         self.lastModified = Date()
         self.isFavorite = isFavorite
     }
-} 
+}

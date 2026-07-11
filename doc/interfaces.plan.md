@@ -23,13 +23,30 @@ The repository must not contain default API keys. Empty `openai_api_key` disable
 - `TodoItem.recurringInterval` stores a `TodoItem.RecurringInterval.rawValue` string, currently Chinese display values such as `每天` and `每周`. Reads also accept legacy English values such as `daily` and `weekly` through the shared recurrence parser.
 - Recurring todo completion must use the shared recurrence planner. A next todo is created only after a completed recurring item has both a valid stored interval and a deadline.
 - `ChatSession.messages` owns the session message list; `SessionMessage.relatedEntryIds` stores diary UUID strings, not relationships.
-- `EasyNoteApp` creates the app `ModelContainer` with a named local `ModelConfiguration`, `url: URL.documentsDirectory/EasyNote.store`, and `cloudKitDatabase: .none`.
+- `ChatSessionViewModel.deleteSession` explicitly deletes the session's message rows before the session row. These deletes share one save and one rollback boundary; this contract does not depend on an inverse relationship.
+- `EasyNoteSchemaV1` owns frozen nested `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` model definitions at version `1.0.0`; file-scope aliases preserve the existing source-level names and persisted entity names.
+- `EasyNoteMigrationPlan` declares V1 and currently has no migration stages.
+- `PersistenceBootstrap` creates the current app `ModelContainer` with V1 and no staged plan, a named local `ModelConfiguration`, `url: URL.documentsDirectory/EasyNote.store`, and `cloudKitDatabase: .none`. This first-version open is the non-destructive adoption path for an identical pre-versioned store; the migration plan is used only after adoption and by future versions.
 
 Model changes require a migration or compatibility note before implementation.
 
 Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
 
 Todo creation views own a pure `TodoDraft` and do not construct or insert a `TodoItem` until explicit Save. Diary and todo create, edit, and detail-delete actions resolve the ViewModel result through `PersistenceFeedback`; success may dismiss or navigate away, while failure keeps the current screen and input visible with an error.
+
+## Persistence Startup And Recovery Boundary
+
+`PersistenceBootstrap.State` is `loading`, `ready(ModelContainer)`, or `failed(PersistenceBootstrapFailure)`. Initial open and retry use the same V1-without-plan configuration and store URL, allowing first-version adoption without deleting or rebuilding data. An adoption failure enters `failed` and requires the same explicit recovery confirmation as any other open failure. UI-test launches use V1 with an in-memory configuration.
+
+Recovery rebuild is available only for the persistent store and only after explicit UI confirmation:
+
+- create a unique UTC timestamp directory under `Documents/EasyNoteRecovery`
+- copy each existing `EasyNote.store`, `EasyNote.store-wal`, and `EasyNote.store-shm` file into that directory
+- abort before deletion if directory creation or any copy fails
+- after all copies succeed, remove the original components and attempt a fresh V1 container open
+- if removal or rebuild fails, publish failed state with the recovery directory location and do not delete the recovery copy
+
+Container creation, current time, and file operations are injectable so unit tests can force open, retry, copy, and rebuild outcomes without touching user data. Recovery copies are raw SQLite store components for support/manual restoration; they are separate from the Settings JSON backup/import contract.
 
 ## Diary Edit Transaction Boundary
 
@@ -107,7 +124,7 @@ Backup v1 uses a single JSON file with `.easynotebackup` extension and root type
 
 Diary backup records reference voice recordings through `audioAssetId`. Audio assets contain the original filename, supported extension, byte count, and base64-encoded file data. Only local `.caf` and `.m4a` recording files are exported.
 
-Only messages referenced by exported chat sessions are included in `sessionMessages`; fetchable orphaned messages from deleted sessions are not exported. Import validates the full backup before writing SwiftData. Unsupported versions, duplicate IDs, missing message/audio references, unsupported audio extensions, or malformed base64 data must fail without writing model changes. Same-ID model records are updated, missing same-type records are inserted, and local records absent from the backup are preserved. When an older backup is imported over a session with newer local messages, those local messages remain attached and the session modified time stays at the latest imported, existing, or preserved message timestamp. Restored audio files are written under the app Documents directory as `restored_recording_<uuid>.<ext>`.
+Only messages referenced by exported chat sessions are included in `sessionMessages`; fetchable orphaned messages from deleted sessions are not exported. A message ID may belong to only one chat session. Export normalizes legacy cross-session message references by assigning duplicate references new backup-only UUIDs and copying their message payload, preserving both conversations while satisfying this contract. Decode and import apply the same normalization to older V1 files before strict validation, so previously accepted shared-message backups remain restorable without recreating unsupported shared SwiftData relationships. Unsupported versions, duplicate IDs unrelated to this legacy relationship, missing message/audio references, unsupported audio extensions, or malformed base64 data must fail without writing model changes. Same-ID model records are updated, missing same-type records are inserted, and local records absent from the backup are preserved. When an older backup is imported over a session with newer local messages, those local messages remain attached and the session modified time stays at the latest imported, existing, or preserved message timestamp. Restored audio files are written under the app Documents directory as `restored_recording_<uuid>.<ext>`.
 
 ## DeepSeek Chat-Completions Boundary
 

@@ -1007,6 +1007,26 @@ struct EasyNoteTests {
         #expect(session.validateIntegrity())
     }
 
+    @Test func chatIntegrityRejectsEmptyContentAndFutureDates() async throws {
+        let emptyTitleSession = ChatSession(title: "")
+        let futureSession = ChatSession(title: "未来会话")
+        futureSession.creationDate = Date().addingTimeInterval(60)
+        let emptyMessage = SessionMessage(content: "", isUser: true)
+        let futureMessage = SessionMessage(
+            content: "未来消息",
+            isUser: false,
+            timestamp: Date().addingTimeInterval(60)
+        )
+        let sessionWithEmptyMessage = ChatSession(title: "包含空消息")
+        sessionWithEmptyMessage.addMessage(emptyMessage)
+
+        #expect(!emptyTitleSession.validateIntegrity())
+        #expect(!futureSession.validateIntegrity())
+        #expect(!emptyMessage.validateIntegrity())
+        #expect(!futureMessage.validateIntegrity())
+        #expect(!sessionWithEmptyMessage.validateIntegrity())
+    }
+
     @Test func aiResponseParserParsesDiaryAnalysisJSON() async throws {
         let result = AIResponseParser.parseDiaryAnalysis("""
         {"moods":["开心","期待"],"tags":["工作","成长"]}
@@ -2214,6 +2234,19 @@ struct EasyNoteTests {
         #expect(backup.sessionMessages.map(\.content) == ["可见消息"])
     }
 
+    @Test func backupExportNormalizesLegacySharedMessageIDs() throws {
+        let sharedMessageID = UUID()
+        let duplicateMessageID = UUID()
+
+        let normalizedIDs = BackupService.normalizedMessageIDs(
+            for: [[sharedMessageID], [sharedMessageID]],
+            makeDuplicateID: { duplicateMessageID }
+        )
+
+        #expect(normalizedIDs == [[sharedMessageID], [duplicateMessageID]])
+        #expect(Set(normalizedIDs.flatMap { $0 }).count == 2)
+    }
+
     @Test func backupExportSkipsMissingAudioWithoutDroppingDiary() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2309,6 +2342,52 @@ struct EasyNoteTests {
 
         let todos = try context.fetch(FetchDescriptor<TodoItem>())
         #expect(todos.map(\.title) == ["本地待办"])
+    }
+
+    @Test func backupImportNormalizesLegacyMessagesSharedAcrossSessions() async throws {
+        let context = try makeModelContext()
+        let messageID = UUID()
+        let backup = EasyNoteBackupV1(
+            version: 1,
+            exportedAt: Date(),
+            diaryEntries: [],
+            todoItems: [],
+            chatSessions: [
+                BackupChatSession(
+                    id: UUID(),
+                    title: "第一会话",
+                    creationDate: Date(),
+                    lastModifiedDate: Date(),
+                    messageIds: [messageID]
+                ),
+                BackupChatSession(
+                    id: UUID(),
+                    title: "第二会话",
+                    creationDate: Date(),
+                    lastModifiedDate: Date(),
+                    messageIds: [messageID]
+                )
+            ],
+            sessionMessages: [
+                BackupSessionMessage(
+                    id: messageID,
+                    content: "不能共享的消息",
+                    isUser: true,
+                    timestamp: Date(),
+                    relatedEntryIds: []
+                )
+            ],
+            audioAssets: []
+        )
+
+        _ = try BackupService().importBackup(backup, into: context)
+
+        let sessions = try context.fetch(FetchDescriptor<ChatSession>())
+        let messages = try context.fetch(FetchDescriptor<SessionMessage>())
+        #expect(sessions.count == 2)
+        #expect(messages.count == 2)
+        #expect(Set(sessions.flatMap { $0.messages.map(\.id) }).count == 2)
+        #expect(messages.allSatisfy { $0.content == "不能共享的消息" })
     }
 
     @Test func backupImportUpsertsSameIDAndPreservesUnmentionedLocalRecords() async throws {

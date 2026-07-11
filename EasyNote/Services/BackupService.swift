@@ -122,7 +122,7 @@ struct BackupService {
         ))
 
         let audioExport = exportAudioAssets(for: diaryEntries)
-        let sessionMessages = sessionMessages(from: chatSessions)
+        let chatExport = exportChatData(from: chatSessions)
 
         let backup = EasyNoteBackupV1(
             version: Self.supportedVersion,
@@ -154,24 +154,8 @@ struct BackupService {
                     creationDate: item.creationDate
                 )
             },
-            chatSessions: chatSessions.map { session in
-                BackupChatSession(
-                    id: session.id,
-                    title: session.title,
-                    creationDate: session.creationDate,
-                    lastModifiedDate: session.lastModifiedDate,
-                    messageIds: session.messages.map(\.id)
-                )
-            },
-            sessionMessages: sessionMessages.map { message in
-                BackupSessionMessage(
-                    id: message.id,
-                    content: message.content,
-                    isUser: message.isUser,
-                    timestamp: message.timestamp,
-                    relatedEntryIds: message.relatedEntryIds
-                )
-            },
+            chatSessions: chatExport.sessions,
+            sessionMessages: chatExport.messages,
             audioAssets: audioExport.assets
         )
 
@@ -189,7 +173,8 @@ struct BackupService {
     func decodeAndValidateBackup(from data: Data) throws -> EasyNoteBackupV1 {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom(Self.decodeBackupDate)
-        let backup = try decoder.decode(EasyNoteBackupV1.self, from: data)
+        let decodedBackup = try decoder.decode(EasyNoteBackupV1.self, from: data)
+        let backup = Self.normalizedLegacySharedMessages(in: decodedBackup)
         try validate(backup)
         return backup
     }
@@ -212,10 +197,11 @@ struct BackupService {
 
     @discardableResult
     func importBackup(_ backup: EasyNoteBackupV1, into modelContext: ModelContext) throws -> BackupImportResult {
+        let normalizedBackup = Self.normalizedLegacySharedMessages(in: backup)
         var restoredAudioURLs: [URL] = []
 
         do {
-            try validate(backup)
+            try validate(normalizedBackup)
 
             let existingDiaryEntries = try fetchByID(DiaryEntry.self, modelContext: modelContext)
             let existingTodoItems = try fetchByID(TodoItem.self, modelContext: modelContext)
@@ -223,13 +209,13 @@ struct BackupService {
             let existingSessions = try fetchByID(ChatSession.self, modelContext: modelContext)
 
             var restoredAudioByAssetID: [UUID: URL] = [:]
-            for asset in backup.audioAssets {
+            for asset in normalizedBackup.audioAssets {
                 let restoredURL = try restoreAudioAsset(asset)
                 restoredAudioURLs.append(restoredURL)
                 restoredAudioByAssetID[asset.id] = restoredURL
             }
 
-            for messageDTO in backup.sessionMessages {
+            for messageDTO in normalizedBackup.sessionMessages {
                 let message = messagesByID[messageDTO.id] ?? SessionMessage(
                     id: messageDTO.id,
                     content: messageDTO.content,
@@ -249,7 +235,7 @@ struct BackupService {
                 }
             }
 
-            for entryDTO in backup.diaryEntries {
+            for entryDTO in normalizedBackup.diaryEntries {
                 let entry = existingDiaryEntries[entryDTO.id] ?? DiaryEntry(
                     id: entryDTO.id,
                     title: entryDTO.title,
@@ -274,7 +260,7 @@ struct BackupService {
                 }
             }
 
-            for todoDTO in backup.todoItems {
+            for todoDTO in normalizedBackup.todoItems {
                 let item = existingTodoItems[todoDTO.id] ?? TodoItem(
                     id: todoDTO.id,
                     title: todoDTO.title,
@@ -300,7 +286,7 @@ struct BackupService {
                 }
             }
 
-            for sessionDTO in backup.chatSessions {
+            for sessionDTO in normalizedBackup.chatSessions {
                 let session = existingSessions[sessionDTO.id] ?? ChatSession(
                     id: sessionDTO.id,
                     title: sessionDTO.title
@@ -329,7 +315,7 @@ struct BackupService {
 
             try modelContext.save()
 
-            return BackupImportResult(summary: summary(for: backup))
+            return BackupImportResult(summary: summary(for: normalizedBackup))
         } catch let error as BackupServiceError {
             modelContext.rollback()
             removeRestoredAudioFiles(restoredAudioURLs)
@@ -360,11 +346,16 @@ struct BackupService {
         }
 
         let messageIDs = Set(backup.sessionMessages.map(\.id))
+        var referencedMessageIDs = Set<UUID>()
         for session in backup.chatSessions {
             try ensureUnique(session.messageIds, name: "会话消息 ID")
 
             for messageID in session.messageIds where !messageIDs.contains(messageID) {
                 throw BackupServiceError.invalidBackup("会话引用了不存在的消息")
+            }
+
+            for messageID in session.messageIds where !referencedMessageIDs.insert(messageID).inserted {
+                throw BackupServiceError.invalidBackup("消息不能同时属于多个会话")
             }
         }
 
@@ -426,23 +417,111 @@ struct BackupService {
         }
     }
 
-    private func sessionMessages(from sessions: [ChatSession]) -> [SessionMessage] {
-        var seen = Set<UUID>()
-        var messages: [SessionMessage] = []
+    private func exportChatData(
+        from sessions: [ChatSession]
+    ) -> (sessions: [BackupChatSession], messages: [BackupSessionMessage]) {
+        let normalizedMessageIDs = Self.normalizedMessageIDs(
+            for: sessions.map { $0.messages.map(\.id) }
+        )
+        var exportedMessages: [BackupSessionMessage] = []
 
-        for session in sessions {
-            for message in session.messages where !seen.contains(message.id) {
-                seen.insert(message.id)
-                messages.append(message)
-            }
+        let exportedSessions = zip(sessions, normalizedMessageIDs).map { session, messageIDs in
+            exportedMessages.append(contentsOf: zip(session.messages, messageIDs).map { message, messageID in
+                BackupSessionMessage(
+                    id: messageID,
+                    content: message.content,
+                    isUser: message.isUser,
+                    timestamp: message.timestamp,
+                    relatedEntryIds: message.relatedEntryIds
+                )
+            })
+            return BackupChatSession(
+                id: session.id,
+                title: session.title,
+                creationDate: session.creationDate,
+                lastModifiedDate: session.lastModifiedDate,
+                messageIds: messageIDs
+            )
         }
 
-        return messages.sorted { lhs, rhs in
+        exportedMessages.sort { lhs, rhs in
             if lhs.timestamp == rhs.timestamp {
                 return lhs.id.uuidString < rhs.id.uuidString
             }
             return lhs.timestamp < rhs.timestamp
         }
+        return (exportedSessions, exportedMessages)
+    }
+
+    static func normalizedMessageIDs(
+        for sessionMessageIDs: [[UUID]],
+        makeDuplicateID: () -> UUID = UUID.init
+    ) -> [[UUID]] {
+        var messageIDsClaimedByPriorSessions = Set<UUID>()
+        var allocatedMessageIDs = Set(sessionMessageIDs.joined())
+
+        return sessionMessageIDs.map { messageIDs in
+            let normalizedIDs = messageIDs.map { messageID in
+                guard messageIDsClaimedByPriorSessions.contains(messageID) else {
+                    return messageID
+                }
+
+                var duplicateID = makeDuplicateID()
+                while !allocatedMessageIDs.insert(duplicateID).inserted {
+                    duplicateID = makeDuplicateID()
+                }
+                return duplicateID
+            }
+            messageIDsClaimedByPriorSessions.formUnion(messageIDs)
+            return normalizedIDs
+        }
+    }
+
+    static func normalizedLegacySharedMessages(
+        in backup: EasyNoteBackupV1,
+        makeDuplicateID: () -> UUID = UUID.init
+    ) -> EasyNoteBackupV1 {
+        let normalizedMessageIDs = normalizedMessageIDs(
+            for: backup.chatSessions.map(\.messageIds),
+            makeDuplicateID: makeDuplicateID
+        )
+        var messagesByID: [UUID: BackupSessionMessage] = [:]
+        for message in backup.sessionMessages where messagesByID[message.id] == nil {
+            messagesByID[message.id] = message
+        }
+        var messages = backup.sessionMessages
+
+        let sessions = zip(backup.chatSessions, normalizedMessageIDs).map { session, messageIDs in
+            for (originalID, normalizedID) in zip(session.messageIds, messageIDs)
+                where originalID != normalizedID {
+                guard let original = messagesByID[originalID] else { continue }
+                messages.append(BackupSessionMessage(
+                    id: normalizedID,
+                    content: original.content,
+                    isUser: original.isUser,
+                    timestamp: original.timestamp,
+                    relatedEntryIds: original.relatedEntryIds
+                ))
+            }
+
+            return BackupChatSession(
+                id: session.id,
+                title: session.title,
+                creationDate: session.creationDate,
+                lastModifiedDate: session.lastModifiedDate,
+                messageIds: messageIDs
+            )
+        }
+
+        return EasyNoteBackupV1(
+            version: backup.version,
+            exportedAt: backup.exportedAt,
+            diaryEntries: backup.diaryEntries,
+            todoItems: backup.todoItems,
+            chatSessions: sessions,
+            sessionMessages: messages,
+            audioAssets: backup.audioAssets
+        )
     }
 
     private func mergedSessionMessages(

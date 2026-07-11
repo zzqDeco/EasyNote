@@ -334,15 +334,56 @@ struct ChatResponseIntegrityTests {
         #expect(!viewModel.isProcessingChatRequest(forSessionID: session.id))
     }
 
-    @Test func failedSessionDeletionKeepsInFlightRequest() async throws {
+    @Test func deletingSessionRemovesAllPersistedMessages() async throws {
         let context = try makeModelContext()
-        var shouldFailSave = false
+        let viewModel = ChatSessionViewModel(modelContext: context)
+        let session = try #require(viewModel.currentSession)
+
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "第一条", isUser: true))
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "第二条", isUser: false))
+        #expect(try context.fetch(FetchDescriptor<SessionMessage>()).count == 2)
+
+        #expect(viewModel.deleteSession(session))
+
+        let verificationContext = ModelContext(context.container)
+        #expect(try verificationContext.fetch(FetchDescriptor<SessionMessage>()).isEmpty)
+        #expect(!(try verificationContext.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
+    }
+
+    @Test func deletingSessionPreservesMessageIDsReferencedByOtherSessions() {
+        let sharedMessageID = UUID()
+        let privateMessageID = UUID()
+
+        let messageIDsToDelete = ChatSessionViewModel.messageIDsSafeToDelete(
+            targetMessageIDs: [sharedMessageID, privateMessageID],
+            remainingSessionMessageIDs: [[sharedMessageID]]
+        )
+
+        #expect(messageIDsToDelete == [privateMessageID])
+    }
+
+    @Test func failedSessionDeletionRollsBackSessionAndMessages() async throws {
+        let context = try makeModelContext()
         let viewModel = ChatSessionViewModel(
             modelContext: context,
-            saveAction: { modelContext in
-                if shouldFailSave { throw ChatProviderTestError.failed }
-                try modelContext.save()
-            }
+            sessionDeletionAction: { _, _ in throw ChatProviderTestError.failed }
+        )
+        let session = try #require(viewModel.currentSession)
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "保留一", isUser: true))
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "保留二", isUser: false))
+
+        #expect(!viewModel.deleteSession(session))
+
+        #expect((try context.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
+        #expect(Set(try context.fetch(FetchDescriptor<SessionMessage>()).map(\.content)) == Set(["保留一", "保留二"]))
+        #expect(Set(session.messages.map(\.content)) == Set(["保留一", "保留二"]))
+    }
+
+    @Test func failedSessionDeletionKeepsInFlightRequest() async throws {
+        let context = try makeModelContext()
+        let viewModel = ChatSessionViewModel(
+            modelContext: context,
+            sessionDeletionAction: { _, _ in throw ChatProviderTestError.failed }
         )
         let session = try #require(viewModel.currentSession)
         let provider = ControllableChatProvider()
@@ -352,11 +393,9 @@ struct ChatResponseIntegrityTests {
             provider: provider
         ))
         await provider.waitUntilRequestStarted()
-        shouldFailSave = true
         #expect(!viewModel.deleteSession(session))
         #expect(viewModel.isProcessingChatRequest(forSessionID: session.id))
 
-        shouldFailSave = false
         provider.resumeNext(with: .success("继续完成的回复"))
         await viewModel.waitForPendingChatRequests()
 
@@ -397,10 +436,10 @@ struct ChatResponseIntegrityTests {
         context.insert(existingSession)
         try context.save()
         var shouldFailSave = true
-        let viewModel = ChatSessionViewModel(modelContext: context) { modelContext in
+        let viewModel = ChatSessionViewModel(modelContext: context, saveAction: { modelContext in
             if shouldFailSave { throw ChatProviderTestError.failed }
             try modelContext.save()
-        }
+        })
         let provider = ImmediateChatProvider(result: .success("不应生成"))
         let request = makeRequestContext(sessionID: existingSession.id, query: "保存失败")
 
