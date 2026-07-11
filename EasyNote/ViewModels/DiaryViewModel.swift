@@ -381,8 +381,12 @@ final class DiaryViewModel: ObservableObject {
             return loadedEntry
         }
 
-        let descriptor = FetchDescriptor<DiaryEntry>()
-        return try? modelContext.fetch(descriptor).first { $0.id == entryID }
+        let descriptor = FetchDescriptor<DiaryEntry>(
+            predicate: #Predicate<DiaryEntry> { entry in
+                entry.id == entryID
+            }
+        )
+        return try? modelContext.fetch(descriptor).first
     }
     
     // MARK: - AI功能
