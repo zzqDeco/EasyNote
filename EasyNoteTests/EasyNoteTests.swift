@@ -12,11 +12,9 @@ import SwiftData
 import UIKit
 @testable import EasyNote
 
-struct EasyNoteTests {}
+struct EasyNoteTests {
 
-@MainActor
-extension EasyNoteTests {
-
+    @MainActor
     @Test func recurringIntervalsComputeExpectedNextDates() async throws {
         let calendar = Calendar.current
         let start = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10, hour: 9)))
@@ -27,6 +25,7 @@ extension EasyNoteTests {
         #expect(TodoItem.RecurringInterval.monthly.nextDate(from: start) == calendar.date(byAdding: .month, value: 1, to: start))
     }
 
+    @MainActor
     @Test func recurrenceParserSupportsLegacyAndCurrentStoredValues() async throws {
         #expect(TodoItem.RecurringInterval.parse("daily")?.displayText == "每天重复")
         #expect(TodoItem.RecurringInterval.parse("每天")?.displayText == "每天重复")
@@ -37,6 +36,7 @@ extension EasyNoteTests {
         #expect(TodoItem.RecurringInterval.parse("unknown") == nil)
     }
 
+    @MainActor
     @Test func cancelingTodoDraftCreatesNoData() async throws {
         let context = try makeModelContext()
         let viewModel = TodoViewModel(
@@ -54,6 +54,7 @@ extension EasyNoteTests {
         #expect(try context.fetch(FetchDescriptor<TodoItem>()).isEmpty)
     }
 
+    @MainActor
     @Test func creatingTodoDraftWithoutDeadlineClearsStaleRecurrence() async throws {
         let context = try makeModelContext()
         let viewModel = TodoViewModel(
@@ -78,6 +79,7 @@ extension EasyNoteTests {
         #expect(persistedTodo.recurringInterval == nil)
     }
 
+    @MainActor
     @Test func persistenceFailureFeedbackKeepsSaveAndDeleteScreensPresented() async throws {
         let saveFeedback = PersistenceFeedback.resolve(
             succeeded: false,
@@ -103,6 +105,7 @@ extension EasyNoteTests {
         #expect(successFeedback.errorMessage == nil)
     }
 
+    @MainActor
     @Test func keyboardObserverRegistrationDoesNotDuplicate() async throws {
         let observer = KeyboardObserver(notificationCenter: NotificationCenter())
 
@@ -116,6 +119,7 @@ extension EasyNoteTests {
         #expect(observer.registrationCount == 0)
     }
 
+    @MainActor
     @Test func recurrencePlannerCreatesNextTodoForCompletedRecurringItem() async throws {
         let calendar = Calendar.current
         let deadline = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10, hour: 9)))
@@ -141,12 +145,14 @@ extension EasyNoteTests {
         #expect(nextTodo.recurringInterval == item.recurringInterval)
     }
 
+    @MainActor
     @Test func recurrencePlannerSkipsNonRecurringTodo() async throws {
         let item = TodoItem(title: "一次性任务", isCompleted: true, isRecurring: false)
 
         #expect(TodoRecurrencePlanner.nextTodo(afterCompleted: item) == nil)
     }
 
+    @MainActor
     @Test func recurrencePlannerSkipsRecurringTodoWithoutDeadline() async throws {
         let item = TodoItem(
             title: "缺少截止日期",
@@ -158,6 +164,7 @@ extension EasyNoteTests {
         #expect(TodoRecurrencePlanner.nextTodo(afterCompleted: item) == nil)
     }
 
+    @MainActor
     @Test func recurrencePlannerSkipsRecurringTodoWithInvalidInterval() async throws {
         let item = TodoItem(
             title: "无效周期",
@@ -170,6 +177,7 @@ extension EasyNoteTests {
         #expect(TodoRecurrencePlanner.nextTodo(afterCompleted: item) == nil)
     }
 
+    @MainActor
     @Test func todoFilterProjectsFocusedCategories() async throws {
         let calendar = Calendar.current
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -194,6 +202,7 @@ extension EasyNoteTests {
         #expect(TodoFilter.completed.apply(to: items, calendar: calendar, now: now).map(\.title) == ["已完成今天", "已完成无日期"])
     }
 
+    @MainActor
     @Test func todoFilterExcludesCompletedItemsFromOpenDateGroups() async throws {
         let calendar = Calendar.current
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -214,6 +223,7 @@ extension EasyNoteTests {
         #expect(TodoFilter.completed.apply(to: completedItems, calendar: calendar, now: now).count == completedItems.count)
     }
 
+    @MainActor
     @Test func todoFilterIncludesNextRecurringTodoFromPlanner() async throws {
         let calendar = Calendar.current
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -233,6 +243,7 @@ extension EasyNoteTests {
         #expect(TodoFilter.completed.apply(to: [nextTodo], calendar: calendar, now: now).isEmpty)
     }
 
+    @MainActor
     @Test func todoNotificationPlannerSchedulesFutureIncompleteTodo() async throws {
         let calendar = Calendar.current
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -243,6 +254,7 @@ extension EasyNoteTests {
         #expect(TodoNotificationPlanner.notificationIdentifier(for: todo.id) == "easynote.todo.\(todo.id.uuidString)")
     }
 
+    @MainActor
     @Test func todoNotificationPlannerSkipsIneligibleTodos() async throws {
         let calendar = Calendar.current
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -254,6 +266,7 @@ extension EasyNoteTests {
         #expect(!TodoNotificationPlanner.shouldScheduleNotification(for: makeTodo(title: "已过期", deadline: past), now: now))
     }
 
+    @MainActor
     @Test func todoNotificationPlannerRetainsNearestPendingSlots() async throws {
         let calendar = Calendar.current
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -281,6 +294,7 @@ extension EasyNoteTests {
         #expect(!retained.map(\.title).contains("已过期"))
     }
 
+    @MainActor
     @Test func systemReminderAgentSkipsCompletedTodo() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -296,6 +310,7 @@ extension EasyNoteTests {
         #expect(proposal.action == .skip(.completedTodo))
     }
 
+    @MainActor
     @Test func systemReminderAgentSkipsMissingDeadline() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -310,6 +325,7 @@ extension EasyNoteTests {
         #expect(proposal.action == .skip(.missingDeadline))
     }
 
+    @MainActor
     @Test func systemReminderAgentSkipsPastDeadline() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -325,6 +341,7 @@ extension EasyNoteTests {
         #expect(proposal.action == .skip(.deadlineNotFuture))
     }
 
+    @MainActor
     @Test func systemReminderAgentUsesMeetingLeadTime() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -342,6 +359,7 @@ extension EasyNoteTests {
         #expect(proposal.reason.contains("会议"))
     }
 
+    @MainActor
     @Test func systemReminderAgentUsesTravelLeadTime() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -358,6 +376,7 @@ extension EasyNoteTests {
         #expect(proposal.reason.contains("出行"))
     }
 
+    @MainActor
     @Test func systemReminderAgentUsesLongSubmissionLeadTime() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -374,6 +393,7 @@ extension EasyNoteTests {
         #expect(proposal.reason.contains("24 小时"))
     }
 
+    @MainActor
     @Test func systemReminderAgentUsesShortSubmissionLeadTimeWhenPossible() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -390,6 +410,7 @@ extension EasyNoteTests {
         #expect(proposal.reason.contains("2 小时"))
     }
 
+    @MainActor
     @Test func systemReminderAgentUsesPreparationLeadTime() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -406,6 +427,7 @@ extension EasyNoteTests {
         #expect(proposal.reason.contains("准备"))
     }
 
+    @MainActor
     @Test func systemReminderAgentUsesDefaultLeadTime() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -422,6 +444,7 @@ extension EasyNoteTests {
         #expect(proposal.reason.contains("15 分钟"))
     }
 
+    @MainActor
     @Test func systemReminderAgentClampsPastLeadTimeToFutureAlarm() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -439,6 +462,7 @@ extension EasyNoteTests {
         #expect(proposal.alarmDate > now)
     }
 
+    @MainActor
     @Test func systemReminderAgentSkipsDeadlineTooClose() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -454,12 +478,14 @@ extension EasyNoteTests {
         #expect(proposal.action == .skip(.deadlineNotFuture))
     }
 
+    @MainActor
     @Test func systemReminderAgentMarkerUsesTodoID() async throws {
         let todo = makeTodo(title: "标记")
 
         #expect(SystemReminderAgent.marker(for: todo.id) == "EasyNoteTodoID:\(todo.id.uuidString)")
     }
 
+    @MainActor
     @Test func systemReminderProposalReconcilerMapsProposalActions() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -496,6 +522,7 @@ extension EasyNoteTests {
         #expect(SystemReminderProposalReconciler.operation(for: disabledProposal) == .ignore)
     }
 
+    @MainActor
     @Test func todoViewModelSynchronizesNotificationAfterAddingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -516,6 +543,7 @@ extension EasyNoteTests {
         #expect(scheduler.canceledTodoIDs.isEmpty)
     }
 
+    @MainActor
     @Test func todoNotificationSnapshotRehydratesAnIndependentValue() async throws {
         let deadline = Date(timeIntervalSince1970: 1_800_000_000)
         let creationDate = Date(timeIntervalSince1970: 1_700_000_000)
@@ -545,6 +573,7 @@ extension EasyNoteTests {
         #expect(detached.creationDate == creationDate)
     }
 
+    @MainActor
     @Test func todoViewModelSynchronizesNotificationAfterEditingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -575,6 +604,7 @@ extension EasyNoteTests {
         #expect(viewModel.todoItems.first?.title == "改后的待办")
     }
 
+    @MainActor
     @Test func todoViewModelReconcilesNotificationsAfterCompletingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -597,6 +627,7 @@ extension EasyNoteTests {
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
 
+    @MainActor
     @Test func todoViewModelReconcilesOriginalAndNextRecurringTodo() async throws {
         let calendar = Calendar.current
         let context = try makeModelContext()
@@ -631,6 +662,7 @@ extension EasyNoteTests {
         #expect(nextTodo.deadline == TodoItem.RecurringInterval.daily.nextDate(from: deadline))
     }
 
+    @MainActor
     @Test func todoViewModelCancelsDeletedNotificationAndReconcilesRemainingTodos() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -655,6 +687,7 @@ extension EasyNoteTests {
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
 
+    @MainActor
     @Test func todoViewModelAppliesSystemReminderAfterAddingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -675,6 +708,7 @@ extension EasyNoteTests {
         #expect(reminderModeStore.systemRemindersMayExist)
     }
 
+    @MainActor
     @Test func todoViewModelDoesNotApplySystemReminderInLocalOrOffMode() async throws {
         let localContext = try makeModelContext()
         let localWriter = FakeSystemReminderWriter()
@@ -703,6 +737,7 @@ extension EasyNoteTests {
         #expect(offWriter.appliedProposals.isEmpty)
     }
 
+    @MainActor
     @Test func todoViewModelAppliesUpdatedSystemReminderAfterEditingTodo() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -733,6 +768,7 @@ extension EasyNoteTests {
         #expect(writer.appliedProposals.first?.title == "更新后的会议")
     }
 
+    @MainActor
     @Test func todoViewModelRemovesSystemReminderWhenEditBecomesIneligible() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -761,6 +797,7 @@ extension EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelCompletesSystemReminderAfterCompletingTodo() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -782,6 +819,7 @@ extension EasyNoteTests {
         #expect(writer.appliedProposals.isEmpty)
     }
 
+    @MainActor
     @Test func todoViewModelCompletesOriginalAndAppliesNextRecurringSystemReminder() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -810,6 +848,7 @@ extension EasyNoteTests {
         #expect(writer.appliedProposals.map(\.todoID) == [nextTodo.id])
     }
 
+    @MainActor
     @Test func todoViewModelRemovesSystemReminderAfterDeletingTodo() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -830,6 +869,7 @@ extension EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelRemovesSystemReminderAfterDeletingTodoInLocalMode() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -854,6 +894,7 @@ extension EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelReconcilesSystemRemindersAfterBackupReload() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -877,6 +918,7 @@ extension EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelDoesNotWriteSystemReminderWhenSwiftDataSaveFails() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -895,6 +937,7 @@ extension EasyNoteTests {
         #expect(writer.removedTodoIDs.isEmpty)
     }
 
+    @MainActor
     @Test func todoViewModelKeepsSavedTodoWhenSystemReminderWriterFails() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -915,6 +958,7 @@ extension EasyNoteTests {
         #expect(!reminderModeStore.systemRemindersMayExist)
     }
 
+    @MainActor
     @Test func todoViewModelKeepsSavedTodoWhenLocalNotificationSchedulingFails() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -937,6 +981,7 @@ extension EasyNoteTests {
         #expect(viewModel.systemReminderErrorMessage == "写入 EasyNote 通知失败: 测试失败")
     }
 
+    @MainActor
     @Test func todoReminderModeStoreMigratesLegacyNotificationSetting() async throws {
         let suiteName = "EasyNoteTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -950,6 +995,7 @@ extension EasyNoteTests {
         #expect(store.currentMode == .localNotification)
     }
 
+    @MainActor
     @Test func todoReminderModeStoreUpdatesLegacyNotificationFlag() async throws {
         let suiteName = "EasyNoteTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -965,6 +1011,7 @@ extension EasyNoteTests {
         #expect(defaults.bool(forKey: LocalTodoNotificationService.enabledDefaultsKey))
     }
 
+    @MainActor
     @Test func todoReminderModeStorePersistsPossibleSystemReminderOwnership() async throws {
         let suiteName = "EasyNoteTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -983,6 +1030,7 @@ extension EasyNoteTests {
         #expect(!store.systemRemindersMayExist)
     }
 
+    @MainActor
     @Test func todoReminderModeTransitionPlannerClearsSystemRemindersOnlyForLocalHandoff() async throws {
         #expect(TodoReminderModeTransitionPlanner.shouldRemoveSystemReminders(
             previousMode: .systemReminderAgent,
@@ -1013,6 +1061,7 @@ extension EasyNoteTests {
         #expect(!TodoReminderModeTransitionPlanner.shouldSyncSystemReminders(nextMode: .localNotification))
     }
     
+    @MainActor
     @Test func chatSessionSummaryUsesLatestUserMessage() async throws {
         let session = ChatSession(title: "新会话")
         
@@ -1029,6 +1078,7 @@ extension EasyNoteTests {
         #expect(session.generateSummary() == "\(longMessage.prefix(20))...")
     }
     
+    @MainActor
     @Test func chatSessionIntegrityAcceptsValidMessages() async throws {
         let session = ChatSession(title: "有效会话")
         let message = SessionMessage(content: "有效消息", isUser: true)
@@ -1039,6 +1089,7 @@ extension EasyNoteTests {
         #expect(session.validateIntegrity())
     }
 
+    @MainActor
     @Test func chatIntegrityRejectsEmptyContentAndFutureDates() async throws {
         let emptyTitleSession = ChatSession(title: "")
         let futureSession = ChatSession(title: "未来会话")
@@ -1059,6 +1110,7 @@ extension EasyNoteTests {
         #expect(!sessionWithEmptyMessage.validateIntegrity())
     }
 
+    @MainActor
     @Test func aiResponseParserParsesDiaryAnalysisJSON() async throws {
         let result = AIResponseParser.parseDiaryAnalysis("""
         {"moods":["开心","期待"],"tags":["工作","成长"]}
@@ -1068,6 +1120,7 @@ extension EasyNoteTests {
         #expect(result.tags == ["工作", "成长"])
     }
 
+    @MainActor
     @Test func aiResponseParserParsesDiaryAnalysisFencedJSON() async throws {
         let result = AIResponseParser.parseDiaryAnalysis("""
         下面是分析结果：
@@ -1083,6 +1136,7 @@ extension EasyNoteTests {
         #expect(result.tags == ["生活", "复盘"])
     }
 
+    @MainActor
     @Test func aiResponseParserFallsBackForBrokenDiaryAnalysis() async throws {
         let result = AIResponseParser.parseDiaryAnalysis("今天整体不错，但这里没有结构化 JSON")
         let defaults = AIResponseParser.defaultDiaryAnalysis()
@@ -1091,6 +1145,7 @@ extension EasyNoteTests {
         #expect(result.tags == defaults.tags)
     }
 
+    @MainActor
     @Test func aiResponseParserParsesRecommendationsJSONInsideText() async throws {
         let result = AIResponseParser.parseRecommendations("""
         可以参考下面的结构化结果：
@@ -1105,6 +1160,7 @@ extension EasyNoteTests {
         #expect(result.todos == ["整理书桌", "记录今日复盘"])
     }
 
+    @MainActor
     @Test func aiResponseParserParsesRecommendationsFencedJSON() async throws {
         let result = AIResponseParser.parseRecommendations("""
         ```json
@@ -1119,6 +1175,7 @@ extension EasyNoteTests {
         #expect(result.todos == ["补充饮水", "规划明天"])
     }
 
+    @MainActor
     @Test func aiResponseParserParsesChineseRecommendationLists() async throws {
         let result = AIResponseParser.parseRecommendations("""
         推荐活动：
@@ -1133,6 +1190,7 @@ extension EasyNoteTests {
         #expect(result.todos == ["整理书桌", "记录今日复盘"])
     }
 
+    @MainActor
     @Test func aiResponseParserFallsBackForBrokenRecommendations() async throws {
         let result = AIResponseParser.parseRecommendations("完全损坏的模型输出")
         let defaults = AIResponseParser.defaultRecommendations()
@@ -1141,6 +1199,7 @@ extension EasyNoteTests {
         #expect(result.todos == defaults.todos)
     }
 
+    @MainActor
     @Test func openAIServiceFailsClosedWhenAPIKeyIsEmpty() async throws {
         let credentials = InMemoryCredentialStore(apiKey: nil)
         let consent = InMemoryConsentStore(isGranted: true)
@@ -1161,6 +1220,7 @@ extension EasyNoteTests {
         #expect(httpClient.requestCount == 0)
     }
 
+    @MainActor
     @Test func diaryViewModelUsesInjectedAIServiceForEmptyKeySummaryFailure() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "待总结", content: "今天完成了服务注入边界整理。")
@@ -1185,6 +1245,7 @@ extension EasyNoteTests {
         #expect(viewModel.errorMessage == "请在设置中添加DeepSeek API密钥后再使用AI功能")
     }
 
+    @MainActor
     @Test func aiActionResultRecordsSuccessFailureAndPreview() async throws {
         let timestamp = try #require(makeGregorianCalendar().date(from: DateComponents(year: 2026, month: 6, day: 20)))
         let success = AIActionResult.success(
@@ -1215,6 +1276,7 @@ extension EasyNoteTests {
         #expect(failure.failureMessage == "生成失败")
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesPendingSummaryOnlyAfterConfirmation() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "需要摘要", content: "今天完成了项目复盘。")
@@ -1239,6 +1301,7 @@ extension EasyNoteTests {
         #expect(viewModel.pendingAIResult == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesSummaryToSourceEntryAfterCurrentEntryChanges() async throws {
         let context = try makeModelContext()
         let sourceEntry = makeDiary(title: "源日记", content: "需要摘要的内容")
@@ -1266,6 +1329,7 @@ extension EasyNoteTests {
         #expect(otherEntry.aiSummary == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsStalePendingSummaryAfterContentChanges() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "源日记", content: "旧正文")
@@ -1290,6 +1354,7 @@ extension EasyNoteTests {
         #expect(viewModel.errorMessage == "日记内容已变化，请重新生成AI摘要")
     }
 
+    @MainActor
     @Test func diaryViewModelKeepsPendingAIResultsPerApplicationTarget() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let firstDiaryId = UUID()
@@ -1324,6 +1389,7 @@ extension EasyNoteTests {
         #expect(viewModel.pendingAIResult(for: .transcriptionText) == transcription)
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesPendingTranscriptionOnlyAfterConfirmation() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.transcribedText = "原始转写"
@@ -1343,6 +1409,7 @@ extension EasyNoteTests {
         #expect(viewModel.pendingAIResult == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelAnalyzesRefinedTranscriptionAfterApply() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         final class AnalysisProbe {
@@ -1367,6 +1434,7 @@ extension EasyNoteTests {
         #expect(probe.content == "润色后的转写")
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesEditorContentAIResultWhenEditorIsUnchanged() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         final class AnalysisProbe {
@@ -1393,6 +1461,7 @@ extension EasyNoteTests {
         #expect(probe.content == "润色正文")
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesChainedResultAfterEditorContentResult() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.refinedContentAnalysisHandler = { _ in }
@@ -1420,6 +1489,7 @@ extension EasyNoteTests {
         #expect(viewModel.transcribedText == "扩写正文")
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsEditorContentAIResultAfterEditorChanges() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.setTranscriptionText("旧正文", inputSource: .editorContent)
@@ -1439,6 +1509,7 @@ extension EasyNoteTests {
         #expect(viewModel.errorMessage == "当前编辑内容已变化，请重新生成AI结果")
     }
 
+    @MainActor
     @Test func diaryViewModelClearsPendingTranscriptionResultsWhenBufferResets() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let result = AIActionResult.success(
@@ -1454,6 +1525,7 @@ extension EasyNoteTests {
         #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelClearsPendingTranscriptionResultsForNewRecording() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.setTranscriptionText("编辑正文", inputSource: .editorContent)
@@ -1472,6 +1544,7 @@ extension EasyNoteTests {
         #expect(viewModel.transcriptionInputSource == .defaultText)
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsStalePendingTranscriptionAfterTextChanges() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.transcribedText = "旧转写"
@@ -1491,6 +1564,7 @@ extension EasyNoteTests {
         #expect(viewModel.errorMessage == "转写内容已变化，请重新生成AI结果")
     }
 
+    @MainActor
     @Test func diaryViewModelDoesNotPromoteFailureResultToPending() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let result = AIActionResult.failure(
@@ -1506,6 +1580,7 @@ extension EasyNoteTests {
         #expect(viewModel.pendingAIResult == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelClearsStalePendingResultAfterFailureForSameTarget() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let success = AIActionResult.success(
@@ -1528,6 +1603,7 @@ extension EasyNoteTests {
         #expect(viewModel.aiActionHistory.first == failure)
     }
 
+    @MainActor
     @Test func diaryViewModelDiscardsPendingAIResultFromHistory() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let result = AIActionResult.success(
@@ -1544,6 +1620,7 @@ extension EasyNoteTests {
         #expect(viewModel.aiActionHistory.isEmpty)
     }
 
+    @MainActor
     @Test func diaryDraftComposerInsertsTranscriptionAfterExistingContent() async throws {
         let result = DiaryDraftComposer.apply(
             transcription: "今天完成了语音记录",
@@ -1554,6 +1631,7 @@ extension EasyNoteTests {
         #expect(result == "已有正文\n\n今天完成了语音记录")
     }
 
+    @MainActor
     @Test func diaryDraftComposerReplacesContentWithTranscription() async throws {
         let result = DiaryDraftComposer.apply(
             transcription: "替换后的正文",
@@ -1564,6 +1642,7 @@ extension EasyNoteTests {
         #expect(result == "替换后的正文")
     }
 
+    @MainActor
     @Test func diaryDraftComposerKeepsContentForEmptyTranscription() async throws {
         let result = DiaryDraftComposer.apply(
             transcription: "   \n ",
@@ -1574,6 +1653,7 @@ extension EasyNoteTests {
         #expect(result == "已有正文")
     }
 
+    @MainActor
     @Test func moodCatalogNormalizesNumericValuesAndAcceptsChineseLabels() async throws {
         #expect(MoodCatalog.storedLabel(for: 4) == "不错")
         #expect(MoodCatalog.index(forStoredLabel: "很棒") == 5)
@@ -1585,6 +1665,7 @@ extension EasyNoteTests {
         #expect(MoodCatalog.canonicalStoredLabel("  ") == nil)
     }
 
+    @MainActor
     @Test func diaryEditTranscriptionDoesNotPersistBeforeCommit() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "语音草稿", content: "已有正文", tags: ["原标签"], mood: "平静")
@@ -1608,6 +1689,7 @@ extension EasyNoteTests {
         #expect(entry.content == "已有正文\n\n新增转写")
     }
 
+    @MainActor
     @Test func diaryViewModelCommitsEditDraftWithOneSaveAndThenRemovesReplacedAudio() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -1652,6 +1734,7 @@ extension EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: replacementAudioURL.path))
     }
 
+    @MainActor
     @Test func diaryEditDraftDiscardKeepsEntryAndOriginalAudioUnchanged() async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -1686,6 +1769,7 @@ extension EasyNoteTests {
         #expect(draft.pendingReplacementAudioURL == nil)
     }
 
+    @MainActor
     @Test func diaryEditDraftReplacementReturnsOnlySupersededPendingAudio() async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -1720,6 +1804,7 @@ extension EasyNoteTests {
         #expect(!FileManager.default.fileExists(atPath: secondPendingURL.path))
     }
 
+    @MainActor
     @Test func diaryViewModelFailedDraftSaveRollsBackAndPreservesBothRecordingsForRetry() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -1767,6 +1852,7 @@ extension EasyNoteTests {
         #expect(!FileManager.default.fileExists(atPath: replacementAudioURL.path))
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsMissingReplacementRecordingBeforeMutatingEntry() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "缺失录音", content: "原正文", tags: ["原标签"], mood: "一般")
@@ -1793,6 +1879,7 @@ extension EasyNoteTests {
         #expect(viewModel.errorMessage == "待保存的录音文件不存在")
     }
 
+    @MainActor
     @Test func recordingStateAllowsTranscriptionActionsOnlyWhenStable() async throws {
         #expect(!RecordingState.recording.allowsTranscriptionActions)
         #expect(!RecordingState.processing.allowsTranscriptionActions)
@@ -1801,6 +1888,7 @@ extension EasyNoteTests {
         #expect(RecordingState.error(NSError(domain: "test", code: 1)).allowsTranscriptionActions)
     }
 
+    @MainActor
     @Test func recordingStateCompletionPreservesExistingError() async throws {
         let error = NSError(domain: "test", code: 1)
 
@@ -1817,6 +1905,7 @@ extension EasyNoteTests {
         }
     }
 
+    @MainActor
     @Test func onlyActiveRecordingBlocksAReplacementSession() {
         #expect(RecordingState.recording.blocksNewRecordingStart)
         #expect(!RecordingState.processing.blocksNewRecordingStart)
@@ -1824,6 +1913,7 @@ extension EasyNoteTests {
         #expect(!RecordingState.idle.blocksNewRecordingStart)
     }
 
+    @MainActor
     @Test func speechRecognitionSessionGateRejectsOverlapAndLateCallbacks() async throws {
         let gate = SpeechRecognitionSessionGate()
         let firstSessionID = UUID()
@@ -1840,6 +1930,7 @@ extension EasyNoteTests {
         #expect(gate.isActive(nextSessionID))
     }
 
+    @MainActor
     @Test func todoViewModelPublishesMutationsOnMainThread() async throws {
         let viewModel = TodoViewModel(
             modelContext: try makeModelContext(),
@@ -1859,6 +1950,7 @@ extension EasyNoteTests {
         withExtendedLifetime(cancellable) {}
     }
 
+    @MainActor
     @Test func diaryViewModelCancellationClearsSpeechSessionState() async throws {
         let speechService = FakeSpeechRecognitionService()
         speechService.publishTranscription("未保存转写")
@@ -1874,6 +1966,7 @@ extension EasyNoteTests {
         #expect(viewModel.transcribedText.isEmpty)
     }
 
+    @MainActor
     @Test func diaryRecordingCleanupRemovesPreviousFileWithoutDeletingReplacement() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -1893,6 +1986,7 @@ extension EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: replacementURL.path))
     }
 
+    @MainActor
     @Test func diaryRecordingCleanupKeepsFileWhenReplacementMatchesPrevious() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -1909,6 +2003,7 @@ extension EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: recordingURL.path))
     }
 
+    @MainActor
     @Test func diaryRecordingCleanupRemovesLegacyM4AFile() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -1925,6 +2020,7 @@ extension EasyNoteTests {
         #expect(!FileManager.default.fileExists(atPath: legacyRecordingURL.path))
     }
 
+    @MainActor
     @Test func diaryRecordingDraftCaptureIncludesActiveAndFinishedStates() async throws {
         let error = NSError(domain: "test", code: 1)
 
@@ -1935,6 +2031,7 @@ extension EasyNoteTests {
         #expect(!DiaryViewModel.shouldCaptureVoiceRecordingDraft(isRecording: false, recordingState: .error(error)))
     }
 
+    @MainActor
     @Test func diaryEntryQuerySearchesTitleContentAndTags() async throws {
         let entries = [
             makeDiary(title: "工作复盘", content: "今天推进了项目", tags: ["工作"]),
@@ -1946,6 +2043,7 @@ extension EasyNoteTests {
         #expect(DiaryEntryQuery(searchText: "户外").apply(to: entries).map(\.title) == ["周末"])
     }
 
+    @MainActor
     @Test func diaryEntryQueryFiltersTagMoodFavoriteAndDateRange() async throws {
         let calendar = Calendar.current
         let june10 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10, hour: 9)))
@@ -1963,6 +2061,7 @@ extension EasyNoteTests {
         #expect(DiaryEntryQuery(startDate: june11, endDate: june11).apply(to: entries).map(\.title) == ["生活"])
     }
 
+    @MainActor
     @Test func diaryEntryQueryIncludesSubsecondEntriesOnEndDate() async throws {
         let calendar = Calendar.current
         let selectedDay = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 11, hour: 12)))
@@ -1984,6 +2083,7 @@ extension EasyNoteTests {
         #expect(DiaryEntryQuery(startDate: selectedDay, endDate: selectedDay).apply(to: entries).map(\.title) == ["当天最后一秒"])
     }
 
+    @MainActor
     @Test func diaryEntryQueryCombinesSearchAndFilters() async throws {
         let entries = [
             makeDiary(title: "项目推进", content: "完成接口设计", tags: ["工作"], mood: "4", isFavorite: true),
@@ -2000,6 +2100,7 @@ extension EasyNoteTests {
         #expect(query.apply(to: entries).map(\.title) == ["项目推进"])
     }
 
+    @MainActor
     @Test func diaryEntryQuerySortsAndEmptyQueryReturnsAllEntries() async throws {
         let calendar = Calendar.current
         let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
@@ -2015,6 +2116,7 @@ extension EasyNoteTests {
         #expect(DiaryEntryQuery(sortOption: .titleDesc).apply(to: entries).map(\.title) == ["Beta", "alpha"])
     }
 
+    @MainActor
     @Test func diaryReviewProjectionAggregatesMonthlyCountsFavoritesMoodsAndTags() async throws {
         let calendar = makeGregorianCalendar()
         let june1 = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 1, hour: 9)))
@@ -2045,6 +2147,7 @@ extension EasyNoteTests {
         ])
     }
 
+    @MainActor
     @Test func diaryReviewProjectionSortsTopTagsByCountThenLocalizedName() async throws {
         let date = try #require(makeGregorianCalendar().date(from: DateComponents(year: 2026, month: 6, day: 10)))
         let entries = [
@@ -2062,6 +2165,7 @@ extension EasyNoteTests {
         ])
     }
 
+    @MainActor
     @Test func diaryReviewProjectionTracksDistinctTagsBeyondTopLimit() async throws {
         let calendar = makeGregorianCalendar()
         let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
@@ -2080,6 +2184,7 @@ extension EasyNoteTests {
         #expect(projection.overallTopTags.count == 2)
     }
 
+    @MainActor
     @Test func diaryReviewProjectionCountsMoodDistributionAndRecentFavorites() async throws {
         let calendar = makeGregorianCalendar()
         let earlier = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
@@ -2099,6 +2204,7 @@ extension EasyNoteTests {
         #expect(projection.recentFavorites.map(\.title) == ["新收藏", "旧收藏"])
     }
 
+    @MainActor
     @Test func diaryReviewProjectionNormalizesNumericAndLabelMoods() async throws {
         let calendar = makeGregorianCalendar()
         let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 10)))
@@ -2117,6 +2223,7 @@ extension EasyNoteTests {
         ])
     }
 
+    @MainActor
     @Test func diaryReviewProjectionReturnsEmptyProjectionForNoEntries() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12)))
@@ -2133,6 +2240,7 @@ extension EasyNoteTests {
         #expect(projection.windowSummaries.allSatisfy { $0.entryCount == 0 && $0.favoriteCount == 0 })
     }
 
+    @MainActor
     @Test func diaryReviewProjectionWindowsIncludeTodayAndExcludeOutsideRange() async throws {
         let calendar = makeGregorianCalendar()
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 12, hour: 12)))
@@ -2152,6 +2260,7 @@ extension EasyNoteTests {
         #expect(DiaryReviewProjection.entries(for: .currentMonth, in: entries, calendar: calendar, now: now).map(\.title) == ["今天", "六天前", "七天前"])
     }
 
+    @MainActor
     @Test func backupV1RoundTripsThroughJSON() async throws {
         let service = BackupService()
         let exportedAt = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
@@ -2194,6 +2303,7 @@ extension EasyNoteTests {
         #expect(decoded == backup)
     }
 
+    @MainActor
     @Test func backupRoundTripPreservesFractionalSecondDates() async throws {
         let service = BackupService()
         let date = Date(timeIntervalSince1970: 1_781_694_000.456)
@@ -2250,6 +2360,7 @@ extension EasyNoteTests {
         #expect(abs((decoded.sessionMessages.first?.timestamp.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
     }
 
+    @MainActor
     @Test func backupExportIncludesCoreModelsAndAudioAsset() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2282,6 +2393,7 @@ extension EasyNoteTests {
         #expect(backup.diaryEntries.first?.audioAssetId == backup.audioAssets.first?.id)
     }
 
+    @MainActor
     @Test func backupExportExcludesOrphanedChatMessages() async throws {
         let context = try makeModelContext()
         let visibleMessage = SessionMessage(content: "可见消息", isUser: true)
@@ -2300,6 +2412,7 @@ extension EasyNoteTests {
         #expect(backup.sessionMessages.map(\.content) == ["可见消息"])
     }
 
+    @MainActor
     @Test func backupExportNormalizesLegacySharedMessageIDs() throws {
         let sharedMessageID = UUID()
         let duplicateMessageID = UUID()
@@ -2313,6 +2426,7 @@ extension EasyNoteTests {
         #expect(Set(normalizedIDs.flatMap { $0 }).count == 2)
     }
 
+    @MainActor
     @Test func backupExportSkipsMissingAudioWithoutDroppingDiary() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2330,6 +2444,7 @@ extension EasyNoteTests {
         #expect(backup.audioAssets.isEmpty)
     }
 
+    @MainActor
     @Test func backupImportRejectsUnsupportedVersionWithoutWriting() async throws {
         let context = try makeModelContext()
         let existing = makeDiary(title: "本地日记")
@@ -2372,6 +2487,7 @@ extension EasyNoteTests {
         #expect(entries.map(\.title) == ["本地日记"])
     }
 
+    @MainActor
     @Test func backupImportDataRejectsInvalidBase64WithoutWriting() async throws {
         let context = try makeModelContext()
         let existing = makeTodo(title: "本地待办")
@@ -2410,6 +2526,7 @@ extension EasyNoteTests {
         #expect(todos.map(\.title) == ["本地待办"])
     }
 
+    @MainActor
     @Test func backupImportNormalizesLegacyMessagesSharedAcrossSessions() async throws {
         let context = try makeModelContext()
         let messageID = UUID()
@@ -2456,6 +2573,7 @@ extension EasyNoteTests {
         #expect(messages.allSatisfy { $0.content == "不能共享的消息" })
     }
 
+    @MainActor
     @Test func backupImportUpsertsSameIDAndPreservesUnmentionedLocalRecords() async throws {
         let context = try makeModelContext()
         let diaryID = UUID()
@@ -2513,6 +2631,7 @@ extension EasyNoteTests {
         #expect(Set(todos.map(\.title)) == Set(["保留的本地待办", "导入待办"]))
     }
 
+    @MainActor
     @Test func backupImportRestoresAudioAssetToLocalFile() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2562,6 +2681,7 @@ extension EasyNoteTests {
         #expect(try Data(contentsOf: restoredURL) == Data([0x07, 0x08, 0x09]))
     }
 
+    @MainActor
     @Test func backupImportOverwritesDeterministicRestoredAudioWhenReimporting() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2615,6 +2735,7 @@ extension EasyNoteTests {
             .count == 1)
     }
 
+    @MainActor
     @Test func backupImportAllowsBlankSessionTitlesAlreadyCreatedByApp() async throws {
         let context = try makeModelContext()
         let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
@@ -2642,6 +2763,7 @@ extension EasyNoteTests {
         #expect(session.title == "   ")
     }
 
+    @MainActor
     @Test func backupExportAllowsWhitespaceDiaryTitlesAlreadyCreatedByApp() async throws {
         let context = try makeModelContext()
         let diary = makeDiary(title: "   ")
@@ -2653,6 +2775,7 @@ extension EasyNoteTests {
         #expect(backup.diaryEntries.map(\.title) == ["   "])
     }
 
+    @MainActor
     @Test func backupImportPreservesLocalMessagesMissingFromOlderBackup() async throws {
         let context = try makeModelContext()
         let calendar = Calendar.current
@@ -2702,6 +2825,7 @@ extension EasyNoteTests {
         #expect(importedSession.lastModifiedDate == later)
     }
 
+    @MainActor
     @Test func cloudKitPreflightBlocksCurrentLocalFirstConfiguration() async throws {
         let report = CloudKitSyncPreflight.evaluate(.currentProject)
 
@@ -2715,6 +2839,7 @@ extension EasyNoteTests {
         #expect(report.check(withID: "manual-validation")?.severity == .blocked)
     }
 
+    @MainActor
     @Test func settingsDependenciesPreserveInjectedCoordinationBoundaries() async throws {
         let scheduler = FakeTodoNotificationScheduler()
         let writer = FakeSystemReminderWriter()
@@ -2738,6 +2863,7 @@ extension EasyNoteTests {
         #expect(dependencies.cloudKitPreflightReport == report)
     }
 
+    @MainActor
     @Test func cloudKitPreflightPassesServiceManagedReadyConfiguration() async throws {
         let configuration = CloudKitSyncPreflight.Configuration(
             expectedContainerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier,
@@ -2759,6 +2885,7 @@ extension EasyNoteTests {
         #expect(report.checks.allSatisfy { $0.severity == .passed })
     }
 
+    @MainActor
     @Test func cloudKitPreflightBlocksMismatchedContainer() async throws {
         let configuration = CloudKitSyncPreflight.Configuration(
             expectedContainerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier,
