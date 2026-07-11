@@ -371,7 +371,13 @@ final class ChatSessionViewModel: ObservableObject {
             modelContext.delete(message)
         }
         modelContext.delete(session)
-        guard saveContext() else {
+        guard saveContext(onFailure: {
+            for message in messages {
+                self.modelContext.insert(message)
+            }
+            self.modelContext.insert(session)
+            session.messages = messages
+        }, rollbackOnFailure: false) else {
             return false
         }
         cancelChatRequests(forSessionID: sessionID)
@@ -429,14 +435,19 @@ final class ChatSessionViewModel: ObservableObject {
     
     // 保存上下文
     @discardableResult
-    private func saveContext(onFailure: (() -> Void)? = nil) -> Bool {
+    private func saveContext(
+        onFailure: (() -> Void)? = nil,
+        rollbackOnFailure: Bool = true
+    ) -> Bool {
         do {
             try saveAction(modelContext)
             errorMessage = nil
             return true
         } catch {
             onFailure?()
-            modelContext.rollback()
+            if rollbackOnFailure {
+                modelContext.rollback()
+            }
             errorMessage = "保存会话失败: \(error.localizedDescription)"
             return false
         }
