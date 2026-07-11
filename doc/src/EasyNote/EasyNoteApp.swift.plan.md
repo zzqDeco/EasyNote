@@ -2,8 +2,8 @@
 
 ## Responsibility
 
-- Own the SwiftUI app entry point and shared SwiftData `ModelContainer`.
-- Define the current local store path and model schema used by the app.
+- Own the SwiftUI app entry point and retain the app-scoped `PersistenceBootstrap`.
+- Install `PersistenceRootView`, which supplies the shared SwiftData `ModelContainer` only after bootstrap succeeds.
 - Save the main context when the app enters the background.
 
 ## Boundaries
@@ -13,11 +13,10 @@
 
 ## Behavior Notes
 
-- The shared SwiftData store is explicitly placed at `URL.documentsDirectory/EasyNote.store`.
-- The app-level `ModelConfiguration` uses `cloudKitDatabase: .none`; CloudKit sync remains owned by `CloudKitService`, not SwiftData automatic sync.
+- The shared SwiftData store path, schema, migration plan, and `cloudKitDatabase: .none` configuration belong to `PersistenceBootstrap` and `EasyNoteSchemaV1`.
 - UI-test launches use an in-memory SwiftData configuration when `-easynote-ui-testing` or `EASYNOTE_UI_TESTING=1` is present.
 - UI-test launches reset local defaults for API key, theme, and recommendation cache; production launches keep the persisted Documents store.
-- The schema currently includes diary, todo, chat session, and session message models.
+- Background save runs only when bootstrap has a ready container.
 - Startup prints local paths for prototype debugging; production logging should be planned before broad cleanup.
 
 ## Tests

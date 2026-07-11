@@ -366,6 +366,10 @@ final class ChatSessionViewModel: ObservableObject {
     @discardableResult
     func deleteSession(_ session: ChatSession) -> Bool {
         let sessionID = session.id
+        let messages = session.messages
+        for message in messages {
+            modelContext.delete(message)
+        }
         modelContext.delete(session)
         guard saveContext() else {
             return false

@@ -334,6 +334,43 @@ struct ChatResponseIntegrityTests {
         #expect(!viewModel.isProcessingChatRequest(forSessionID: session.id))
     }
 
+    @Test func deletingSessionRemovesAllPersistedMessages() async throws {
+        let context = try makeModelContext()
+        let viewModel = ChatSessionViewModel(modelContext: context)
+        let session = try #require(viewModel.currentSession)
+
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "第一条", isUser: true))
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "第二条", isUser: false))
+        #expect(try context.fetch(FetchDescriptor<SessionMessage>()).count == 2)
+
+        #expect(viewModel.deleteSession(session))
+
+        #expect(try context.fetch(FetchDescriptor<SessionMessage>()).isEmpty)
+        #expect(!(try context.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
+    }
+
+    @Test func failedSessionDeletionRollsBackSessionAndMessages() async throws {
+        let context = try makeModelContext()
+        var shouldFailSave = false
+        let viewModel = ChatSessionViewModel(
+            modelContext: context,
+            saveAction: { modelContext in
+                if shouldFailSave { throw ChatProviderTestError.failed }
+                try modelContext.save()
+            }
+        )
+        let session = try #require(viewModel.currentSession)
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "保留一", isUser: true))
+        _ = try #require(viewModel.addMessage(toSessionID: session.id, content: "保留二", isUser: false))
+
+        shouldFailSave = true
+        #expect(!viewModel.deleteSession(session))
+
+        #expect((try context.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
+        #expect(Set(try context.fetch(FetchDescriptor<SessionMessage>()).map(\.content)) == Set(["保留一", "保留二"]))
+        #expect(Set(session.messages.map(\.content)) == Set(["保留一", "保留二"]))
+    }
+
     @Test func failedSessionDeletionKeepsInFlightRequest() async throws {
         let context = try makeModelContext()
         var shouldFailSave = false

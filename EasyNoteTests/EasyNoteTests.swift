@@ -1007,6 +1007,26 @@ struct EasyNoteTests {
         #expect(session.validateIntegrity())
     }
 
+    @Test func chatIntegrityRejectsEmptyContentAndFutureDates() async throws {
+        let emptyTitleSession = ChatSession(title: "")
+        let futureSession = ChatSession(title: "未来会话")
+        futureSession.creationDate = Date().addingTimeInterval(60)
+        let emptyMessage = SessionMessage(content: "", isUser: true)
+        let futureMessage = SessionMessage(
+            content: "未来消息",
+            isUser: false,
+            timestamp: Date().addingTimeInterval(60)
+        )
+        let sessionWithEmptyMessage = ChatSession(title: "包含空消息")
+        sessionWithEmptyMessage.addMessage(emptyMessage)
+
+        #expect(!emptyTitleSession.validateIntegrity())
+        #expect(!futureSession.validateIntegrity())
+        #expect(!emptyMessage.validateIntegrity())
+        #expect(!futureMessage.validateIntegrity())
+        #expect(!sessionWithEmptyMessage.validateIntegrity())
+    }
+
     @Test func aiResponseParserParsesDiaryAnalysisJSON() async throws {
         let result = AIResponseParser.parseDiaryAnalysis("""
         {"moods":["开心","期待"],"tags":["工作","成长"]}

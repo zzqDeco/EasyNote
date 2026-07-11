@@ -15,6 +15,7 @@ import UIKit
 struct EasyNoteApp: App {
     // 添加应用生命周期状态对象
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var persistenceBootstrap: PersistenceBootstrap
 
     init() {
         if EasyNoteLaunchOptions.shouldDisableAnimations {
@@ -24,45 +25,15 @@ struct EasyNoteApp: App {
         if EasyNoteLaunchOptions.isUITesting {
             EasyNoteLaunchOptions.resetUserDefaultsForUITests()
         }
+
+        _persistenceBootstrap = StateObject(wrappedValue: PersistenceBootstrap(
+            isStoredInMemoryOnly: EasyNoteLaunchOptions.isUITesting
+        ))
     }
-    
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            DiaryEntry.self,
-            TodoItem.self,
-            ChatSession.self,
-            SessionMessage.self
-        ])
-        
-        let modelConfiguration: ModelConfiguration
-        if EasyNoteLaunchOptions.isUITesting {
-            modelConfiguration = ModelConfiguration(isStoredInMemoryOnly: true)
-        } else {
-            // 创建一个唯一的存储URL，确保数据保存在应用的Documents目录下
-            let storeURL = URL.documentsDirectory.appending(path: "EasyNote.store")
-
-            // 配置本地存储，避免 SwiftData 自动接管 CloudKit 同步
-            modelConfiguration = ModelConfiguration(
-                "EasyNote",
-                schema: schema,
-                url: storeURL,
-                allowsSave: true,
-                cloudKitDatabase: .none
-            )
-            print("SwiftData数据库路径: \(storeURL.path())")
-        }
-
-        do {
-            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            return container
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            PersistenceRootView(bootstrap: persistenceBootstrap)
                 .onAppear {
                     // 应用启动时执行的初始化逻辑
                     print("EasyNote应用启动")
@@ -71,7 +42,6 @@ struct EasyNoteApp: App {
                     print("应用文档目录: \(URL.documentsDirectory.path())")
                 }
         }
-        .modelContainer(sharedModelContainer)
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active {
                 // 应用进入前台时
@@ -82,8 +52,11 @@ struct EasyNoteApp: App {
             } else if newPhase == .background {
                 // 应用进入后台时，确保数据保存
                 print("应用进入后台")
+                guard let modelContainer = persistenceBootstrap.modelContainer else {
+                    return
+                }
                 do {
-                    try sharedModelContainer.mainContext.save()
+                    try modelContainer.mainContext.save()
                     print("应用后台保存数据成功")
                 } catch {
                     print("应用后台保存数据失败: \(error)")

@@ -23,13 +23,30 @@ The repository must not contain default API keys. Empty `openai_api_key` disable
 - `TodoItem.recurringInterval` stores a `TodoItem.RecurringInterval.rawValue` string, currently Chinese display values such as `每天` and `每周`. Reads also accept legacy English values such as `daily` and `weekly` through the shared recurrence parser.
 - Recurring todo completion must use the shared recurrence planner. A next todo is created only after a completed recurring item has both a valid stored interval and a deadline.
 - `ChatSession.messages` owns the session message list; `SessionMessage.relatedEntryIds` stores diary UUID strings, not relationships.
-- `EasyNoteApp` creates the app `ModelContainer` with a named local `ModelConfiguration`, `url: URL.documentsDirectory/EasyNote.store`, and `cloudKitDatabase: .none`.
+- `ChatSessionViewModel.deleteSession` explicitly deletes the session's message rows before the session row. These deletes share one save and one rollback boundary; this contract does not depend on an inverse relationship.
+- `EasyNoteSchemaV1` contains the unchanged `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` model types at version `1.0.0`.
+- `EasyNoteMigrationPlan` declares V1 and currently has no migration stages.
+- `PersistenceBootstrap` creates the app `ModelContainer` with the versioned schema, migration plan, a named local `ModelConfiguration`, `url: URL.documentsDirectory/EasyNote.store`, and `cloudKitDatabase: .none`.
 
 Model changes require a migration or compatibility note before implementation.
 
 Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
 
 Todo creation views own a pure `TodoDraft` and do not construct or insert a `TodoItem` until explicit Save. Diary and todo create, edit, and detail-delete actions resolve the ViewModel result through `PersistenceFeedback`; success may dismiss or navigate away, while failure keeps the current screen and input visible with an error.
+
+## Persistence Startup And Recovery Boundary
+
+`PersistenceBootstrap.State` is `loading`, `ready(ModelContainer)`, or `failed(PersistenceBootstrapFailure)`. Initial open and retry use the same store URL and never mutate store files. UI-test launches use the same V1 schema and migration plan with an in-memory configuration.
+
+Recovery rebuild is available only for the persistent store and only after explicit UI confirmation:
+
+- create a unique UTC timestamp directory under `Documents/EasyNoteRecovery`
+- copy each existing `EasyNote.store`, `EasyNote.store-wal`, and `EasyNote.store-shm` file into that directory
+- abort before deletion if directory creation or any copy fails
+- after all copies succeed, remove the original components and attempt a fresh V1 container open
+- if removal or rebuild fails, publish failed state with the recovery directory location and do not delete the recovery copy
+
+Container creation, current time, and file operations are injectable so unit tests can force open, retry, copy, and rebuild outcomes without touching user data. Recovery copies are raw SQLite store components for support/manual restoration; they are separate from the Settings JSON backup/import contract.
 
 ## Diary Edit Transaction Boundary
 

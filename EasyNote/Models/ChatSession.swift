@@ -47,12 +47,6 @@ final class ChatSession {
     
     // 验证会话完整性
     func validateIntegrity() -> Bool {
-        // 确保所有属性都有有效值
-        guard id != UUID() else {
-            print("无效会话：ID为空")
-            return false
-        }
-        
         guard !title.isEmpty else {
             print("无效会话：标题为空")
             return false
@@ -99,7 +93,6 @@ final class SessionMessage {
     
     // 验证消息完整性
     func validateIntegrity() -> Bool {
-        guard id != UUID() else { return false }
         guard !content.isEmpty else { return false }
         guard timestamp <= Date() else { return false }
         return true
@@ -107,4 +100,4 @@ final class SessionMessage {
 }
 
 // 添加类型别名，解决与ChatExploreView中定义的ChatMessage结构体的命名冲突
-typealias ChatMessage = SessionMessage 
+typealias ChatMessage = SessionMessage
