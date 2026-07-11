@@ -19,6 +19,7 @@
 ## Implementation
 
 - Use `@MainActor` for UI-facing ViewModels and the speech service so published state, SwiftData UI contexts, and audio engine install/start/stop/teardown are serialized.
+- Construct main-actor service defaults inside `DiaryViewModel.init` rather than in default-argument expressions, preserving compatibility with the hosted Xcode 16.4 compiler.
 - Keep a lock-protected speech session gate available to non-main framework callbacks. A callback must match the active token before it can enqueue a main-actor state update; teardown invalidates the token before cancelling recognition or removing the input tap.
 - Capture each recognition request and recording file for its input tap so late buffers cannot target a replacement session.
 - Use `Logger` categories with static messages or non-sensitive counts/statuses only.

@@ -49,14 +49,14 @@ final class DiaryViewModel: ObservableObject {
     
     init(
         modelContext: ModelContext?,
-        speechService: any SpeechRecognitionProviding = SpeechRecognitionService(),
-        openAIService: any OpenAIServiceProviding = OpenAIService(),
-        cloudKitService: any CloudKitDiarySyncProviding = CloudKitService(),
+        speechService: (any SpeechRecognitionProviding)? = nil,
+        openAIService: (any OpenAIServiceProviding)? = nil,
+        cloudKitService: (any CloudKitDiarySyncProviding)? = nil,
         saveModelContext: @escaping (ModelContext) throws -> Void = { try $0.save() }
     ) {
-        self.speechService = speechService
-        self.openAIService = openAIService
-        self.cloudKitService = cloudKitService
+        self.speechService = speechService ?? SpeechRecognitionService()
+        self.openAIService = openAIService ?? OpenAIService()
+        self.cloudKitService = cloudKitService ?? CloudKitService()
         self.saveModelContext = saveModelContext
 
         if let context = modelContext {
@@ -82,23 +82,23 @@ final class DiaryViewModel: ObservableObject {
             Self.logger.debug("Using lightweight diary services in preview")
         } else {
             // 绑定语音服务状态
-            speechService.transcribedTextPublisher
+            self.speechService.transcribedTextPublisher
                 .assign(to: &$transcribedText)
             
-            speechService.recordingStatePublisher
+            self.speechService.recordingStatePublisher
                 .assign(to: &$recordingState)
             
-            speechService.isRecordingPublisher
+            self.speechService.isRecordingPublisher
                 .assign(to: &$isRecording)
 
-            speechService.speechPermissionStatusPublisher
+            self.speechService.speechPermissionStatusPublisher
                 .assign(to: &$speechPermissionStatus)
 
-            speechService.microphonePermissionStatusPublisher
+            self.speechService.microphonePermissionStatusPublisher
                 .assign(to: &$microphonePermissionStatus)
             
             // 绑定AI处理状态
-            openAIService.isProcessingPublisher
+            self.openAIService.isProcessingPublisher
                 .assign(to: &$isProcessingAI)
             
             // 通过NotificationCenter观察CloudKitService的同步状态变化
