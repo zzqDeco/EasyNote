@@ -102,9 +102,13 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
           status=$?
           if [ "$status" -ne 0 ]; then
+            echo "::group::xcresult test summary"
             xcrun xcresulttool get test-results summary --path TestResults.xcresult || true
+            echo "::endgroup::"
+            echo "::group::EasyNote crash reports"
             find "$HOME/Library/Logs/DiagnosticReports" \
               "$HOME/Library/Developer/CoreSimulator/Devices/${SIMULATOR_UDID}/data/Library/Logs/CrashReporter" \
-              -type f -mmin -10 -print -exec tail -n 300 {} \; 2>/dev/null || true
+              -type f -name 'EasyNote*.ips' -mmin -10 -print -exec cat {} \; 2>/dev/null || true
+            echo "::endgroup::"
           fi
           exit "$status"
