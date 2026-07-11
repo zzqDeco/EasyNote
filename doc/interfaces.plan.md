@@ -13,6 +13,8 @@ This document records the current contracts that cross module boundaries in Easy
 
 The repository must not contain default API keys. Empty `openai_api_key` disables AI calls with a user-visible error.
 
+`SettingsDependencies` is the Settings composition contract for the existing backup service, local notification scheduler, system reminder agent/writer, reminder-mode store, and CloudKit preflight report. `SettingsView` forwards this bundle and SwiftUI environment values to feature-owned sections; the bundle does not change persistence keys, service protocols, or production defaults.
+
 ## SwiftData Models
 
 - `DiaryEntry.id` is the stable diary identifier used by lists, filters, delete paths, and chat related-entry references.
@@ -91,7 +93,7 @@ EasyNoteTodoID:<uuid>
 ## Local Backup Boundary
 
 `BackupService` owns local export and import for the public, local-first MVP.
-`SettingsView` consumes this behavior through `BackupServiceProviding`; the default implementation remains `BackupService`.
+`BackupSettingsSection` consumes this behavior through `BackupServiceProviding` supplied by `SettingsDependencies`; the default implementation remains `BackupService`.
 
 Backup v1 uses a single JSON file with `.easynotebackup` extension and root type `EasyNoteBackupV1`:
 
