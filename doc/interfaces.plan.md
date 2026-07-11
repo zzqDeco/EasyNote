@@ -18,7 +18,7 @@ The repository must not contain default API keys. Empty `openai_api_key` disable
 - `DiaryEntry.id` is the stable diary identifier used by lists, filters, delete paths, and chat related-entry references.
 - `DiaryEntry.tags` is stored as `[String]` and used by search/filter paths.
 - Diary list search and filters are derived through `DiaryEntryQuery`; the fetched `diaryEntries` source list should not be overwritten just to show filtered results.
-- `TodoItem.recurringInterval` stores a `TodoItem.RecurringInterval.rawValue` string, currently Chinese display values such as `每天` and `每周`.
+- `TodoItem.recurringInterval` stores a `TodoItem.RecurringInterval.rawValue` string, currently Chinese display values such as `每天` and `每周`. Reads also accept legacy English values such as `daily` and `weekly` through the shared recurrence parser.
 - Recurring todo completion must use the shared recurrence planner. A next todo is created only after a completed recurring item has both a valid stored interval and a deadline.
 - `ChatSession.messages` owns the session message list; `SessionMessage.relatedEntryIds` stores diary UUID strings, not relationships.
 - `EasyNoteApp` creates the app `ModelContainer` with a named local `ModelConfiguration`, `url: URL.documentsDirectory/EasyNote.store`, and `cloudKitDatabase: .none`.
@@ -26,6 +26,8 @@ The repository must not contain default API keys. Empty `openai_api_key` disable
 Model changes require a migration or compatibility note before implementation.
 
 Core SwiftData save paths should return a success value or set a user-visible `errorMessage`; production code should not silently swallow diary, todo, or chat save failures. Failed saves should roll back the active `ModelContext` so pending inserts, deletes, and relationship edits cannot be persisted by a later unrelated save.
+
+Todo creation views own a pure `TodoDraft` and do not construct or insert a `TodoItem` until explicit Save. Diary and todo create, edit, and detail-delete actions resolve the ViewModel result through `PersistenceFeedback`; success may dismiss or navigate away, while failure keeps the current screen and input visible with an error.
 
 ## Diary Edit Transaction Boundary
 

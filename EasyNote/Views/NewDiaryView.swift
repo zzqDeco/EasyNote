@@ -34,6 +34,7 @@ struct NewDiaryView: View {
     @State private var isShowingTranscription = false
     @State private var pendingVoiceRecordingAudioURL: URL?
     @State private var didSaveEntry = false
+    @State private var persistenceError: String?
     
     // 录音相关状态
     @State private var contentSaveWorkItem: DispatchWorkItem?
@@ -73,6 +74,13 @@ struct NewDiaryView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if let persistenceError {
+                        Text(persistenceError)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
                     // 拆分为更小的子视图
                     titleInputSection
                     
@@ -421,7 +429,14 @@ struct NewDiaryView: View {
             audioURL: pendingVoiceRecordingAudioURL
         )
 
-        guard newEntry != nil else {
+        let feedback = PersistenceFeedback.resolve(
+            succeeded: newEntry != nil,
+            viewModelError: viewModel.errorMessage,
+            fallbackError: "保存日记失败，请重试"
+        )
+        persistenceError = feedback.errorMessage
+
+        guard feedback.shouldDismiss else {
             return
         }
 

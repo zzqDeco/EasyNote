@@ -8,6 +8,7 @@ struct TodoDetailView: View {
     
     @State private var isEditingTodo = false
     @State private var showingDeleteConfirmation = false
+    @State private var persistenceError: String?
     
     var body: some View {
         ScrollView {
@@ -16,6 +17,13 @@ struct TodoDetailView: View {
                 titleSection
 
                 reminderStatusSection
+
+                if let persistenceError {
+                    Text(persistenceError)
+                        .font(.footnote)
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 
                 // 截止日期和优先级
                 deadlineAndPrioritySection
@@ -49,8 +57,15 @@ struct TodoDetailView: View {
         }
         .alert("确认删除", isPresented: $showingDeleteConfirmation) {
             Button("删除", role: .destructive) {
-                viewModel.deleteTodoItem(withID: item.id)
-                dismiss()
+                let feedback = PersistenceFeedback.resolve(
+                    succeeded: viewModel.deleteTodoItem(withID: item.id),
+                    viewModelError: viewModel.errorMessage,
+                    fallbackError: "删除待办事项失败，请重试"
+                )
+                persistenceError = feedback.errorMessage
+                if feedback.shouldDismiss {
+                    dismiss()
+                }
             }
             Button("取消", role: .cancel) {}
         } message: {
@@ -103,7 +118,7 @@ struct TodoDetailView: View {
                     Image(systemName: "repeat")
                         .foregroundColor(.blue)
                     
-                    Text(getRecurringIntervalText(interval))
+                    Text(TodoItem.RecurringInterval.parse(interval)?.displayText ?? "重复")
                         .font(.subheadline)
                         .foregroundColor(.blue)
                 }
@@ -250,15 +265,6 @@ struct TodoDetailView: View {
         return deadline < Date() && !item.isCompleted
     }
     
-    private func getRecurringIntervalText(_ interval: String) -> String {
-        switch interval {
-        case "daily": return "每天重复"
-        case "weekly": return "每周重复"
-        case "biweekly": return "两周重复"
-        case "monthly": return "每月重复"
-        default: return "重复"
-        }
-    }
 }
 
 // MARK: - 待办编辑视图
@@ -267,35 +273,29 @@ struct TodoEditView: View {
     let item: TodoItem
     @Binding var isPresented: Bool
     
-    @State private var editTitle: String = ""
-    @State private var editPriority: TodoItem.PriorityLevel = .medium
-    @State private var editDeadline: Date? = nil
-    @State private var editNotes: String = ""
-    @State private var editIsRecurring = false
-    @State private var editRecurringInterval: TodoItem.RecurringInterval = .daily
+    @State private var draft: TodoDraft
+    @State private var persistenceError: String?
     
     init(viewModel: TodoViewModel, item: TodoItem, isPresented: Binding<Bool>) {
         self.viewModel = viewModel
         self.item = item
         self._isPresented = isPresented
         
-        // 初始化编辑状态
-        self._editTitle = State(initialValue: item.title)
-        self._editPriority = State(initialValue: item.priority)
-        self._editDeadline = State(initialValue: item.deadline)
-        self._editNotes = State(initialValue: item.notes ?? "")
-        self._editIsRecurring = State(initialValue: item.isRecurring)
-        
-        if let intervalString = item.recurringInterval,
-           let interval = TodoItem.RecurringInterval(rawValue: intervalString) {
-            self._editRecurringInterval = State(initialValue: interval)
-        }
+        self._draft = State(initialValue: TodoDraft(item: item))
     }
     
     var body: some View {
         Form {
+            if let persistenceError {
+                Section {
+                    Text(persistenceError)
+                        .font(.footnote)
+                        .foregroundColor(.red)
+                }
+            }
+
             Section(header: Text("待办内容")) {
-                TextEditor(text: $editTitle)
+                TextEditor(text: $draft.title)
                     .frame(minHeight: 80)
                     .font(.body)
                     .padding(.vertical, 4)
@@ -303,7 +303,7 @@ struct TodoEditView: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 5)
                             .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                            .opacity(editTitle.isEmpty ? 1 : 0)
+                            .opacity(draft.title.isEmpty ? 1 : 0)
                     )
                     .overlay(
                         HStack {
@@ -312,11 +312,11 @@ struct TodoEditView: View {
                                 .padding(.leading, 5)
                             Spacer()
                         }
-                        .opacity(editTitle.isEmpty ? 1 : 0),
+                        .opacity(draft.title.isEmpty ? 1 : 0),
                         alignment: .topLeading
                     )
                 
-                Picker("优先级", selection: $editPriority) {
+                Picker("优先级", selection: $draft.priority) {
                     Text("高").tag(TodoItem.PriorityLevel.high)
                     Text("中").tag(TodoItem.PriorityLevel.medium)
                     Text("低").tag(TodoItem.PriorityLevel.low)
@@ -326,25 +326,25 @@ struct TodoEditView: View {
             
             Section(header: Text("截止日期")) {
                 Toggle(isOn: Binding(
-                    get: { editDeadline != nil },
-                    set: { if $0 { editDeadline = Date() } else { editDeadline = nil } }
+                    get: { draft.deadline != nil },
+                    set: { draft.deadline = $0 ? Date() : nil }
                 )) {
                     Text("设置截止日期")
                 }
                 
-                if editDeadline != nil {
+                if draft.deadline != nil {
                     DatePicker("选择日期", selection: Binding(
-                        get: { editDeadline ?? Date() },
-                        set: { editDeadline = $0 }
+                        get: { draft.deadline ?? Date() },
+                        set: { draft.deadline = $0 }
                     ), displayedComponents: [.date, .hourAndMinute])
                     
                     // 循环选项
-                    Toggle(isOn: $editIsRecurring) {
+                    Toggle(isOn: $draft.isRecurring) {
                         Text("循环待办")
                     }
                     
-                    if editIsRecurring {
-                        Picker("循环周期", selection: $editRecurringInterval) {
+                    if draft.isRecurring {
+                        Picker("循环周期", selection: $draft.recurringInterval) {
                             Text("每天").tag(TodoItem.RecurringInterval.daily)
                             Text("每周").tag(TodoItem.RecurringInterval.weekly)
                             Text("两周").tag(TodoItem.RecurringInterval.biweekly)
@@ -361,7 +361,7 @@ struct TodoEditView: View {
             }
             
             Section(header: Text("备注")) {
-                TextEditor(text: $editNotes)
+                TextEditor(text: $draft.notes)
                     .frame(minHeight: 100) // 使用最小高度而不是固定高度
             }
             
@@ -381,18 +381,25 @@ struct TodoEditView: View {
             
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("保存") {
-                    viewModel.updateTodoItem(
-                        id: item.id,
-                        title: editTitle,
-                        priority: editPriority,
-                        deadline: editDeadline,
-                        notes: editNotes.isEmpty ? nil : editNotes,
-                        isRecurring: editIsRecurring && editDeadline != nil,
-                        recurringInterval: editIsRecurring && editDeadline != nil ? editRecurringInterval.rawValue : nil
+                    let feedback = PersistenceFeedback.resolve(
+                        succeeded: viewModel.updateTodoItem(
+                            id: item.id,
+                            title: draft.title,
+                            priority: draft.priority,
+                            deadline: draft.deadline,
+                            notes: draft.persistedNotes,
+                            isRecurring: draft.isRecurring && draft.deadline != nil,
+                            recurringInterval: draft.isRecurring && draft.deadline != nil ? draft.recurringInterval.rawValue : nil
+                        ),
+                        viewModelError: viewModel.errorMessage,
+                        fallbackError: "更新待办事项失败，请重试"
                     )
-                    isPresented = false
+                    persistenceError = feedback.errorMessage
+                    if feedback.shouldDismiss {
+                        isPresented = false
+                    }
                 }
-                .disabled(editTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }

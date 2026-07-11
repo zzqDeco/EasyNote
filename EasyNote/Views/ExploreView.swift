@@ -10,12 +10,8 @@ struct ExploreView: View {
     @StateObject private var todoViewModel: TodoViewModel
     @State private var editingTodo: TodoItem? = nil
     @State private var isEditingTodo = false
-    @State private var editTitle: String = ""
-    @State private var editPriority: TodoItem.PriorityLevel = .medium
-    @State private var editDeadline: Date? = nil
-    @State private var editNotes: String = ""
-    @State private var editIsRecurring = false
-    @State private var editRecurringInterval: RecurringInterval = .daily
+    @State private var todoDraft = TodoDraft()
+    @State private var persistenceError: String?
     @State private var selectedTodoFilter: TodoFilter = .today
     @State private var isRefreshing = false
     @State private var showToast = false
@@ -414,7 +410,12 @@ struct ExploreView: View {
 
     @ViewBuilder
     private var todoReminderFeedback: some View {
-        if let systemReminderErrorMessage = todoViewModel.systemReminderErrorMessage {
+        if let errorMessage = todoViewModel.errorMessage {
+            Text(errorMessage)
+                .font(.caption)
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let systemReminderErrorMessage = todoViewModel.systemReminderErrorMessage {
             Text(systemReminderErrorMessage)
                 .font(.caption)
                 .foregroundColor(.red)
@@ -468,19 +469,8 @@ struct ExploreView: View {
     // 显示编辑待办事项的Sheet
     private func showEditTodoSheet(_ item: TodoItem) {
         editingTodo = item
-        editTitle = item.title
-        editPriority = item.priority
-        editDeadline = item.deadline
-        editNotes = item.notes ?? ""
-        editIsRecurring = item.isRecurring
-        
-        if let intervalString = item.recurringInterval,
-           let interval = RecurringInterval(rawValue: intervalString) {
-            editRecurringInterval = interval
-        } else {
-            editRecurringInterval = .daily
-        }
-        
+        todoDraft = TodoDraft(item: item)
+        persistenceError = nil
         isEditingTodo = true
     }
     
@@ -488,10 +478,18 @@ struct ExploreView: View {
     private var editTodoSheet: some View {
         NavigationView {
             Form {
+                if let persistenceError {
+                    Section {
+                        Text(persistenceError)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                    }
+                }
+
                 Section(header: Text("待办内容")) {
-                    TextField("标题", text: $editTitle)
+                    TextField("标题", text: $todoDraft.title)
                     
-                    Picker("优先级", selection: $editPriority) {
+                    Picker("优先级", selection: $todoDraft.priority) {
                         Text("高").tag(TodoItem.PriorityLevel.high)
                         Text("中").tag(TodoItem.PriorityLevel.medium)
                         Text("低").tag(TodoItem.PriorityLevel.low)
@@ -501,25 +499,25 @@ struct ExploreView: View {
                 
                 Section(header: Text("截止日期")) {
                     Toggle(isOn: Binding(
-                        get: { editDeadline != nil },
-                        set: { if $0 { editDeadline = Date() } else { editDeadline = nil } }
+                        get: { todoDraft.deadline != nil },
+                        set: { todoDraft.deadline = $0 ? Date() : nil }
                     )) {
                         Text("设置截止日期")
                     }
                     
-                    if editDeadline != nil {
+                    if todoDraft.deadline != nil {
                         DatePicker("选择日期", selection: Binding(
-                            get: { editDeadline ?? Date() },
-                            set: { editDeadline = $0 }
+                            get: { todoDraft.deadline ?? Date() },
+                            set: { todoDraft.deadline = $0 }
                         ), displayedComponents: [.date, .hourAndMinute])
                         
                         // 循环选项
-                        Toggle(isOn: $editIsRecurring) {
+                        Toggle(isOn: $todoDraft.isRecurring) {
                             Text("循环待办")
                         }
                         
-                        if editIsRecurring {
-                            Picker("循环周期", selection: $editRecurringInterval) {
+                        if todoDraft.isRecurring {
+                            Picker("循环周期", selection: $todoDraft.recurringInterval) {
                                 Text("每天").tag(RecurringInterval.daily)
                                 Text("每周").tag(RecurringInterval.weekly)
                                 Text("两周").tag(RecurringInterval.biweekly)
@@ -536,7 +534,7 @@ struct ExploreView: View {
                 }
                 
                 Section(header: Text("备注")) {
-                    TextEditor(text: $editNotes)
+                    TextEditor(text: $todoDraft.notes)
                         .frame(height: 100)
                 }
             }
@@ -546,47 +544,43 @@ struct ExploreView: View {
                     isEditingTodo = false
                 },
                 trailing: Button("保存") {
+                    let succeeded: Bool
                     if let todo = editingTodo {
-                        todoViewModel.updateTodoItem(
+                        succeeded = todoViewModel.updateTodoItem(
                             id: todo.id,
-                            title: editTitle,
-                            priority: editPriority,
-                            deadline: editDeadline,
-                            notes: editNotes.isEmpty ? nil : editNotes,
-                            isRecurring: editIsRecurring && editDeadline != nil,
-                            recurringInterval: editIsRecurring && editDeadline != nil ? editRecurringInterval.rawValue : nil
+                            title: todoDraft.title,
+                            priority: todoDraft.priority,
+                            deadline: todoDraft.deadline,
+                            notes: todoDraft.persistedNotes,
+                            isRecurring: todoDraft.isRecurring && todoDraft.deadline != nil,
+                            recurringInterval: todoDraft.isRecurring && todoDraft.deadline != nil ? todoDraft.recurringInterval.rawValue : nil
                         )
+                    } else {
+                        succeeded = todoViewModel.addTodoItem(from: todoDraft)
                     }
-                    isEditingTodo = false
+
+                    let feedback = PersistenceFeedback.resolve(
+                        succeeded: succeeded,
+                        viewModelError: todoViewModel.errorMessage,
+                        fallbackError: editingTodo == nil ? "保存待办事项失败，请重试" : "更新待办事项失败，请重试"
+                    )
+                    persistenceError = feedback.errorMessage
+                    if feedback.shouldDismiss {
+                        isEditingTodo = false
+                        editingTodo = nil
+                    }
                 }
-                .disabled(editTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(todoDraft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             )
         }
     }
     
     // 创建新的待办事项
     private func createNewTodo() {
-        let newTodo = TodoItem(title: "新待办事项")
-        guard todoViewModel.addTodoItem(newTodo) else {
-            return
-        }
-        
-        // 设置为编辑状态
-        editingTodo = newTodo
+        editingTodo = nil
+        todoDraft = TodoDraft()
+        persistenceError = nil
         isEditingTodo = true
-        
-        // 初始化编辑值
-        editTitle = newTodo.title
-        editPriority = newTodo.priority
-        editDeadline = newTodo.deadline
-        editNotes = newTodo.notes ?? ""
-        editIsRecurring = newTodo.isRecurring
-        if let intervalString = newTodo.recurringInterval,
-           let interval = RecurringInterval(rawValue: intervalString) {
-            editRecurringInterval = interval
-        } else {
-            editRecurringInterval = .daily
-        }
     }
 }
 

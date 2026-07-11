@@ -17,19 +17,9 @@ struct UnifiedAddView: View {
     // 使用ThemeManager
     @EnvironmentObject private var themeManager: ThemeManager
     
-    // 待办事项状态
-    @State private var todoTitle = ""
-    @State private var todoPriority: TodoItem.PriorityLevel = .medium
-    @State private var todoHasDeadline = false
-    @State private var todoDeadline = Date()
-    @State private var todoNotes = ""
-    @State private var todoIsRecurring = false
-    @State private var todoRecurringInterval: TodoItem.RecurringInterval = .daily
-    
-    // 动画状态
-    @State private var showKeyboardToolbar = false
-    @State private var keyboardHeight: CGFloat = 0
-    @State private var contentFocused = false
+    @State private var todoDraft = TodoDraft()
+    @State private var persistenceError: String?
+    @StateObject private var keyboardObserver = KeyboardObserver()
     
     // 日期格式器
     private let dateFormatter: DateFormatter = {
@@ -66,16 +56,25 @@ struct UnifiedAddView: View {
                 // 添加足够的底部间距，避免底部工具栏遮挡内容
                 .padding(.bottom, 100)
             }
+
+            if let persistenceError {
+                Text(persistenceError)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
             
             // 底部工具栏
             bottomToolbar
         }
         .background(Color(UIColor.systemBackground))
         .onAppear {
-            setupKeyboardObservers()
+            keyboardObserver.start()
         }
         .onDisappear {
-            removeKeyboardObservers()
+            keyboardObserver.stop()
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -89,7 +88,7 @@ struct UnifiedAddView: View {
                 Button("保存") {
                     saveTodo()
                 }
-                .disabled(todoTitle.isEmpty)
+                .disabled(todoDraft.title.isEmpty)
                 .fontWeight(.medium)
             }
         }
@@ -111,7 +110,7 @@ struct UnifiedAddView: View {
             
             // 标题编辑器
             ZStack(alignment: .topLeading) {
-                if todoTitle.isEmpty {
+                if todoDraft.title.isEmpty {
                     Text("输入待办事项...")
                         .font(.title2.bold())
                         .foregroundColor(.gray.opacity(0.8))
@@ -120,7 +119,7 @@ struct UnifiedAddView: View {
                         .padding(.bottom, 0)
                 }
                 
-                TextEditor(text: $todoTitle)
+                TextEditor(text: $todoDraft.title)
                     .font(.title2.bold())
                     .scrollContentBackground(.hidden)
                     .background(Color.clear)
@@ -139,7 +138,7 @@ struct UnifiedAddView: View {
                 .foregroundColor(.primary.opacity(0.8))
                 .padding(.top, 8)
             
-            Picker("优先级", selection: $todoPriority) {
+            Picker("优先级", selection: $todoDraft.priority) {
                 Text("低").tag(TodoItem.PriorityLevel.low)
                 Text("中").tag(TodoItem.PriorityLevel.medium)
                 Text("高").tag(TodoItem.PriorityLevel.high)
@@ -159,13 +158,23 @@ struct UnifiedAddView: View {
                 
                 Spacer()
                 
-                Toggle("", isOn: $todoHasDeadline)
+                Toggle("", isOn: Binding(
+                    get: { todoDraft.deadline != nil },
+                    set: { todoDraft.deadline = $0 ? Date() : nil }
+                ))
                     .labelsHidden()
                     .tint(themeManager.accentColor)
             }
             
-            if todoHasDeadline {
-                DatePicker("选择日期和时间", selection: $todoDeadline, displayedComponents: [.date, .hourAndMinute])
+            if todoDraft.deadline != nil {
+                DatePicker(
+                    "选择日期和时间",
+                    selection: Binding(
+                        get: { todoDraft.deadline ?? Date() },
+                        set: { todoDraft.deadline = $0 }
+                    ),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
                     .datePickerStyle(GraphicalDatePickerStyle())
                     .padding(.vertical, 8)
                     .background(Color(UIColor.secondarySystemBackground))
@@ -184,13 +193,13 @@ struct UnifiedAddView: View {
                 
                 Spacer()
                 
-                Toggle("", isOn: $todoIsRecurring)
+                Toggle("", isOn: $todoDraft.isRecurring)
                     .labelsHidden()
                     .tint(themeManager.accentColor)
             }
             
-            if todoIsRecurring {
-                Picker("重复频率", selection: $todoRecurringInterval) {
+            if todoDraft.isRecurring {
+                Picker("重复频率", selection: $todoDraft.recurringInterval) {
                     Text("每天").tag(TodoItem.RecurringInterval.daily)
                     Text("每周").tag(TodoItem.RecurringInterval.weekly)
                     Text("两周").tag(TodoItem.RecurringInterval.biweekly)
@@ -211,14 +220,14 @@ struct UnifiedAddView: View {
                 .padding(.top, 8)
             
             ZStack(alignment: .topLeading) {
-                if todoNotes.isEmpty {
+                if todoDraft.notes.isEmpty {
                     Text("添加备注...")
                         .foregroundColor(.gray.opacity(0.8))
                         .padding(.top, 7)
                         .padding(.leading, 5)
                 }
                 
-                TextEditor(text: $todoNotes)
+                TextEditor(text: $todoDraft.notes)
                     .scrollContentBackground(.hidden)
                     .background(Color.clear)
                     .frame(minHeight: 120)
@@ -266,72 +275,27 @@ struct UnifiedAddView: View {
                 .fontWeight(.medium)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 8)
-                .background(todoTitle.isEmpty ? Color.gray.opacity(0.3) : themeManager.accentColor)
-                .foregroundColor(todoTitle.isEmpty ? .gray : .white)
+                .background(todoDraft.title.isEmpty ? Color.gray.opacity(0.3) : themeManager.accentColor)
+                .foregroundColor(todoDraft.title.isEmpty ? .gray : .white)
                 .cornerRadius(8)
         }
-        .disabled(todoTitle.isEmpty)
-    }
-    
-    // MARK: - 辅助方法
-    
-    // 设置键盘观察者
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                self.keyboardHeight = keyboardFrame.height
-                withAnimation {
-                    self.showKeyboardToolbar = true
-                }
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            withAnimation {
-                self.showKeyboardToolbar = false
-                self.keyboardHeight = 0
-                self.contentFocused = false
-            }
-        }
-    }
-    
-    // 移除键盘观察者
-    private func removeKeyboardObservers() {
-        NotificationCenter.default.removeObserver(
-            self,
-            name: UIResponder.keyboardWillShowNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.removeObserver(
-            self,
-            name: UIResponder.keyboardWillHideNotification,
-            object: nil
-        )
+        .disabled(todoDraft.title.isEmpty)
     }
     
     // 保存待办事项
     private func saveTodo() {
         guard let vm = todoViewModel else { return }
-        
-        vm.addTodoItem(
-            title: todoTitle,
-            priority: todoPriority,
-            deadline: todoHasDeadline ? todoDeadline : nil,
-            notes: todoNotes.isEmpty ? nil : todoNotes,
-            isRecurring: todoIsRecurring,
-            recurringInterval: todoIsRecurring ? todoRecurringInterval.rawValue : nil
+
+        let feedback = PersistenceFeedback.resolve(
+            succeeded: vm.addTodoItem(from: todoDraft),
+            viewModelError: vm.errorMessage,
+            fallbackError: "保存待办事项失败，请重试"
         )
-        
-        isPresented = false
+        persistenceError = feedback.errorMessage
+
+        if feedback.shouldDismiss {
+            isPresented = false
+        }
     }
 }
 
@@ -357,4 +321,4 @@ struct UnifiedAddView: View {
     } catch {
         return Text("预览加载失败: \(error.localizedDescription)")
     }
-} 
+}

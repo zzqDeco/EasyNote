@@ -183,6 +183,18 @@ class TodoViewModel: ObservableObject {
         return addTodoItem(newTodo)
     }
 
+    @discardableResult
+    func addTodoItem(from draft: TodoDraft) -> Bool {
+        addTodoItem(
+            title: draft.title,
+            priority: draft.priority,
+            deadline: draft.deadline,
+            notes: draft.persistedNotes,
+            isRecurring: draft.isRecurring,
+            recurringInterval: draft.persistedRecurringInterval
+        )
+    }
+
     /// 插入已构造的待办事项，供创建后立即编辑的入口复用同一个模型对象。
     @discardableResult
     func addTodoItem(_ todo: TodoItem) -> Bool {

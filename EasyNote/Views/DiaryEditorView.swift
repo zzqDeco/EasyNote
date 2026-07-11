@@ -13,6 +13,7 @@ struct DiaryEditorView: View {
     @State private var tags: [String] = []
     @State private var showingMoodPicker = false
     @State private var showingTagEditor = false
+    @State private var persistenceError: String?
     
     // 音频录制相关状态
     @State private var isRecording = false
@@ -23,6 +24,14 @@ struct DiaryEditorView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if let persistenceError {
+                        Text(persistenceError)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                    }
+
                     // 日记标题输入
                     TextField("标题", text: $title)
                         .font(.title)
@@ -107,12 +116,21 @@ struct DiaryEditorView: View {
     
     // 保存日记条目
     private func saveEntry() {
-        _ = viewModel.createNewEntry(
+        let newEntry = viewModel.createNewEntry(
             title: title.isEmpty ? "无标题" : title,
             content: content,
             mood: moodToString(mood),
             tags: tags
         )
+
+        let feedback = PersistenceFeedback.resolve(
+            succeeded: newEntry != nil,
+            viewModelError: viewModel.errorMessage,
+            fallbackError: "保存日记失败，请重试"
+        )
+        persistenceError = feedback.errorMessage
+
+        guard feedback.shouldDismiss else { return }
         
         // 重置输入并返回到日记列表
         title = ""
@@ -161,4 +179,4 @@ struct DiaryEditorView: View {
 #Preview {
     DiaryEditorView(viewModel: PreviewHelpers.createViewModel())
         .environmentObject(PreviewHelpers.tabManager)
-} 
+}

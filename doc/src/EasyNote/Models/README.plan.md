@@ -19,6 +19,9 @@
 - `DiaryEntryQuery` owns pure diary list search, filter, and sort behavior.
 - `DiaryReviewProjection` owns pure diary review aggregation for monthly summaries, fixed windows, tags, moods, and recent favorites. It keeps full distinct-tag counts separate from capped trend lists and normalizes numeric mood strings before counting.
 - `TodoItem` owns recurrence through `RecurringInterval.rawValue` stored as `String`.
+- `TodoItem.RecurringInterval` owns compatibility parsing and display text for canonical Chinese raw values and legacy English values.
+- `TodoDraft` owns pure, unpersisted todo create/edit input until explicit confirmation.
+- `PersistenceFeedback` owns the pure success/error decision that keeps persistence screens visible on failure.
 - `TodoRecurrencePlanner` owns pure next-todo creation rules for completed recurring todos.
 - `TodoFilter` owns pure todo category projection for the focused todo view.
 - `TodoNotificationPlanner` derives local reminder eligibility and stable notification identifiers from existing `TodoItem` fields without changing SwiftData schema.

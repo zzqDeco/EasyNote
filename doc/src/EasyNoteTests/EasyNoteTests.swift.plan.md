@@ -12,6 +12,7 @@
 ## Behavior Notes
 
 - Current tests cover todo recurrence date calculation.
+- Current tests cover legacy/current recurrence parsing, unsubmitted todo draft cancellation, persistence dismissal decisions, and idempotent keyboard observer registration.
 - Current tests cover todo notification eligibility and `TodoViewModel` scheduler integration through fakes.
 - Current tests cover system reminder agent skip/lead-time decisions, reminder mode migration, and `TodoViewModel` EventKit-writer routing through fakes.
 - Current tests cover chat-session title summary and basic integrity behavior.

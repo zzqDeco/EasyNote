@@ -20,6 +20,9 @@
 - Diary transcription UI should present AI apply/copy/discard controls and insert/replace actions explicitly; it should not mutate diary body text through implicit notifications.
 - Diary detail UI should show pending AI summaries before they are applied to the persisted summary field, scoped to the diary entry that produced the summary.
 - Todo views cover recommendations, detail/edit, and unified add; todo list and detail surfaces display system reminder success/error messages published by `TodoViewModel`.
+- Todo create/edit views bind to `TodoDraft`; Cancel never inserts a placeholder, and failed create/update/delete actions keep the active screen visible with an error.
+- Diary create/edit/detail-delete views dismiss only after their ViewModel mutation succeeds and preserve retryable input on failure.
+- `KeyboardObserver` owns exact cancellable keyboard notification subscriptions for views that need keyboard lifecycle state; repeated appearance must not duplicate subscriptions.
 - Chat views cover AI exploration and persisted session selection; they construct immutable request snapshots and render processing/failure state for the selected session without owning network tasks.
 - Settings owns local theme and DeepSeek API key entry.
 
