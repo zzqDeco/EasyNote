@@ -31,6 +31,7 @@ The CI workflow is intentionally small. It does not package, sign, archive, publ
 Current focused tests cover:
 
 - `TodoItem.RecurringInterval.nextDate`
+- todo draft cancellation without SwiftData insertion, legacy/current recurrence parsing, persistence dismissal decisions, and idempotent keyboard observer registration
 - `ChatSession.generateSummary`
 - `ChatSession` and `SessionMessage` basic integrity
 - chat requests remain bound to their captured session across switching/deletion, and provider failure never produces fabricated diary claims
@@ -61,6 +62,7 @@ The first blocking CI gate runs unit tests only. Hosted UI smoke is available th
 Before treating a branch as a usable app build, manually verify:
 
 - create a diary entry
+- force a new-diary save or detail-delete failure and confirm the current screen, typed input, and retry path remain visible with the persistence error
 - edit diary content, mood, and tags
 - cancel an existing-diary edit after changing content, mood, and tags and confirm every persisted field remains unchanged
 - replace an existing diary recording, save, and confirm the old recording is removed only after the new URL persists
@@ -70,6 +72,9 @@ Before treating a branch as a usable app build, manually verify:
 - open diary review and confirm monthly overview, tag trends, mood distribution, and recent favorites render from the full diary set
 - confirm diary review results do not change when the diary list has an active search or filter
 - create and complete a todo
+- open Explore or unified todo add, type a draft, cancel, and confirm no placeholder todo was created
+- force a todo create, edit, or detail-delete failure and confirm the current screen and draft remain visible with the persistence error
+- open recurring todos stored with both legacy `daily` and current `每天` values and confirm both display `每天重复`
 - create a recurring todo and complete it once
 - switch todo segments for today, overdue, upcoming, no-date, recurring, and completed groups
 - create a todo from a recommendation and confirm it appears in the expected todo group

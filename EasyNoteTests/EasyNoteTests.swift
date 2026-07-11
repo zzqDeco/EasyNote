@@ -9,6 +9,7 @@ import Testing
 import Foundation
 import Combine
 import SwiftData
+import UIKit
 @testable import EasyNote
 
 struct EasyNoteTests {
@@ -21,6 +22,95 @@ struct EasyNoteTests {
         #expect(TodoItem.RecurringInterval.weekly.nextDate(from: start) == calendar.date(byAdding: .day, value: 7, to: start))
         #expect(TodoItem.RecurringInterval.biweekly.nextDate(from: start) == calendar.date(byAdding: .day, value: 14, to: start))
         #expect(TodoItem.RecurringInterval.monthly.nextDate(from: start) == calendar.date(byAdding: .month, value: 1, to: start))
+    }
+
+    @Test func recurrenceParserSupportsLegacyAndCurrentStoredValues() async throws {
+        #expect(TodoItem.RecurringInterval.parse("daily")?.displayText == "每天重复")
+        #expect(TodoItem.RecurringInterval.parse("每天")?.displayText == "每天重复")
+        #expect(TodoItem.RecurringInterval.parse("weekly") == .weekly)
+        #expect(TodoItem.RecurringInterval.parse("每周") == .weekly)
+        #expect(TodoItem.RecurringInterval.parse("biweekly")?.displayText == "两周重复")
+        #expect(TodoItem.RecurringInterval.parse("每月")?.displayText == "每月重复")
+        #expect(TodoItem.RecurringInterval.parse("unknown") == nil)
+    }
+
+    @Test func cancelingTodoDraftCreatesNoData() async throws {
+        let context = try makeModelContext()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .off)
+        )
+        var draft = TodoDraft()
+
+        draft.title = "尚未确认的待办"
+        draft.notes = "取消时也不应插入"
+
+        #expect(viewModel.todoItems.isEmpty)
+        #expect(try context.fetch(FetchDescriptor<TodoItem>()).isEmpty)
+    }
+
+    @Test func creatingTodoDraftWithoutDeadlineClearsStaleRecurrence() async throws {
+        let context = try makeModelContext()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .off)
+        )
+        var draft = TodoDraft(
+            title: "取消截止日期后的待办",
+            deadline: Date().addingTimeInterval(3600),
+            isRecurring: true,
+            recurringInterval: .weekly
+        )
+
+        draft.deadline = nil
+
+        #expect(viewModel.addTodoItem(from: draft))
+        let persistedTodo = try #require(context.fetch(FetchDescriptor<TodoItem>()).first)
+        #expect(persistedTodo.deadline == nil)
+        #expect(!persistedTodo.isRecurring)
+        #expect(persistedTodo.recurringInterval == nil)
+    }
+
+    @Test func persistenceFailureFeedbackKeepsSaveAndDeleteScreensPresented() async throws {
+        let saveFeedback = PersistenceFeedback.resolve(
+            succeeded: false,
+            viewModelError: "保存失败",
+            fallbackError: "无法保存"
+        )
+        let deleteFeedback = PersistenceFeedback.resolve(
+            succeeded: false,
+            viewModelError: nil,
+            fallbackError: "无法删除"
+        )
+        let successFeedback = PersistenceFeedback.resolve(
+            succeeded: true,
+            viewModelError: "旧错误",
+            fallbackError: "不会显示"
+        )
+
+        #expect(!saveFeedback.shouldDismiss)
+        #expect(saveFeedback.errorMessage == "保存失败")
+        #expect(!deleteFeedback.shouldDismiss)
+        #expect(deleteFeedback.errorMessage == "无法删除")
+        #expect(successFeedback.shouldDismiss)
+        #expect(successFeedback.errorMessage == nil)
+    }
+
+    @Test func keyboardObserverRegistrationDoesNotDuplicate() async throws {
+        let observer = KeyboardObserver(notificationCenter: NotificationCenter())
+
+        observer.start()
+        #expect(observer.registrationCount == 2)
+
+        observer.start()
+        #expect(observer.registrationCount == 2)
+
+        observer.stop()
+        #expect(observer.registrationCount == 0)
     }
 
     @Test func recurrencePlannerCreatesNextTodoForCompletedRecurringItem() async throws {

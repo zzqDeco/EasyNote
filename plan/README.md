@@ -15,6 +15,7 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
+| [persistence-feedback-drafts.plan.md](persistence-feedback-drafts.plan.md) | Keep todo creation draft-only and retain persistence screens on failed saves or deletes | Active |
 | [reminder-service-async.plan.md](reminder-service-async.plan.md) | Replace semaphore-backed reminder operations with cancellable async service boundaries | Active |
 | [diary-edit-transaction.plan.md](diary-edit-transaction.plan.md) | Make existing-diary editing an explicit atomic draft transaction | Active |
 | [chat-response-integrity.plan.md](chat-response-integrity.plan.md) | Bind exploration requests to one session and remove fabricated AI fallbacks | Active |

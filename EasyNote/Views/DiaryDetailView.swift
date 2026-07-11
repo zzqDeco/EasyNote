@@ -29,6 +29,7 @@ struct DiaryDetailView: View {
     @State private var refreshTrigger = false
     @State private var isLoading = true
     @State private var showCopySuccessToast = false
+    @State private var persistenceError: String?
     @State private var isFavorite: Bool
     @State private var audioPlayerDelegate: AVPlayerDelegate?
     
@@ -45,6 +46,13 @@ struct DiaryDetailView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     // 标题区域
                     titleSection
+
+                    if let persistenceError {
+                        Text(persistenceError)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     
                     // 内容区域
                     contentSection
@@ -224,8 +232,15 @@ struct DiaryDetailView: View {
         }
         .alert("确认删除", isPresented: $showingDeleteConfirmation) {
             Button("删除", role: .destructive) {
-                viewModel.deleteEntry(entry)
-                dismiss()
+                let feedback = PersistenceFeedback.resolve(
+                    succeeded: viewModel.deleteEntry(entry),
+                    viewModelError: viewModel.errorMessage,
+                    fallbackError: "删除日记失败，请重试"
+                )
+                persistenceError = feedback.errorMessage
+                if feedback.shouldDismiss {
+                    dismiss()
+                }
             }
             Button("取消", role: .cancel) {}
         } message: {

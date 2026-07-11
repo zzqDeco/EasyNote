@@ -31,11 +31,8 @@ struct CreateDiaryView: View {
     @State private var titleHeightChanged = false
     @State private var selectedDate = Date()
     @State private var isShowingDatePicker = false
-    
-    // 动画状态
-    @State private var showKeyboardToolbar = false
-    @State private var keyboardHeight: CGFloat = 0
-    @State private var contentFocused = false
+    @State private var persistenceError: String?
+    @StateObject private var keyboardObserver = KeyboardObserver()
     
     // 日期格式器
     private let dateFormatter: DateFormatter = {
@@ -69,6 +66,15 @@ struct CreateDiaryView: View {
                 // 添加足够的底部间距，避免底部工具栏遮挡内容
                 .padding(.bottom, 100)
             }
+
+            if let persistenceError {
+                Text(persistenceError)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
             
             // 底部工具栏
             bottomToolbar
@@ -100,13 +106,13 @@ struct CreateDiaryView: View {
             }
         )
         .onAppear {
-            setupKeyboardObservers()
+            keyboardObserver.start()
             
             // 清空已使用的转写内容，避免重复显示
             viewModel.setTranscriptionText("")
         }
         .onDisappear {
-            removeKeyboardObservers()
+            keyboardObserver.stop()
             cleanupDraftRecordingIfNeeded()
             viewModel.setTranscriptionText("")
         }
@@ -352,9 +358,6 @@ struct CreateDiaryView: View {
                 .frame(minHeight: 200)
                 .background(Color.clear)
                 .padding(0)
-                .onTapGesture {
-                    contentFocused = true
-                }
         }
         .padding(.horizontal, 5)
         .overlay(
@@ -500,48 +503,7 @@ struct CreateDiaryView: View {
     }
     
     // MARK: - 辅助方法
-    
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                self.keyboardHeight = keyboardFrame.height
-                withAnimation {
-                    self.showKeyboardToolbar = true
-                }
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            withAnimation {
-                self.showKeyboardToolbar = false
-                self.keyboardHeight = 0
-                self.contentFocused = false
-            }
-        }
-    }
-    
-    private func removeKeyboardObservers() {
-        NotificationCenter.default.removeObserver(
-            self,
-            name: UIResponder.keyboardWillShowNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.removeObserver(
-            self,
-            name: UIResponder.keyboardWillHideNotification,
-            object: nil
-        )
-    }
-    
+
     private func insertMarkdownFormat(_ format: String) {
         // 根据不同的格式类型处理
         switch format {
@@ -608,7 +570,14 @@ struct CreateDiaryView: View {
             audioURL: pendingVoiceRecordingAudioURL
         )
 
-        guard newEntry != nil else {
+        let feedback = PersistenceFeedback.resolve(
+            succeeded: newEntry != nil,
+            viewModelError: viewModel.errorMessage,
+            fallbackError: "保存日记失败，请重试"
+        )
+        persistenceError = feedback.errorMessage
+
+        guard feedback.shouldDismiss else {
             return
         }
 

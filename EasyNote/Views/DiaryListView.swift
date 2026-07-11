@@ -24,6 +24,7 @@ struct DiaryListView: View {
     @State private var scrollToTop = false
     @State private var showingFilterSheet = false
     @State private var selectedDisplayMode: DisplayMode = .entries
+    @State private var persistenceError: String?
     
     // 用于动画的状态
     @State private var listOpacity = 0.0
@@ -35,6 +36,15 @@ struct DiaryListView: View {
                 // 主列表内容
                 VStack(spacing: 0) {
                     displayModePicker
+
+                    if let persistenceError {
+                        Text(persistenceError)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .padding(.vertical, 6)
+                    }
 
                     if selectedDisplayMode == .review {
                         DiaryReviewView(entries: viewModel.allEntries)
@@ -73,7 +83,12 @@ struct DiaryListView: View {
             .alert("确认删除", isPresented: $showingDeleteConfirmation) {
                 Button("删除", role: .destructive) {
                     if let entry = entryToDelete {
-                        viewModel.deleteEntry(entry)
+                        let feedback = PersistenceFeedback.resolve(
+                            succeeded: viewModel.deleteEntry(entry),
+                            viewModelError: viewModel.errorMessage,
+                            fallbackError: "删除日记失败，请重试"
+                        )
+                        persistenceError = feedback.errorMessage
                     }
                     entryToDelete = nil
                 }

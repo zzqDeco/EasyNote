@@ -5,7 +5,7 @@ enum TodoRecurrencePlanner {
         guard item.isCompleted,
               item.isRecurring,
               let intervalString = item.recurringInterval,
-              let interval = TodoItem.RecurringInterval(rawValue: intervalString),
+              let interval = TodoItem.RecurringInterval.parse(intervalString),
               let deadline = item.deadline else {
             return nil
         }
