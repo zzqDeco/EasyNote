@@ -190,7 +190,7 @@ class TodoViewModel: ObservableObject {
             priority: draft.priority,
             deadline: draft.deadline,
             notes: draft.persistedNotes,
-            isRecurring: draft.isRecurring,
+            isRecurring: draft.persistedIsRecurring,
             recurringInterval: draft.persistedRecurringInterval
         )
     }

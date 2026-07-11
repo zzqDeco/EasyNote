@@ -39,7 +39,11 @@ struct TodoDraft: Equatable {
         notes.isEmpty ? nil : notes
     }
 
+    var persistedIsRecurring: Bool {
+        isRecurring && deadline != nil
+    }
+
     var persistedRecurringInterval: String? {
-        isRecurring ? recurringInterval.rawValue : nil
+        persistedIsRecurring ? recurringInterval.rawValue : nil
     }
 }

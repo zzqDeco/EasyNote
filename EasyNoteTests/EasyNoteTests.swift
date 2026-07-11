@@ -51,6 +51,30 @@ struct EasyNoteTests {
         #expect(try context.fetch(FetchDescriptor<TodoItem>()).isEmpty)
     }
 
+    @Test func creatingTodoDraftWithoutDeadlineClearsStaleRecurrence() async throws {
+        let context = try makeModelContext()
+        let viewModel = TodoViewModel(
+            modelContext: context,
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .off)
+        )
+        var draft = TodoDraft(
+            title: "取消截止日期后的待办",
+            deadline: Date().addingTimeInterval(3600),
+            isRecurring: true,
+            recurringInterval: .weekly
+        )
+
+        draft.deadline = nil
+
+        #expect(viewModel.addTodoItem(from: draft))
+        let persistedTodo = try #require(context.fetch(FetchDescriptor<TodoItem>()).first)
+        #expect(persistedTodo.deadline == nil)
+        #expect(!persistedTodo.isRecurring)
+        #expect(persistedTodo.recurringInterval == nil)
+    }
+
     @Test func persistenceFailureFeedbackKeepsSaveAndDeleteScreensPresented() async throws {
         let saveFeedback = PersistenceFeedback.resolve(
             succeeded: false,
