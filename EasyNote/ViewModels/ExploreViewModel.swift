@@ -191,11 +191,14 @@ final class ExploreViewModel: ObservableObject {
             return []
         }
         
-        let fetchDescriptor = FetchDescriptor<DiaryEntry>()
+        let fetchDescriptor = FetchDescriptor<DiaryEntry>(
+            predicate: #Predicate<DiaryEntry> { entry in
+                entry.creationDate >= fromDate
+            }
+        )
         
         do {
             return try modelContext.fetch(fetchDescriptor)
-                .filter { $0.creationDate >= fromDate }
                 .sorted { $0.creationDate > $1.creationDate }
         } catch {
             Self.logger.error("Failed to fetch recent diary entries for recommendations")

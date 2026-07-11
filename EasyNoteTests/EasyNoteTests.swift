@@ -1815,6 +1815,13 @@ struct EasyNoteTests {
         }
     }
 
+    @Test func onlyActiveRecordingBlocksAReplacementSession() {
+        #expect(RecordingState.recording.blocksNewRecordingStart)
+        #expect(!RecordingState.processing.blocksNewRecordingStart)
+        #expect(!RecordingState.finished.blocksNewRecordingStart)
+        #expect(!RecordingState.idle.blocksNewRecordingStart)
+    }
+
     @Test func speechRecognitionSessionGateRejectsOverlapAndLateCallbacks() async throws {
         let gate = SpeechRecognitionSessionGate()
         let firstSessionID = UUID()

@@ -27,6 +27,7 @@
 - Recognition completion callbacks should not overwrite an existing recording error with a finished state after teardown/cancellation.
 - Recognition completion callbacks must verify their session token before publishing text, finishing state, or tearing down the active audio pipeline.
 - A lock-protected session gate allows only one active recognition token. A second start is rejected, and teardown invalidates the token before recognition cancellation or input-tap removal.
+- A new start may cancel a stopped session that is still waiting for a final Speech callback; only an actively recording session blocks replacement.
 - Each input tap captures its own recognition request and audio file, checks the gate before use, and hops failures to the main actor for serialized teardown.
 - Speech and microphone permission callbacks return to the main actor before changing published status or invoking the caller completion.
 - Unified logging records only permission outcomes and static lifecycle/failure events; it never records transcription text or recording paths.

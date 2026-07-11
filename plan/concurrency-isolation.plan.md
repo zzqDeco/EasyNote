@@ -22,6 +22,8 @@
 - Construct main-actor service defaults inside `DiaryViewModel.init` rather than in default-argument expressions, preserving compatibility with the hosted Xcode 16.4 compiler.
 - Keep a lock-protected speech session gate available to non-main framework callbacks. A callback must match the active token before it can enqueue a main-actor state update; teardown invalidates the token before cancelling recognition or removing the input tap.
 - Capture each recognition request and recording file for its input tap so late buffers cannot target a replacement session.
+- Keep true overlapping recording starts rejected, while allowing a new start to tear down a stopped session whose final Speech callback is delayed or absent.
+- Keep the recent-diary date predicate in SwiftData so recommendation refresh does not materialize the full diary history on the main actor.
 - Use `Logger` categories with static messages or non-sensitive counts/statuses only.
 - Keep service protocols unchanged to avoid overlap with adjacent Wave 3 workers. The existing notification protocol still requires `[TodoItem]`, so the compatibility bridge rehydrates private detached models from `Sendable` values immediately before the call; no main-context model crosses that boundary.
 - Keep Backup ordering and date formats unchanged while replacing non-Sendable key-path/function conversions with in-memory sorting and inline strategy closures.

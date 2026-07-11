@@ -35,6 +35,13 @@ enum RecordingState {
             return .finished
         }
     }
+
+    var blocksNewRecordingStart: Bool {
+        if case .recording = self {
+            return true
+        }
+        return false
+    }
 }
 
 enum SpeechPermissionStatus: Equatable {
@@ -246,7 +253,7 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
     }
     
     func startRecording() throws {
-        guard activeRecognitionSessionID == nil else {
+        if activeRecognitionSessionID != nil, recordingState.blocksNewRecordingStart {
             Self.logger.notice("Rejected overlapping speech recording start")
             throw NSError(
                 domain: "SpeechRecognitionService",
@@ -255,7 +262,8 @@ final class SpeechRecognitionService: NSObject, ObservableObject {
             )
         }
 
-        // 重置状态
+        // A stopped recording may still be waiting for Speech to deliver a final callback.
+        // Starting again explicitly cancels that processing session before creating a new one.
         transcribedText = ""
         tearDownRecordingPipeline(cancelRecognition: true)
         discardRecordingFile()
