@@ -28,6 +28,7 @@
 - Existing deterministic targets are copied into rollback storage before overwrite. Targets referenced by backup-external diaries are not overwritten and instead select a stable collision-safe path. File-commit or SwiftData-save failure restores prior files by move or atomic replacement without a second full copy and rolls back the `ModelContext`.
 - Successful import cleans only direct, unreferenced Documents recordings with supported extensions and the backup-owned `restored_recording_` prefix. Recorder-owned `recording_` files are preserved because they may be unsaved drafts.
 - Import preserves local records absent from the backup, including existing messages attached to an imported session, without moving that session behind newer preserved messages in the session list.
+- Export preserves creation-date ordering by sorting fetched models in memory; custom date strategies use inline sendable closures without changing the V1 encoding format.
 
 ## Tests
 

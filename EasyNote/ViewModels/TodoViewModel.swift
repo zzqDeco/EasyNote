@@ -4,6 +4,58 @@ import Combine
 import SwiftUI
 import OSLog
 
+struct TodoNotificationSnapshot: Sendable {
+    let id: UUID
+    let title: String
+    let isCompleted: Bool
+    let priority: TodoItem.PriorityLevel
+    let deadline: Date?
+    let notes: String?
+    let isRecurring: Bool
+    let recurringInterval: String?
+    let creationDate: Date
+
+    @MainActor
+    init(todo: TodoItem) {
+        id = todo.id
+        title = todo.title
+        isCompleted = todo.isCompleted
+        priority = todo.priority
+        deadline = todo.deadline
+        notes = todo.notes
+        isRecurring = todo.isRecurring
+        recurringInterval = todo.recurringInterval
+        creationDate = todo.creationDate
+    }
+
+    func makeDetachedTodo() -> TodoItem {
+        let todo = TodoItem(
+            id: id,
+            title: title,
+            isCompleted: isCompleted,
+            priority: priority,
+            deadline: deadline,
+            notes: notes,
+            isRecurring: isRecurring,
+            recurringInterval: recurringInterval
+        )
+        todo.creationDate = creationDate
+        return todo
+    }
+}
+
+enum TodoNotificationSchedulingBridge {
+    static func reconcile(
+        snapshots: [TodoNotificationSnapshot],
+        using scheduler: any TodoNotificationSchedulingProviding
+    ) async throws {
+        // The legacy scheduler protocol accepts SwiftData models. Rehydrate private, detached
+        // values here so no model-context object crosses the async scheduler boundary.
+        nonisolated(unsafe) let detachedTodos = snapshots.map { $0.makeDetachedTodo() }
+        try await scheduler.reconcileNotifications(for: detachedTodos)
+    }
+}
+
 @MainActor
 final class TodoViewModel: ObservableObject {
     private static let logger = Logger(subsystem: "EasyNote", category: "TodoViewModel")
@@ -288,10 +340,13 @@ final class TodoViewModel: ObservableObject {
         case .off:
             return
         case .localNotification:
-            nonisolated(unsafe) let todos = reminderSchedulingSnapshots()
+            let snapshots = reminderSchedulingSnapshots()
             enqueueReminderOperation { viewModel in
                 do {
-                    try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                    try await TodoNotificationSchedulingBridge.reconcile(
+                        snapshots: snapshots,
+                        using: viewModel.notificationScheduler
+                    )
                     viewModel.systemReminderErrorMessage = nil
                 } catch is CancellationError {
                     return
@@ -312,11 +367,14 @@ final class TodoViewModel: ObservableObject {
         case .off:
             break
         case .localNotification:
-            nonisolated(unsafe) let todos = reminderSchedulingSnapshots()
+            let snapshots = reminderSchedulingSnapshots()
             enqueueReminderOperation { viewModel in
                 await viewModel.notificationScheduler.cancelNotification(forTodoID: todoID)
                 do {
-                    try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                    try await TodoNotificationSchedulingBridge.reconcile(
+                        snapshots: snapshots,
+                        using: viewModel.notificationScheduler
+                    )
                     viewModel.systemReminderErrorMessage = nil
                 } catch is CancellationError {
                     return
@@ -336,10 +394,13 @@ final class TodoViewModel: ObservableObject {
             return
         }
 
-        nonisolated(unsafe) let todos = reminderSchedulingSnapshots()
+        let snapshots = reminderSchedulingSnapshots()
         enqueueReminderOperation { viewModel in
             do {
-                try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                try await TodoNotificationSchedulingBridge.reconcile(
+                    snapshots: snapshots,
+                    using: viewModel.notificationScheduler
+                )
                 viewModel.systemReminderErrorMessage = nil
             } catch is CancellationError {
                 return
@@ -524,21 +585,8 @@ final class TodoViewModel: ObservableObject {
         }
     }
 
-    private func reminderSchedulingSnapshots() -> [TodoItem] {
-        todoItems.map { todo in
-            let snapshot = TodoItem(
-                id: todo.id,
-                title: todo.title,
-                isCompleted: todo.isCompleted,
-                priority: todo.priority,
-                deadline: todo.deadline,
-                notes: todo.notes,
-                isRecurring: todo.isRecurring,
-                recurringInterval: todo.recurringInterval
-            )
-            snapshot.creationDate = todo.creationDate
-            return snapshot
-        }
+    private func reminderSchedulingSnapshots() -> [TodoNotificationSnapshot] {
+        todoItems.map { TodoNotificationSnapshot(todo: $0) }
     }
     
     /// 添加测试数据（仅用于预览）

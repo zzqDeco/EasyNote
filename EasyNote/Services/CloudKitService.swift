@@ -6,9 +6,10 @@
 //
 
 import Foundation
-import CloudKit
-import Combine
+@preconcurrency import CloudKit
+@preconcurrency import Combine
 import SwiftUI
+import OSLog
 
 enum CloudKitError: Error {
     case recordNotFound
@@ -25,75 +26,66 @@ enum CloudKitStatus {
     case unknown
 }
 
+private final class CloudKitFuturePromise<Output>: @unchecked Sendable {
+    private let resolveClosure: (Result<Output, Error>) -> Void
+
+    init(_ resolve: @escaping (Result<Output, Error>) -> Void) {
+        resolveClosure = resolve
+    }
+
+    func resolve(_ result: Result<Output, Error>) {
+        resolveClosure(result)
+    }
+}
+
 #if DEBUG
 // 预览环境使用的简化版CloudKitService
-class CloudKitServicePreview: ObservableObject {
+@MainActor
+final class CloudKitServicePreview: ObservableObject {
+    private static let logger = Logger(subsystem: "EasyNote", category: "CloudKitPreview")
     @Published var isSyncing = false
     @Published var lastSyncDate: Date?
     
     init() {
-        print("CloudKitServicePreview: 初始化完成")
+        Self.logger.debug("Cloud sync preview service initialized")
     }
     
     func saveAudioFile(data: Data, fileName: String) -> AnyPublisher<URL, CloudKitError> {
-        print("CloudKitServicePreview: 模拟保存音频文件")
-        let subject = PassthroughSubject<URL, CloudKitError>()
-        
-        // 在预览环境中，我们只是简单地返回一个假URL
-        DispatchQueue.main.async {
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-            subject.send(tempURL)
-            subject.send(completion: .finished)
-        }
-        
-        return subject.eraseToAnyPublisher()
+        Self.logger.debug("Simulating cloud audio save")
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        return Just(tempURL)
+            .setFailureType(to: CloudKitError.self)
+            .eraseToAnyPublisher()
     }
     
     func fetchAudioFile(recordName: String) -> AnyPublisher<URL, CloudKitError> {
-        print("CloudKitServicePreview: 模拟获取音频文件")
-        let subject = PassthroughSubject<URL, CloudKitError>()
-        
-        // 在预览环境中，我们只是简单地返回一个假URL
-        DispatchQueue.main.async {
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("previewAudio.m4a")
-            subject.send(tempURL)
-            subject.send(completion: .finished)
-        }
-        
-        return subject.eraseToAnyPublisher()
+        Self.logger.debug("Simulating cloud audio fetch")
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("previewAudio.m4a")
+        return Just(tempURL)
+            .setFailureType(to: CloudKitError.self)
+            .eraseToAnyPublisher()
     }
     
     func syncDiaryEntries(entries: [DiaryEntry]) -> AnyPublisher<Void, Error> {
-        print("CloudKitServicePreview: 模拟同步日记条目")
-        let subject = PassthroughSubject<Void, Error>()
-        
-        DispatchQueue.main.async {
-            // 在预览环境中，我们什么也不做，只是返回成功
-            subject.send(())
-            subject.send(completion: .finished)
-        }
-        
-        return subject.eraseToAnyPublisher()
+        Self.logger.debug("Simulating diary cloud upload")
+        return Just(())
+            .setFailureType(to: Error.self)
+            .eraseToAnyPublisher()
     }
     
     func fetchDiaryEntries() -> AnyPublisher<[DiaryEntry], Error> {
-        print("CloudKitServicePreview: 模拟获取日记条目")
-        let subject = PassthroughSubject<[DiaryEntry], Error>()
-        
-        DispatchQueue.main.async {
-            // 在预览环境中，我们返回一个空数组
-            subject.send([])
-            subject.send(completion: .finished)
-        }
-        
-        return subject.eraseToAnyPublisher()
+        Self.logger.debug("Simulating diary cloud fetch")
+        return Just([])
+            .setFailureType(to: Error.self)
+            .eraseToAnyPublisher()
     }
 }
 
 // 工厂方法创建合适的服务实例
+@MainActor
 func createCloudKitService() -> any ObservableObject {
     if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
-        print("使用预览版CloudKitService")
+        Logger(subsystem: "EasyNote", category: "CloudKitPreview").debug("Using cloud sync preview service")
         return CloudKitServicePreview()
     } else {
         return CloudKitService(containerIdentifier: CloudKitSyncPreflight.defaultContainerIdentifier)
@@ -101,7 +93,9 @@ func createCloudKitService() -> any ObservableObject {
 }
 #endif
 
-class CloudKitService: ObservableObject {
+@MainActor
+final class CloudKitService: ObservableObject {
+    private nonisolated static let logger = Logger(subsystem: "EasyNote", category: "CloudKit")
     static let shared = CloudKitService()
     
     @Published var cloudKitStatus: CloudKitStatus = .unknown
@@ -127,19 +121,12 @@ class CloudKitService: ObservableObject {
         #if DEBUG
         // 调试模式下，默认使用模拟模式
         isSimulationMode = true
-        print("CloudKitService: 使用模拟模式（适用于免费开发者账号）")
+        Self.logger.info("Cloud sync is using local simulation mode")
         self.cloudKitStatus = .temporarilyUnavailable
         self.errorMessage = "免费开发者账号不支持iCloud功能"
         #else
-        do {
-            self.container = CKContainer(identifier: containerIdentifier)
-            self.privateDatabase = container?.privateCloudDatabase
-        } catch {
-            print("CloudKit初始化失败，切换到模拟模式: \(error.localizedDescription)")
-            isSimulationMode = true
-            self.cloudKitStatus = .temporarilyUnavailable
-            self.errorMessage = "iCloud初始化失败，使用本地存储模式"
-        }
+        self.container = CKContainer(identifier: containerIdentifier)
+        self.privateDatabase = container?.privateCloudDatabase
         #endif
     }
     
@@ -149,17 +136,17 @@ class CloudKitService: ObservableObject {
         errorMessage = nil
         
         if isSimulationMode {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isCheckingStatus = false
                 self.cloudKitStatus = .noAccount
                 self.errorMessage = "免费开发者账号不支持iCloud功能，使用本地存储模式"
-                print("CloudKitService: 模拟模式 - iCloud不可用")
+                Self.logger.debug("Cloud account check completed in simulation mode")
             }
             return
         }
         
         container?.accountStatus { [weak self] (status, error) in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.isCheckingStatus = false
                 
                 if let error = error {
@@ -171,27 +158,27 @@ class CloudKitService: ObservableObject {
                 switch status {
                 case .available:
                     self?.cloudKitStatus = .available
-                    print("iCloud可用")
+                    Self.logger.info("Cloud account is available")
                 case .restricted:
                     self?.cloudKitStatus = .restricted
                     self?.errorMessage = "您的iCloud账户受到限制，无法使用同步功能"
-                    print("iCloud受限")
+                    Self.logger.info("Cloud account is restricted")
                 case .noAccount:
                     self?.cloudKitStatus = .noAccount
                     self?.errorMessage = "请在设置中登录您的iCloud账户以启用同步"
-                    print("无iCloud账户")
+                    Self.logger.info("Cloud account is unavailable")
                 case .couldNotDetermine:
                     self?.cloudKitStatus = .unknown
                     self?.errorMessage = "无法确定iCloud账户状态"
-                    print("无法确定iCloud状态")
+                    Self.logger.info("Cloud account status could not be determined")
                 case .temporarilyUnavailable:
                     self?.cloudKitStatus = .temporarilyUnavailable
                     self?.errorMessage = "iCloud暂时不可用，请稍后再试"
-                    print("iCloud暂时不可用")
+                    Self.logger.info("Cloud account is temporarily unavailable")
                 @unknown default:
                     self?.cloudKitStatus = .unknown
                     self?.errorMessage = "未知的iCloud账户状态"
-                    print("未知iCloud状态")
+                    Self.logger.info("Cloud account returned an unknown status")
                 }
             }
         }
@@ -206,6 +193,7 @@ class CloudKitService: ObservableObject {
         }
         
         return Future<Bool, Error> { promise in
+            let futurePromise = CloudKitFuturePromise(promise)
             let container = self.container
             let publicDB = container?.publicCloudDatabase
             
@@ -217,24 +205,24 @@ class CloudKitService: ObservableObject {
             // 尝试保存记录
             publicDB?.save(record) { (savedRecord, error) in
                 if let error = error {
-                    promise(.failure(error))
+                    futurePromise.resolve(.failure(error))
                     return
                 }
                 
                 // 保存成功，尝试删除测试记录
                 if let savedRecord = savedRecord {
                     publicDB?.delete(withRecordID: savedRecord.recordID) { (_, deleteError) in
-                        if let deleteError = deleteError {
+                        if deleteError != nil {
                             // 删除失败但连接测试已成功
-                            print("删除测试记录失败: \(deleteError.localizedDescription)")
+                            Self.logger.error("Cloud connection test record cleanup failed")
                         }
                         
                         // 无论删除是否成功，连接测试已通过
-                        promise(.success(true))
+                        futurePromise.resolve(.success(true))
                     }
                 } else {
                     // 保存成功但无记录返回，仍视为连接成功
-                    promise(.success(true))
+                    futurePromise.resolve(.success(true))
                 }
             }
         }.eraseToAnyPublisher()
@@ -249,16 +237,17 @@ class CloudKitService: ObservableObject {
         }
         
         return Future<String, Error> { promise in
+            let futurePromise = CloudKitFuturePromise(promise)
             self.container?.fetchUserRecordID { recordID, error in
                 if let error = error {
-                    promise(.failure(error))
+                    futurePromise.resolve(.failure(error))
                     return
                 }
                 
                 if let recordID = recordID {
-                    promise(.success(recordID.recordName))
+                    futurePromise.resolve(.success(recordID.recordName))
                 } else {
-                    promise(.failure(NSError(domain: "CloudKitService", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法获取用户ID"])))
+                    futurePromise.resolve(.failure(NSError(domain: "CloudKitService", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法获取用户ID"])))
                 }
             }
         }.eraseToAnyPublisher()
@@ -273,17 +262,18 @@ class CloudKitService: ObservableObject {
         }
         
         return Future<(Double, Double), Error> { promise in
+            let futurePromise = CloudKitFuturePromise(promise)
             CKContainer.default().fetchUserRecordID { recordID, error in
                 if let error = error {
-                    promise(.failure(error))
+                    futurePromise.resolve(.failure(error))
                     return
                 }
                 
-                if let recordID = recordID {
-                    print("成功获取用户ID：\(recordID.recordName)")
-                    promise(.success((0, 0))) // 实际上CloudKit API不提供直接获取配额的方法
+                if recordID != nil {
+                    Self.logger.debug("Cloud quota preflight resolved an account record")
+                    futurePromise.resolve(.success((0, 0))) // 实际上CloudKit API不提供直接获取配额的方法
                 } else {
-                    promise(.failure(NSError(domain: "CloudKitService", code: 2, userInfo: [NSLocalizedDescriptionKey: "无法获取用户iCloud存储配额"])))
+                    futurePromise.resolve(.failure(NSError(domain: "CloudKitService", code: 2, userInfo: [NSLocalizedDescriptionKey: "无法获取用户iCloud存储配额"])))
                 }
             }
         }.eraseToAnyPublisher()
@@ -334,7 +324,7 @@ class CloudKitService: ObservableObject {
         self.isSyncing = true
         
         privateDatabase?.save(record) { savedRecord, error in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isSyncing = false
                 
                 if let error = error {
@@ -397,7 +387,7 @@ class CloudKitService: ObservableObject {
         self.isSyncing = true
         
         privateDatabase?.fetch(withRecordID: recordID) { record, error in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isSyncing = false
                 
                 if let error = error {
@@ -481,15 +471,17 @@ class CloudKitService: ObservableObject {
         
         // 所有操作完成后通知
         group.notify(queue: .main) { [weak self] in
-            guard let self = self else {
+            Task { @MainActor in
+                guard let self else {
+                    subject.send(completion: .finished)
+                    return
+                }
+
+                self.isSyncing = false
+                self.lastSyncDate = Date()
+                subject.send(())
                 subject.send(completion: .finished)
-                return
             }
-            
-            self.isSyncing = false
-            self.lastSyncDate = Date()
-            subject.send(())
-            subject.send(completion: .finished)
         }
         
         return subject.eraseToAnyPublisher()
@@ -506,7 +498,7 @@ class CloudKitService: ObservableObject {
         
         // 使用更新的API
         privateDatabase?.fetch(withQuery: query, inZoneWith: nil, desiredKeys: nil, resultsLimit: 50) { result in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isSyncing = false
                 
                 switch result {
@@ -542,7 +534,7 @@ class CloudKitService: ObservableObject {
                                     }
                                     try FileManager.default.copyItem(at: fileURL, to: audioURL!)
                                 } catch {
-                                    print("Error copying audio file: \(error)")
+                                    Self.logger.error("Failed to persist a fetched cloud audio asset")
                                     audioURL = nil
                                 }
                             }
@@ -554,7 +546,7 @@ class CloudKitService: ObservableObject {
                             
                             entries.append(entry)
                         } catch {
-                            print("Error processing record: \(error)")
+                            Self.logger.error("Failed to decode a fetched cloud diary record")
                         }
                     }
                     
@@ -572,7 +564,7 @@ class CloudKitService: ObservableObject {
     }
 }
 
-extension CloudKitService: CloudKitDiarySyncProviding {}
+extension CloudKitService: @preconcurrency CloudKitDiarySyncProviding {}
 
 // SwiftUI视图扩展，用于显示iCloud状态
 struct CloudKitStatusView: View {

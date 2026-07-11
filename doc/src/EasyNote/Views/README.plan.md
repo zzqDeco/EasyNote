@@ -27,7 +27,7 @@
 - `SettingsView` only composes the form and forwards environment/dependency values; appearance, DeepSeek Keychain/consent, reminder, backup, and sync-preflight UI state belongs to dedicated Settings sections.
 - Diary audio delegate completion and playback progress callbacks explicitly return to the main actor before mutating SwiftUI state.
 - Diary pull-to-refresh performs its animation-state mutation inside an explicit main-actor hop.
-- View diagnostics use categorized unified logging with static events; user-visible diary errors and audio paths are not copied into logs.
+- View diagnostics use categorized unified logging with static events; user-visible diary/chat text, raw errors, and audio or persistence paths are not copied into logs.
 
 ## Tests
 

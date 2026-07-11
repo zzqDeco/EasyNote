@@ -50,8 +50,9 @@ Current service interactions are routed through narrow protocols for AI, AI cred
 - UI-facing `ChatSessionViewModel`, `TodoViewModel`, `DiaryViewModel`, and `ExploreViewModel` state and SwiftData UI-context access are main-actor isolated.
 - `SpeechRecognitionService` owns published state and every `AVAudioEngine` install/start/stop/teardown transition on the main actor. Framework callbacks carry an opaque session token through a lock-protected gate; teardown invalidates that token before removing the tap or cancelling recognition so stale callbacks cannot publish into a later recording.
 - Audio input buffers remain on the framework tap callback. Each tap captures only its own request/file and checks the session gate before appending or writing.
-- Todo reminder scheduling receives detached snapshots of saved todo values before the async service handoff; ViewModel-owned task ordering and visible result state remain on the main actor.
-- Production diagnostics in these boundaries use categorized unified logging. Diary/chat text, full filesystem paths, API keys, and stable user identifiers must never be logged.
+- Todo reminder scheduling copies saved todos into `Sendable` value snapshots before the async handoff. Because the existing scheduler protocol accepts `[TodoItem]`, one compatibility bridge rehydrates private detached models from those values; UI-context SwiftData instances never cross the task boundary.
+- `CloudKitService` and its preview publish observable state on the main actor. CloudKit and Combine callback closures return through explicit transport wrappers or main-actor tasks before touching that state.
+- All production diagnostics under `EasyNote/` use categorized unified logging. Diary/chat text, full filesystem paths, API keys, raw provider errors, and stable user identifiers must never be logged.
 
 ## Service Layer
 

@@ -261,8 +261,8 @@ struct EasyNoteTests {
         }
         let ineligibleTodos = [
             makeTodo(title: "无截止时间"),
-            makeTodo(title: "已完成", isCompleted: true, deadline: try #require(calendar.date(byAdding: .minute, value: 1, to: now))),
-            makeTodo(title: "已过期", deadline: try #require(calendar.date(byAdding: .minute, value: -1, to: now)))
+            makeTodo(title: "已完成", isCompleted: true, deadline: calendar.date(byAdding: .minute, value: 1, to: now)),
+            makeTodo(title: "已过期", deadline: calendar.date(byAdding: .minute, value: -1, to: now))
         ]
 
         let retained = TodoNotificationPlanner.retainedNotificationTodos(
@@ -512,6 +512,35 @@ struct EasyNoteTests {
         await viewModel.waitForPendingReminderOperations()
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
         #expect(scheduler.canceledTodoIDs.isEmpty)
+    }
+
+    @Test func todoNotificationSnapshotRehydratesAnIndependentValue() async throws {
+        let deadline = Date(timeIntervalSince1970: 1_800_000_000)
+        let creationDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let original = TodoItem(
+            title: "Original",
+            priority: .high,
+            deadline: deadline,
+            notes: "Private notes",
+            isRecurring: true,
+            recurringInterval: TodoItem.RecurringInterval.weekly.rawValue
+        )
+        original.creationDate = creationDate
+
+        let snapshot = TodoNotificationSnapshot(todo: original)
+        original.title = "Mutated after snapshot"
+        original.deadline = nil
+
+        let detached = snapshot.makeDetachedTodo()
+        #expect(detached !== original)
+        #expect(detached.id == original.id)
+        #expect(detached.title == "Original")
+        #expect(detached.priority == .high)
+        #expect(detached.deadline == deadline)
+        #expect(detached.notes == "Private notes")
+        #expect(detached.isRecurring)
+        #expect(detached.recurringInterval == TodoItem.RecurringInterval.weekly.rawValue)
+        #expect(detached.creationDate == creationDate)
     }
 
     @Test func todoViewModelSynchronizesNotificationAfterEditingTodo() async throws {

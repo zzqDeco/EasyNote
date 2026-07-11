@@ -17,7 +17,7 @@
 - UI-test launches use an in-memory SwiftData configuration when `-easynote-ui-testing` or `EASYNOTE_UI_TESTING=1` is present.
 - UI-test launches reset the legacy API-key default, AI consent, Keychain credential, theme, and recommendation cache; production launches keep persisted settings and the Documents store.
 - Background save runs only when bootstrap has a ready container.
-- Startup prints local paths for prototype debugging; production logging should be planned before broad cleanup.
+- App lifecycle diagnostics use the `AppLifecycle` unified-log category and never include the Documents path or raw persistence errors.
 
 ## Tests
 

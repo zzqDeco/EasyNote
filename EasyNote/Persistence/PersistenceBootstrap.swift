@@ -14,7 +14,8 @@ protocol PersistenceFileOperating {
 
 extension FileManager: PersistenceFileOperating {}
 
-struct PersistenceBootstrapDependencies {
+// The dependency bundle is created and consumed only by PersistenceBootstrap's main-actor boundary.
+struct PersistenceBootstrapDependencies: @unchecked Sendable {
     typealias ContainerFactory = (Schema, ModelConfiguration) throws -> ModelContainer
 
     var fileOperations: any PersistenceFileOperating

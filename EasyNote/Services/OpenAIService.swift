@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Combine
+@preconcurrency import Combine
 
 enum OpenAIError: Error, LocalizedError {
     case invalidURL
@@ -34,11 +34,10 @@ enum OpenAIError: Error, LocalizedError {
     }
 }
 
-class OpenAIService: ObservableObject {
+final class OpenAIService: ObservableObject, @unchecked Sendable {
     private let credentialStore: any CredentialStoreProviding
     private let consentStore: any AIContentConsentProviding
     private let httpClient: any AIHTTPClientProviding
-
     var apiKey: String {
         get {
             (try? credentialStore.readAPIKey()) ?? ""
@@ -321,12 +320,14 @@ class OpenAIService: ObservableObject {
             }
             .handleEvents(receiveCompletion: { [weak self] _ in
                 // 确保在主线程上更新UI状态
+                guard let self else { return }
                 DispatchQueue.main.async {
-                    self?.isProcessing = false
+                    self.isProcessing = false
                 }
             }, receiveCancel: { [weak self] in
+                guard let self else { return }
                 DispatchQueue.main.async {
-                    self?.isProcessing = false
+                    self.isProcessing = false
                 }
             })
             .receive(on: DispatchQueue.main)

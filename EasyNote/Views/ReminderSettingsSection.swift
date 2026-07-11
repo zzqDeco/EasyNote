@@ -269,8 +269,8 @@ struct ReminderSettingsSection: View {
     @MainActor
     private func removeCurrentSystemRemindersAfterSwitchingToLocalMode() async {
         do {
-            let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
-            let todos = try modelContext.fetch(descriptor)
+            let todos = try modelContext.fetch(FetchDescriptor<TodoItem>())
+                .sorted { $0.creationDate < $1.creationDate }
 
             guard !todos.isEmpty else {
                 reminderModeStore.systemRemindersMayExist = false
@@ -348,8 +348,8 @@ struct ReminderSettingsSection: View {
         }
 
         do {
-            let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
-            let todos = try modelContext.fetch(descriptor)
+            let todos = try modelContext.fetch(FetchDescriptor<TodoItem>())
+                .sorted { $0.creationDate < $1.creationDate }
             let context = SystemReminderContext(now: Date(), calendar: .current)
             let proposals = todos.map {
                 systemReminderAgent.proposal(for: $0, mode: .systemReminderAgent, context: context)
@@ -449,12 +449,16 @@ struct ReminderSettingsSection: View {
     @MainActor
     private func reconcileTodoNotificationsNow() async -> Bool {
         do {
-            let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
-            let todos = try modelContext.fetch(descriptor)
+            let todos = try modelContext.fetch(FetchDescriptor<TodoItem>())
+                .sorted { $0.creationDate < $1.creationDate }
             let now = Date()
             let eligibleCount = todos.filter { TodoNotificationPlanner.shouldScheduleNotification(for: $0, now: now) }.count
             let retainedCount = TodoNotificationPlanner.retainedNotificationTodos(from: todos, now: now).count
-            try await todoNotificationScheduler.reconcileNotifications(for: todos)
+            let snapshots = todos.map { TodoNotificationSnapshot(todo: $0) }
+            try await TodoNotificationSchedulingBridge.reconcile(
+                snapshots: snapshots,
+                using: todoNotificationScheduler
+            )
             if eligibleCount > retainedCount {
                 todoNotificationMessage = "已同步最近 \(retainedCount) 个待办提醒（共 \(eligibleCount) 个符合条件）"
             } else {

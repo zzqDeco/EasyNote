@@ -10,9 +10,11 @@ import SwiftData
 import Speech
 import AVFoundation
 import UIKit
+import OSLog
 
 @main
 struct EasyNoteApp: App {
+    private static let logger = Logger(subsystem: "EasyNote", category: "AppLifecycle")
     // 添加应用生命周期状态对象
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var persistenceBootstrap: PersistenceBootstrap
@@ -35,31 +37,27 @@ struct EasyNoteApp: App {
         WindowGroup {
             PersistenceRootView(bootstrap: persistenceBootstrap)
                 .onAppear {
-                    // 应用启动时执行的初始化逻辑
-                    print("EasyNote应用启动")
-                    
-                    // 打印应用文档目录，以便定位SwiftData存储文件
-                    print("应用文档目录: \(URL.documentsDirectory.path())")
+                    Self.logger.info("Application launched")
                 }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active {
                 // 应用进入前台时
-                print("应用激活")
+                Self.logger.debug("Application became active")
             } else if newPhase == .inactive {
                 // 应用进入非活动状态时
-                print("应用进入非活动状态")
+                Self.logger.debug("Application became inactive")
             } else if newPhase == .background {
                 // 应用进入后台时，确保数据保存
-                print("应用进入后台")
+                Self.logger.debug("Application entered background")
                 guard let modelContainer = persistenceBootstrap.modelContainer else {
                     return
                 }
                 do {
                     try modelContainer.mainContext.save()
-                    print("应用后台保存数据成功")
+                    Self.logger.debug("Background persistence save completed")
                 } catch {
-                    print("应用后台保存数据失败: \(error)")
+                    Self.logger.error("Background persistence save failed")
                 }
             }
         }
