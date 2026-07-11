@@ -96,7 +96,9 @@ Before treating a branch as a usable app build, manually verify:
 - delete an EasyNote todo and confirm only the matching EasyNote-marked system reminder is removed
 - switch back to EasyNote 通知, including after an intermediate off state following prior System Reminders use, and confirm current EasyNote-marked Apple Reminders are removed and new todos no longer write system reminders
 - on a fresh install with no prior System Reminders use, switch from off to EasyNote 通知 and confirm no unrelated Reminders cleanup permission error is shown
-- configure and clear the DeepSeek API key in Settings
+- save and clear the DeepSeek API key in Settings, relaunch, and confirm the configured state follows the Keychain item
+- with a configured or migrated key and no prior consent, confirm the first-use disclosure appears and states that selected diary/transcription text is sent to DeepSeek while audio files are not sent and the key is only used for authentication
+- deny or revoke AI content consent, trigger an AI action, and confirm a user-visible failure occurs without a network request
 - open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible
 - send a note-exploration request, switch or delete the originating session before completion, and confirm no response appears in another session

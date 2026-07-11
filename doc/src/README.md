@@ -22,9 +22,12 @@ Source notes are required for public contracts, cross-module boundaries, persist
 
 ## Services
 
+- [AIContentConsentStore](EasyNote/Services/AIContentConsentStore.swift.plan.md)
+- [AIHTTPClient](EasyNote/Services/AIHTTPClient.swift.plan.md)
 - [AIResponseParser](EasyNote/Services/AIResponseParser.swift.plan.md)
 - [BackupService](EasyNote/Services/BackupService.swift.plan.md)
 - [CloudKitSyncPreflight](EasyNote/Services/CloudKitSyncPreflight.swift.plan.md)
+- [CredentialStore](EasyNote/Services/CredentialStore.swift.plan.md)
 - [LocalTodoNotificationService](EasyNote/Services/LocalTodoNotificationService.swift.plan.md)
 - [OpenAIService](EasyNote/Services/OpenAIService.swift.plan.md)
 - [ReminderServiceAdapters](EasyNote/Services/ReminderServiceAdapters.swift.plan.md)
@@ -55,6 +58,7 @@ Source notes are required for public contracts, cross-module boundaries, persist
 
 ## Tests And CI
 
+- [AI Privacy Tests](EasyNoteTests/AIPrivacyTests.swift.plan.md)
 - [Unit Tests](EasyNoteTests/EasyNoteTests.swift.plan.md)
 - [Chat Response Integrity Tests](EasyNoteTests/ChatResponseIntegrityTests.swift.plan.md)
 - [Persistence Bootstrap Tests](EasyNoteTests/PersistenceBootstrapTests.swift.plan.md)

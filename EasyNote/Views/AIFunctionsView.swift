@@ -45,7 +45,7 @@ struct AIFunctionsView: View {
                     }
                     
                     // 介绍文本
-                    Text("DeepSeek AI能够理解您的日记内容并提供有价值的见解。所有处理都在您的设备上进行，保护您的隐私。")
+                    Text("只有在您明确授权后，所选日记文本才会发送给 DeepSeek；录音音频文件不会发送。")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -103,4 +103,4 @@ struct AIFunctionCard: View {
     let viewModel = DiaryViewModel(modelContext: previewContainer.mainContext)
     
     AIFunctionsView(viewModel: viewModel)
-} 
+}

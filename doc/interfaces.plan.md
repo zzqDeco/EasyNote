@@ -4,16 +4,18 @@ This document records the current contracts that cross module boundaries in Easy
 
 ## Local Settings
 
-- `openai_api_key`: stored in `UserDefaults` through the Settings screen and read by `OpenAIService`.
+- DeepSeek API key: stored as a Keychain generic-password item with service `io.github.zzqDeco.EasyNote`, account `deepseek_api_key`, and `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+- `openai_api_key`: legacy `UserDefaults` source only. It is removed only after the selected Keychain value is written and an exact read-back succeeds; migration failure leaves it intact.
+- `ai_content_consent_granted`: separate `UserDefaults` boolean owned by `AIContentConsentStore`; absence is denied, and saving or migrating a key never changes it.
 - `darkModeEnabled`: stored with `@AppStorage` in `ThemeManager`.
 - `accentColorName`: stored with `@AppStorage` in `ThemeManager`.
 - `todo_reminder_mode`: stored by `TodoReminderModeStore` as `off`, `localNotification`, or `systemReminderAgent`.
 - `todo_notifications_enabled`: legacy-compatible local notification flag stored with `@AppStorage` in Settings and read by `LocalTodoNotificationService`.
 - `todo_system_reminders_may_exist`: a `TodoReminderModeStore` handoff marker used only to decide whether returning to local notifications should clean EasyNote-marked Apple Reminders after a prior system-reminder mode.
 
-The repository must not contain default API keys. Empty `openai_api_key` disables AI calls with a user-visible error.
+The repository must not contain default API keys. Missing Keychain credentials or denied AI content consent disable AI calls with a user-visible error before network transport is invoked.
 
-`SettingsDependencies` is the Settings composition contract for the existing backup service, local notification scheduler, system reminder agent/writer, reminder-mode store, and CloudKit preflight report. `SettingsView` forwards this bundle and SwiftUI environment values to feature-owned sections; the bundle does not change persistence keys, service protocols, or production defaults.
+`SettingsDependencies` is the Settings composition contract for the credential store, AI content consent store, backup service, local notification scheduler, system reminder agent/writer, reminder-mode store, and CloudKit preflight report. `SettingsView` forwards this bundle and SwiftUI environment values to feature-owned sections; the bundle does not implement persistence behavior itself.
 
 ## SwiftData Models
 
@@ -142,6 +144,12 @@ Current request contract:
 - `max_tokens`: `500`
 - Authorization: `Bearer <openai_api_key>`
 
+Before creating the request publisher, `OpenAIService` must read a non-empty credential and observe granted consent. The injected `AIHTTPClientProviding` boundary must not be called when either condition fails. Consent is app-wide but revocable; revocation blocks subsequent requests immediately without deleting the Keychain credential.
+
+Only the selected diary or transcription text is placed in the prompt body. Recording audio files are never attached. The DeepSeek API key is transmitted only in the HTTP Authorization header required for provider authentication and is never included in prompt content, response history, SwiftData, backups, or logs.
+
+`CredentialStoreProviding` exposes throwing read, save, delete, and legacy-migration operations. `KeychainCredentialStore` performs Security.framework CRUD through an injectable adapter. Duplicate adds update only `kSecValueData`; deletes treat `errSecItemNotFound` as success. Migration preserves an existing non-empty Keychain value as authoritative, performs a write plus exact read-back, and removes the legacy defaults value only after verification.
+
 Current response contract expects `choices[0].message.content`. Malformed or failed responses are mapped to `OpenAIError` and should become user-visible errors or controlled fallbacks.
 
 Chat exploration captures a `ChatRequestContext` before sending. The context fixes the request UUID, target session UUID, conversation history, related diary IDs, and diary snapshots. User and assistant messages are written by target session ID; switching a session invalidates its in-flight request but preserves an already completed retryable failure, while clearing or deleting cancels only after the SwiftData mutation succeeds. A retry records whether the original user message was saved and re-saves it before contacting the provider when the first persistence attempt failed. The previous failure remains available until the retry succeeds or produces a replacement failure, so navigation cancellation cannot remove the retry path. Task cancellation propagates through the async publisher bridge to the underlying provider subscription. Provider failures may use `LocalDiaryQueryAnalyzer`, but only to report titles, dates, previews, moods, and counts present in the captured snapshots. Query cleanup retains the original term and adds a boundary-cleaned command-free term, including diary, note, record, mention-question, natural mood-summary, and built-in broad-summary wrappers; connector particles included in a removed wrapper are discarded without altering real subjects. Diary matching includes title, content, tags, explicit mood metadata, and non-stop-word single-character CJK topics. Recent and mood summaries apply any extracted topic scope before deriving local facts; broad summaries are reserved for unscoped requests. If no factual local result exists, the failure remains a retryable UI state and is not persisted as an assistant claim.
@@ -154,13 +162,13 @@ Chat exploration captures a `ChatRequestContext` before sending. The context fix
 - Completely malformed recommendations return the stable default recommendations/todos.
 
 The parser is pure and must not read API keys, send network requests, or inspect provider transport metadata.
-ViewModels consume AI behavior through `OpenAIServiceProviding`. The protocol exposes request methods, API key access, and an erased processing-state publisher without exposing concrete `@Published` storage.
+ViewModels consume AI behavior through `OpenAIServiceProviding`. The protocol exposes request methods, Keychain-backed API key access, and an erased processing-state publisher without exposing concrete `@Published` storage.
 
 ## AI Result Confirmation Boundary
 
 `AIActionResult` records current-session AI outcomes without changing SwiftData schema. Results include an action type (`summary`, `refine`, `expand`, `analyze`, or `recommendation`), an application target, optional source entity id, input source, input fingerprint, input preview, output text, timestamp, success state, and optional failure message.
 
-Text-generating diary and transcription actions must not mutate persisted diary fields or `transcribedText` until the user applies the pending result. Copy is UI-only; discard removes the pending result from current-session history without mutating diary data. Recommendation results are reviewable/copyable history entries and are not directly applied through this boundary. Empty API keys still fail closed before network requests and may record a failure result, but must not create a successful pending result.
+Text-generating diary and transcription actions must not mutate persisted diary fields or `transcribedText` until the user applies the pending result. Copy is UI-only; discard removes the pending result from current-session history without mutating diary data. Recommendation results are reviewable/copyable history entries and are not directly applied through this boundary. Missing API keys and denied consent still fail closed before network requests and may record a failure result, but must not create a successful pending result.
 
 Pending text results are tracked by application target plus source entity id. Diary summary results must be bound to the `DiaryEntry.id` that produced them, and views must only render/apply summary results for that source entry. Applying diary summary or transcription results must verify that the current source text still matches the recorded input fingerprint. Transcription results launched from editor content must validate against the current editor text, not only the copied `transcribedText` buffer. Failed actions clear stale pending results for the same target/source scope.
 

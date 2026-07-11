@@ -8,22 +8,48 @@
 import Foundation
 import Combine
 
-enum OpenAIError: Error {
+enum OpenAIError: Error, LocalizedError {
     case invalidURL
     case invalidResponse
     case requestFailed(Error)
     case decodingFailed(Error)
     case apiError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "DeepSeek 请求地址无效。"
+        case .invalidResponse:
+            return "DeepSeek 返回了无效响应。"
+        case let .requestFailed(error):
+            return "DeepSeek 请求失败：\(error.localizedDescription)"
+        case let .decodingFailed(error):
+            return "DeepSeek 响应解析失败：\(error.localizedDescription)"
+        case let .apiError(message):
+            return message
+        }
+    }
 }
 
 class OpenAIService: ObservableObject {
-    // 使用计算属性从UserDefaults读取API密钥
+    private let credentialStore: any CredentialStoreProviding
+    private let consentStore: any AIContentConsentProviding
+    private let httpClient: any AIHTTPClientProviding
+
     var apiKey: String {
         get {
-            return UserDefaults.standard.string(forKey: "openai_api_key") ?? ""
+            (try? credentialStore.readAPIKey()) ?? ""
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: "openai_api_key")
+            do {
+                if newValue.isEmpty {
+                    try credentialStore.deleteAPIKey()
+                } else {
+                    try credentialStore.saveAPIKey(newValue)
+                }
+            } catch {
+                // Settings uses the throwing credential API and surfaces failures.
+            }
         }
     }
     
@@ -32,8 +58,15 @@ class OpenAIService: ObservableObject {
     
     @Published var isProcessing = false
     
-    init() {
-        // 初始化时不需要传入API密钥，而是从UserDefaults读取
+    init(
+        credentialStore: any CredentialStoreProviding = KeychainCredentialStore(),
+        consentStore: any AIContentConsentProviding = AIContentConsentStore(),
+        httpClient: any AIHTTPClientProviding = URLSessionAIHTTPClient()
+    ) {
+        self.credentialStore = credentialStore
+        self.consentStore = consentStore
+        self.httpClient = httpClient
+        _ = try? credentialStore.migrateLegacyAPIKeyIfNeeded()
     }
     
     func generateSummary(from text: String) -> AnyPublisher<String, OpenAIError> {
@@ -178,9 +211,22 @@ class OpenAIService: ObservableObject {
     }
     
     private func sendRequest(prompt: String) -> AnyPublisher<String, OpenAIError> {
-        let currentAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentAPIKey: String
+        do {
+            currentAPIKey = try credentialStore.readAPIKey()?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        } catch {
+            return Fail(error: OpenAIError.apiError(error.localizedDescription))
+                .eraseToAnyPublisher()
+        }
+
         guard !currentAPIKey.isEmpty else {
             return Fail(error: OpenAIError.apiError("请在设置中添加DeepSeek API密钥后再使用AI功能"))
+                .eraseToAnyPublisher()
+        }
+
+        guard consentStore.isGranted else {
+            return Fail(error: OpenAIError.apiError(AIContentConsentPolicy.requiredMessage))
                 .eraseToAnyPublisher()
         }
         
@@ -218,7 +264,7 @@ class OpenAIService: ObservableObject {
         }
         
         // 发送请求
-        return URLSession.shared.dataTaskPublisher(for: request)
+        return httpClient.dataTaskPublisher(for: request)
             .mapError { error -> OpenAIError in
                 // 提供更明确的错误信息
                 let urlError = error

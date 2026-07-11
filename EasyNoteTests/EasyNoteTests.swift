@@ -1110,24 +1110,23 @@ struct EasyNoteTests {
     }
 
     @Test func openAIServiceFailsClosedWhenAPIKeyIsEmpty() async throws {
-        let defaults = UserDefaults.standard
-        let previousKey = defaults.string(forKey: "openai_api_key")
-        defaults.removeObject(forKey: "openai_api_key")
-        defer {
-            if let previousKey {
-                defaults.set(previousKey, forKey: "openai_api_key")
-            } else {
-                defaults.removeObject(forKey: "openai_api_key")
-            }
-        }
+        let credentials = InMemoryCredentialStore(apiKey: nil)
+        let consent = InMemoryConsentStore(isGranted: true)
+        let httpClient = RecordingAIHTTPClient()
+        let service = OpenAIService(
+            credentialStore: credentials,
+            consentStore: consent,
+            httpClient: httpClient
+        )
 
-        let error = await publisherFailure(OpenAIService().generateSummary(from: "测试内容"))
+        let error = await publisherFailure(service.generateSummary(from: "测试内容"))
 
         guard case let .apiError(message) = try #require(error) else {
             Issue.record("Expected empty API key to produce OpenAIError.apiError")
             return
         }
         #expect(message == "请在设置中添加DeepSeek API密钥后再使用AI功能")
+        #expect(httpClient.requestCount == 0)
     }
 
     @Test func diaryViewModelUsesInjectedAIServiceForEmptyKeySummaryFailure() async throws {
