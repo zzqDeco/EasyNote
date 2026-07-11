@@ -12,8 +12,10 @@ import SwiftData
 import UIKit
 @testable import EasyNote
 
+struct EasyNoteTests {}
+
 @MainActor
-struct EasyNoteTests {
+extension EasyNoteTests {
 
     @Test func recurringIntervalsComputeExpectedNextDates() async throws {
         let calendar = Calendar.current
