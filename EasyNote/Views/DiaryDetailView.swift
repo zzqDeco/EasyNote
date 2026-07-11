@@ -8,8 +8,10 @@
 import SwiftUI
 import AVFoundation
 import SwiftData
+import OSLog
 
 struct DiaryDetailView: View {
+    private static let logger = Logger(subsystem: "EasyNote", category: "DiaryDetailView")
     @ObservedObject var viewModel: DiaryViewModel
     @EnvironmentObject private var tabManager: TabSelectionManager
     @Environment(\.dismiss) private var dismiss
@@ -311,8 +313,7 @@ struct DiaryDetailView: View {
         .onChange(of: viewModel.errorMessage) { oldValue, newValue in
             // 处理错误消息
             if newValue != nil {
-                // 可以在这里显示错误提示
-                print("错误: \(newValue ?? "")")
+                Self.logger.notice("Diary detail received a user-visible ViewModel error")
             }
         }
     }
@@ -743,13 +744,15 @@ struct DiaryDetailView: View {
                 
                 // 创建一个定时器来更新进度
                 audioTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-                    if let player = audioPlayer {
-                        audioProgress = player.currentTime / player.duration
+                    Task { @MainActor in
+                        if let player = audioPlayer {
+                            audioProgress = player.currentTime / player.duration
+                        }
                     }
                 }
             }
         } catch {
-            print("音频播放错误: \(error.localizedDescription)")
+            Self.logger.error("Diary audio playback failed")
         }
     }
     
@@ -766,7 +769,7 @@ struct DiaryDetailView: View {
         do {
             try AVAudioSession.sharedInstance().setActive(false)
         } catch {
-            print("停用音频会话错误: \(error.localizedDescription)")
+            Self.logger.error("Diary playback audio session deactivation failed")
         }
     }
     
@@ -781,16 +784,16 @@ struct DiaryDetailView: View {
 }
 
 // MARK: - 音频播放委托
-class AVPlayerDelegate: NSObject, AVAudioPlayerDelegate {
-    let onFinish: () -> Void
+final class AVPlayerDelegate: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
+    let onFinish: @MainActor () -> Void
     
-    init(onFinish: @escaping () -> Void) {
+    init(onFinish: @escaping @MainActor () -> Void) {
         self.onFinish = onFinish
     }
     
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        DispatchQueue.main.async {
-            self.onFinish()
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [onFinish] in
+            onFinish()
         }
     }
 }

@@ -2,8 +2,11 @@ import Foundation
 import SwiftData
 import Combine
 import SwiftUI
+import OSLog
 
-class TodoViewModel: ObservableObject {
+@MainActor
+final class TodoViewModel: ObservableObject {
+    private static let logger = Logger(subsystem: "EasyNote", category: "TodoViewModel")
     // 数据状态
     @Published private(set) var todoItems: [TodoItem] = []
     @Published var errorMessage: String?
@@ -18,7 +21,6 @@ class TodoViewModel: ObservableObject {
     private let reminderModeStore: any TodoReminderModeProviding
     private let saveModelContext: (ModelContext) throws -> Void
     private var cancellables = Set<AnyCancellable>()
-    private let reminderOperationLock = NSLock()
     private var reminderOperationTask: Task<Void, Never>?
     
     // 初始化方法
@@ -53,28 +55,29 @@ class TodoViewModel: ObservableObject {
     }
 
     deinit {
-        currentReminderOperationTask()?.cancel()
+        reminderOperationTask?.cancel()
     }
 
     func waitForPendingReminderOperations() async {
-        await currentReminderOperationTask()?.value
+        await reminderOperationTask?.value
     }
     
     // MARK: - 数据管理方法
     
     /// 加载所有待办事项
     private func loadTodoItems(reconcileSystemReminders: Bool = false) {
-        let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
+        let descriptor = FetchDescriptor<TodoItem>()
         
         do {
             todoItems = try modelContext.fetch(descriptor)
+                .sorted { $0.creationDate < $1.creationDate }
             reconcileTodoNotificationsIfNeeded()
             if reconcileSystemReminders {
                 reconcileSystemRemindersIfNeeded()
             }
-            print("从数据库加载了 \(todoItems.count) 个待办事项")
+            Self.logger.debug("Loaded \(self.todoItems.count, privacy: .public) todo items")
         } catch {
-            print("加载待办事项失败: \(error)")
+            Self.logger.error("Failed to load todo items")
             todoItems = []
         }
     }
@@ -272,7 +275,7 @@ class TodoViewModel: ObservableObject {
         } catch {
             modelContext.rollback()
             errorMessage = "保存待办事项失败: \(error.localizedDescription)"
-            print("保存待办事项失败: \(error)")
+            Self.logger.error("Failed to save todo items")
             return false
         }
     }
@@ -285,7 +288,7 @@ class TodoViewModel: ObservableObject {
         case .off:
             return
         case .localNotification:
-            let todos = todoItems
+            nonisolated(unsafe) let todos = reminderSchedulingSnapshots()
             enqueueReminderOperation { viewModel in
                 do {
                     try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
@@ -309,7 +312,7 @@ class TodoViewModel: ObservableObject {
         case .off:
             break
         case .localNotification:
-            let todos = todoItems
+            nonisolated(unsafe) let todos = reminderSchedulingSnapshots()
             enqueueReminderOperation { viewModel in
                 await viewModel.notificationScheduler.cancelNotification(forTodoID: todoID)
                 do {
@@ -333,7 +336,7 @@ class TodoViewModel: ObservableObject {
             return
         }
 
-        let todos = todoItems
+        nonisolated(unsafe) let todos = reminderSchedulingSnapshots()
         enqueueReminderOperation { viewModel in
             do {
                 try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
@@ -435,7 +438,6 @@ class TodoViewModel: ObservableObject {
         }
     }
 
-    @MainActor
     private func performSystemReminderOperation(
         _ operation: SystemReminderProposalOperation,
         proposal: SystemReminderProposal? = nil,
@@ -482,7 +484,6 @@ class TodoViewModel: ObservableObject {
     private func enqueueReminderOperation(
         _ operation: @escaping @MainActor (TodoViewModel) async -> Void
     ) {
-        reminderOperationLock.lock()
         let previousTask = reminderOperationTask
         let task = Task { @MainActor [weak self] in
             await previousTask?.value
@@ -492,13 +493,6 @@ class TodoViewModel: ObservableObject {
             await operation(self)
         }
         reminderOperationTask = task
-        reminderOperationLock.unlock()
-    }
-
-    private func currentReminderOperationTask() -> Task<Void, Never>? {
-        reminderOperationLock.lock()
-        defer { reminderOperationLock.unlock() }
-        return reminderOperationTask
     }
 
     private static func systemReminderMessage(
@@ -526,7 +520,24 @@ class TodoViewModel: ObservableObject {
             let container = try ModelContainer(for: TodoItem.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
             return ModelContext(container)
         } catch {
-            fatalError("无法创建待办事项ModelContext: \(error)")
+            fatalError("无法创建待办事项存储，应用程序无法继续")
+        }
+    }
+
+    private func reminderSchedulingSnapshots() -> [TodoItem] {
+        todoItems.map { todo in
+            let snapshot = TodoItem(
+                id: todo.id,
+                title: todo.title,
+                isCompleted: todo.isCompleted,
+                priority: todo.priority,
+                deadline: todo.deadline,
+                notes: todo.notes,
+                isRecurring: todo.isRecurring,
+                recurringInterval: todo.recurringInterval
+            )
+            snapshot.creationDate = todo.creationDate
+            return snapshot
         }
     }
     

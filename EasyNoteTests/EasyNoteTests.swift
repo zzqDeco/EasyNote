@@ -12,6 +12,7 @@ import SwiftData
 import UIKit
 @testable import EasyNote
 
+@MainActor
 struct EasyNoteTests {
 
     @Test func recurringIntervalsComputeExpectedNextDates() async throws {
@@ -1785,13 +1786,39 @@ struct EasyNoteTests {
         }
     }
 
-    @Test func speechRecognitionSessionRejectsStaleCallbacks() async throws {
-        let activeSessionID = UUID()
-        let staleSessionID = UUID()
+    @Test func speechRecognitionSessionGateRejectsOverlapAndLateCallbacks() async throws {
+        let gate = SpeechRecognitionSessionGate()
+        let firstSessionID = UUID()
+        let nextSessionID = UUID()
 
-        #expect(SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: activeSessionID))
-        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: staleSessionID))
-        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: nil, callback: activeSessionID))
+        #expect(gate.activate(firstSessionID))
+        #expect(!gate.activate(nextSessionID))
+        #expect(gate.isActive(firstSessionID))
+
+        #expect(gate.invalidate(firstSessionID))
+        #expect(!gate.isActive(firstSessionID))
+        #expect(gate.activate(nextSessionID))
+        #expect(!gate.isActive(firstSessionID))
+        #expect(gate.isActive(nextSessionID))
+    }
+
+    @Test func todoViewModelPublishesMutationsOnMainThread() async throws {
+        let viewModel = TodoViewModel(
+            modelContext: try makeModelContext(),
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .off)
+        )
+        var mutationWasPublishedOnMainThread = false
+        let cancellable = viewModel.$todoItems
+            .dropFirst()
+            .sink { _ in
+                mutationWasPublishedOnMainThread = Thread.isMainThread
+            }
+
+        #expect(viewModel.addTodoItem(title: "Main actor publication"))
+        #expect(mutationWasPublishedOnMainThread)
+        withExtendedLifetime(cancellable) {}
     }
 
     @Test func diaryViewModelCancellationClearsSpeechSessionState() async throws {

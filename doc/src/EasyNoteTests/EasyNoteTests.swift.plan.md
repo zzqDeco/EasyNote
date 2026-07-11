@@ -19,6 +19,8 @@
 - Current tests cover AI action result success/failure records, input matching, per-target/source pending state, stale pending cleanup after failures, source-bound diary summary application, stale result rejection, and explicit diary/transcription application behavior.
 - Current tests cover CloudKit preflight readiness as pure local logic; they do not contact CloudKit.
 - Current tests cover existing-diary draft save/discard/rollback, canonical mood storage, transcription isolation, and original/pending recording ownership.
+- The main unit-test suite is main-actor isolated when it directly exercises UI-facing ViewModels.
+- Focused concurrency coverage verifies speech-session overlap rejection/invalidation and main-thread Todo publication without accessing microphone hardware.
 
 ## Tests
 

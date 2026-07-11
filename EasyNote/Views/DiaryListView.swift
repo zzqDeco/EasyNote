@@ -726,9 +726,11 @@ struct DiaryListView: View {
     
     private func refreshData() async {
         await viewModel.refreshData()
-        // 触发列表刷新动画
-        withAnimation {
-            refreshTrigger.toggle()
+        await MainActor.run {
+            // 触发列表刷新动画
+            withAnimation {
+                refreshTrigger.toggle()
+            }
         }
     }
 }

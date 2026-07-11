@@ -2,8 +2,11 @@ import Foundation
 import SwiftData
 import Combine
 import SwiftUI
+import OSLog
 
-class ExploreViewModel: ObservableObject {
+@MainActor
+final class ExploreViewModel: ObservableObject {
+    private static let logger = Logger(subsystem: "EasyNote", category: "ExploreViewModel")
     // 数据状态
     @Published var recommendations: [Recommendation] = []
     @Published var isLoading = true
@@ -35,14 +38,14 @@ class ExploreViewModel: ObservableObject {
                 let container = try ModelContainer(for: DiaryEntry.self, TodoItem.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
                 self.modelContext = ModelContext(container)
             } catch {
-                print("无法创建临时ModelContext: \(error)")
+                Self.logger.error("Failed to create fallback explore model context")
                 // 这里不再调用fatalError，而是创建一个空的ModelContainer
                 let descriptor = ModelConfiguration(isStoredInMemoryOnly: true)
                 do {
                     let container = try ModelContainer(for: DiaryEntry.self, TodoItem.self, configurations: descriptor)
                     self.modelContext = ModelContext(container)
                 } catch {
-                    print("创建备用ModelContainer失败: \(error)")
+                    Self.logger.fault("Failed to create secondary explore model context")
                     // 如果还是失败，使用最简单的方法
                     let schema = Schema([DiaryEntry.self, TodoItem.self])
                     let container = try! ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -142,7 +145,9 @@ class ExploreViewModel: ObservableObject {
     /// - Parameters:
     ///   - response: AI生成的推荐和待办事项
     private func processRecommendationResponse(_ response: (recommendations: [String], todos: [String])) {
-        print("处理AI推荐响应: 收到\(response.recommendations.count)个推荐和\(response.todos.count)个待办事项")
+        Self.logger.debug(
+            "Processing recommendation response with \(response.recommendations.count, privacy: .public) recommendations and \(response.todos.count, privacy: .public) todo suggestions"
+        )
         
         // 清空当前推荐
         recommendations = []
@@ -160,12 +165,12 @@ class ExploreViewModel: ObservableObject {
         // 更新最后更新时间
         lastUpdated = Date()
         
-        print("处理完成: \(recommendations.count)个推荐")
+        Self.logger.debug("Processed \(self.recommendations.count, privacy: .public) recommendations")
     }
     
     /// 生成默认推荐
     private func generateDefaultRecommendations() {
-        print("生成默认推荐内容")
+        Self.logger.debug("Generating default recommendations")
         recommendations = [
             Recommendation(id: UUID(), title: "花点时间阅读一本书", priority: .medium),
             Recommendation(id: UUID(), title: "尝试冥想15分钟", priority: .medium),
@@ -186,18 +191,14 @@ class ExploreViewModel: ObservableObject {
             return []
         }
         
-        let fetchDescriptor = FetchDescriptor<DiaryEntry>(
-            predicate: #Predicate<DiaryEntry> { entry in
-                entry.creationDate >= fromDate
-            },
-            sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
-        )
+        let fetchDescriptor = FetchDescriptor<DiaryEntry>()
         
         do {
-            let entries = try modelContext.fetch(fetchDescriptor)
-            return entries
+            return try modelContext.fetch(fetchDescriptor)
+                .filter { $0.creationDate >= fromDate }
+                .sorted { $0.creationDate > $1.creationDate }
         } catch {
-            print("获取最近日记失败: \(error)")
+            Self.logger.error("Failed to fetch recent diary entries for recommendations")
             return []
         }
     }
@@ -211,14 +212,14 @@ class ExploreViewModel: ObservableObject {
     
     /// 从UserDefaults加载缓存的推荐内容
     private func loadCachedRecommendations() {
-        print("开始加载缓存的推荐内容")
+        Self.logger.debug("Loading cached recommendations")
         if let recommendationsData = UserDefaults.standard.data(forKey: "cached_recommendations"),
            let cachedRecommendations = try? JSONDecoder().decode([Recommendation].self, from: recommendationsData) {
             
             self.recommendations = cachedRecommendations
             self.lastUpdated = UserDefaults.standard.object(forKey: "recommendations_last_updated") as? Date
             
-            print("从缓存加载：\(recommendations.count)个推荐")
+            Self.logger.debug("Loaded \(self.recommendations.count, privacy: .public) cached recommendations")
             
             // 即使加载了缓存，也应该检查是否需要更新
             if shouldGenerateNewRecommendations() {
@@ -229,7 +230,7 @@ class ExploreViewModel: ObservableObject {
                 isLoading = false
             }
         } else {
-            print("没有找到缓存数据，将生成新的推荐")
+            Self.logger.debug("No recommendation cache was available")
             // 没有缓存的数据，生成新的推荐
             generateRecommendations()
         }

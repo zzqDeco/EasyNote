@@ -10,6 +10,7 @@
 - Do not make ViewModels the long-term owner of provider-specific parsing or low-level audio/cloud APIs.
 - Do not silently swallow core save failures; expose an error message or route through a documented fallback.
 - Production ViewModels should receive the app's shared SwiftData `ModelContext`; nil-context fallback stores are for previews, tests, or explicitly degraded states only.
+- UI-facing ViewModels are main-actor isolated; published state and SwiftData UI-context access must not escape that boundary.
 
 ## Behavior Notes
 
@@ -38,6 +39,9 @@
 - Todo local notification scheduling belongs to the async/throws `TodoNotificationSchedulingProviding`; `TodoViewModel` reconciles local reminders only after SwiftData saves succeed, and deletion also cancels the removed todo identifier before reconciling the remaining list.
 - Todo system Reminders writes belong to `SystemReminderAgentProviding` and `SystemReminderWritingProviding`; `TodoViewModel` applies, completes, or removes system reminders only in `.systemReminderAgent` mode and only after SwiftData saves succeed.
 - Reminder side effects run through a ViewModel-owned task chain and publish results on the main actor. Local notification and system reminder failures set the existing visible reminder error without rolling back the saved todo.
+- Todo notification handoffs use detached value snapshots of saved todos so async schedulers never receive main-actor-owned SwiftData instances that remain mutable in the UI context.
+- Chat provider calls cross the task boundary through one unchecked transport wrapper; provider response behavior and session-bound completion remain unchanged.
+- Owned ViewModel diagnostics use categorized unified logging and never include diary/chat text, full paths, credentials, or stable identifiers.
 - Backup import reloads reconcile system reminders in `.systemReminderAgent` mode so imported todo title, deadline, and completion changes do not leave stale Apple Reminders.
 
 ## Tests

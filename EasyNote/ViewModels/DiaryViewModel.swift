@@ -9,8 +9,11 @@ import Foundation
 import SwiftData
 import Combine
 import SwiftUI
+import OSLog
 
-class DiaryViewModel: ObservableObject {
+@MainActor
+final class DiaryViewModel: ObservableObject {
+    private static let logger = Logger(subsystem: "EasyNote", category: "DiaryViewModel")
     // 服务
     private let speechService: any SpeechRecognitionProviding
     private let openAIService: any OpenAIServiceProviding
@@ -65,8 +68,8 @@ class DiaryViewModel: ObservableObject {
                 self.modelContext = ModelContext(container)
             } catch {
                 // 如果创建失败，创建一个临时的上下文（这在实际情况下可能会导致应用不稳定）
-                print("无法创建临时ModelContext: \(error)")
-                fatalError("无法创建ModelContext，应用程序无法继续: \(error)")
+                Self.logger.fault("Failed to create fallback diary model context")
+                fatalError("无法创建日记存储，应用程序无法继续")
             }
         }
         
@@ -76,7 +79,7 @@ class DiaryViewModel: ObservableObject {
         // 在预览环境中使用轻量级服务
         if isPreviewEnvironment {
             // 在预览中不绑定服务状态，避免不必要的处理
-            print("DiaryViewModel: 在预览环境中使用轻量级服务")
+            Self.logger.debug("Using lightweight diary services in preview")
         } else {
             // 绑定语音服务状态
             speechService.transcribedTextPublisher
@@ -128,7 +131,7 @@ class DiaryViewModel: ObservableObject {
     private func checkModelMigration() {
         // 如果有需要进行迁移的工作，可以在这里处理
         // 例如，在更改tags存储方式后，可能需要确保所有现有的条目都已正确迁移
-        print("检查模型迁移")
+        Self.logger.debug("Checked diary model compatibility")
     }
     
     // MARK: - 语音录制功能
@@ -210,7 +213,7 @@ class DiaryViewModel: ObservableObject {
                 try FileManager.default.removeItem(at: url)
             }
         } catch {
-            print("无法删除录音文件: \(error.localizedDescription)")
+            Self.logger.error("Failed to remove an unclaimed diary recording")
         }
     }
 
@@ -378,12 +381,8 @@ class DiaryViewModel: ObservableObject {
             return loadedEntry
         }
 
-        let descriptor = FetchDescriptor<DiaryEntry>(
-            predicate: #Predicate<DiaryEntry> { entry in
-                entry.id == entryID
-            }
-        )
-        return try? modelContext.fetch(descriptor).first
+        let descriptor = FetchDescriptor<DiaryEntry>()
+        return try? modelContext.fetch(descriptor).first { $0.id == entryID }
     }
     
     // MARK: - AI功能
@@ -734,8 +733,9 @@ class DiaryViewModel: ObservableObject {
     
     private func loadDiaryEntries() {
         do {
-            let descriptor = FetchDescriptor<DiaryEntry>(sortBy: [SortDescriptor(\.creationDate, order: .reverse)])
+            let descriptor = FetchDescriptor<DiaryEntry>()
             diaryEntries = try modelContext.fetch(descriptor)
+                .sorted { $0.creationDate > $1.creationDate }
         } catch {
             errorMessage = "加载日记失败: \(error.localizedDescription)"
         }
@@ -760,7 +760,7 @@ class DiaryViewModel: ObservableObject {
     func syncWithCloud() {
         // 在预览环境中不执行同步操作
         if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
-            print("DiaryViewModel: 预览环境不执行syncWithCloud")
+            Self.logger.debug("Skipped diary cloud sync in preview")
             return
         }
         
@@ -782,7 +782,7 @@ class DiaryViewModel: ObservableObject {
     func fetchFromCloud() {
         // 在预览环境中不执行拉取操作
         if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
-            print("DiaryViewModel: 预览环境不执行fetchFromCloud")
+            Self.logger.debug("Skipped diary cloud fetch in preview")
             return
         }
         
@@ -860,10 +860,11 @@ class DiaryViewModel: ObservableObject {
     // 加载所有日记条目
     func loadEntries() {
         do {
-            let descriptor = FetchDescriptor<DiaryEntry>(sortBy: [SortDescriptor(\.creationDate, order: .reverse)])
+            let descriptor = FetchDescriptor<DiaryEntry>()
             diaryEntries = try modelContext.fetch(descriptor)
+                .sorted { $0.creationDate > $1.creationDate }
         } catch {
-            print("加载日记条目时出错: \(error)")
+            Self.logger.error("Failed to load diary entries")
             errorMessage = "加载日记条目失败: \(error.localizedDescription)"
         }
     }

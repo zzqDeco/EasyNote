@@ -7,10 +7,26 @@ enum ChatResponseOutcome: Equatable {
     case cancelled
 }
 
+final class ChatResponseProviderTransport: @unchecked Sendable {
+    private let provider: any ChatResponseProviding
+
+    init(_ provider: any ChatResponseProviding) {
+        self.provider = provider
+    }
+
+    var apiKey: String {
+        provider.apiKey
+    }
+
+    func chat(prompt: String) async throws -> String {
+        try await provider.chat(prompt: prompt)
+    }
+}
+
 enum ChatResponseGenerator {
     static func generate(
         context: ChatRequestContext,
-        provider: any ChatResponseProviding
+        provider: ChatResponseProviderTransport
     ) async -> ChatResponseOutcome {
         guard !provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failure("AI 服务需要设置 API 密钥。请在设置中添加密钥后重试。")
