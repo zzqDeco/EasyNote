@@ -6,11 +6,13 @@ enum EasyNoteSchemaV1: VersionedSchema {
     }
 
     static var models: [any PersistentModel.Type] {
+        // These top-level storage types define V1 and must remain unchanged.
+        // Persisted layout changes require a new VersionedSchema and migration stage.
         [
-            EasyNoteSchemaV1.DiaryEntry.self,
-            EasyNoteSchemaV1.TodoItem.self,
-            EasyNoteSchemaV1.ChatSession.self,
-            EasyNoteSchemaV1.SessionMessage.self
+            DiaryEntry.self,
+            TodoItem.self,
+            ChatSession.self,
+            SessionMessage.self
         ]
     }
 

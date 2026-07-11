@@ -7,12 +7,12 @@
 
 ## Boundaries
 
-- V1 must retain the existing persisted entity names, fields, and relationships unchanged through version-owned nested model definitions and file-scope app-facing aliases.
+- The top-level `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` storage types are the immutable V1 contract and must retain their persisted entity names, fields, and relationships.
 - Add a new schema version and documented migration stage before changing persisted layout; do not rewrite V1.
 
 ## Behavior Notes
 
-- V1 is version `1.0.0` and owns nested `DiaryEntry`, `TodoItem`, `ChatSession`, and `SessionMessage` definitions; existing source files expose aliases with the same app-facing names.
+- V1 is version `1.0.0` and registers the existing top-level storage types. They remain top-level to preserve legacy entity identity and SwiftData relationship/rollback behavior.
 - The migration plan currently has no stages because there is only one unchanged schema version.
 
 ## Tests

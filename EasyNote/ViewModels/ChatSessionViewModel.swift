@@ -367,7 +367,13 @@ final class ChatSessionViewModel: ObservableObject {
     func deleteSession(_ session: ChatSession) -> Bool {
         let sessionID = session.id
         let messages = session.messages
-        for message in messages {
+        let messageIDsReferencedByOtherSessions = Set(
+            sessions
+                .filter { $0.id != sessionID }
+                .flatMap(\.messages)
+                .map(\.id)
+        )
+        for message in messages where !messageIDsReferencedByOtherSessions.contains(message.id) {
             modelContext.delete(message)
         }
         modelContext.delete(session)
