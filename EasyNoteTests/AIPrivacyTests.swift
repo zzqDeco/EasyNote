@@ -61,9 +61,9 @@ struct AIPrivacyTests {
         #expect(defaults.instance.string(forKey: KeychainCredentialStore.legacyDefaultsKey) == "legacy-key")
     }
 
-    @Test func migrationKeepsLegacyCredentialWhenReadBackDoesNotMatch() {
+    @Test func migrationKeepsLegacyCredentialWhenReadBackDoesNotMatch() throws {
         let adapter = InMemorySecurityItemAdapter()
-        adapter.readResultAfterAdd = Data("different-key".utf8)
+        adapter.readResultAfterNextWrite = Data("different-key".utf8)
         let defaults = makeUserDefaults()
         defaults.instance.set("legacy-key", forKey: KeychainCredentialStore.legacyDefaultsKey)
         let store = KeychainCredentialStore(security: adapter, userDefaults: defaults.instance)
@@ -73,6 +73,24 @@ struct AIPrivacyTests {
             try store.migrateLegacyAPIKeyIfNeeded()
         }
         #expect(defaults.instance.string(forKey: KeychainCredentialStore.legacyDefaultsKey) == "legacy-key")
+        #expect(try store.readAPIKey() == nil)
+    }
+
+    @Test func migrationRestoresExistingKeychainValueWhenVerificationFails() throws {
+        let adapter = InMemorySecurityItemAdapter()
+        adapter.seed("existing-key")
+        let defaults = makeUserDefaults()
+        defaults.instance.set("legacy-key", forKey: KeychainCredentialStore.legacyDefaultsKey)
+        let store = KeychainCredentialStore(security: adapter, userDefaults: defaults.instance)
+        defer { defaults.remove() }
+
+        adapter.readResultAfterNextWrite = Data("different-key".utf8)
+
+        #expect(throws: CredentialStoreError.verificationFailed) {
+            try store.migrateLegacyAPIKeyIfNeeded()
+        }
+        #expect(defaults.instance.string(forKey: KeychainCredentialStore.legacyDefaultsKey) == "legacy-key")
+        #expect(try store.readAPIKey() == "existing-key")
     }
 
     @Test func consentDefaultsDeniedAndSupportsGrantAndRevoke() {
@@ -159,7 +177,8 @@ struct AIPrivacyTests {
 
 private final class InMemorySecurityItemAdapter: SecurityItemAdapting {
     var forcedAddStatus: OSStatus?
-    var readResultAfterAdd: Data?
+    var nextReadResult: Data?
+    var readResultAfterNextWrite: Data?
     private(set) var addCallCount = 0
     private(set) var updateCallCount = 0
     private(set) var lastAddedAttributes: [String: Any]?
@@ -175,12 +194,14 @@ private final class InMemorySecurityItemAdapter: SecurityItemAdapting {
             return errSecDuplicateItem
         }
         storedData = attributes[kSecValueData as String] as? Data
+        scheduleReadOverrideAfterWrite()
         return errSecSuccess
     }
 
     func copyMatching(_ query: [String: Any]) -> (status: OSStatus, result: Any?) {
-        if addCallCount > 0, let readResultAfterAdd {
-            return (errSecSuccess, readResultAfterAdd)
+        if let nextReadResult {
+            self.nextReadResult = nil
+            return (errSecSuccess, nextReadResult)
         }
         guard let storedData else {
             return (errSecItemNotFound, nil)
@@ -194,6 +215,7 @@ private final class InMemorySecurityItemAdapter: SecurityItemAdapting {
             return errSecItemNotFound
         }
         storedData = attributes[kSecValueData as String] as? Data
+        scheduleReadOverrideAfterWrite()
         return errSecSuccess
     }
 
@@ -203,6 +225,17 @@ private final class InMemorySecurityItemAdapter: SecurityItemAdapting {
         }
         storedData = nil
         return errSecSuccess
+    }
+
+    func seed(_ apiKey: String) {
+        storedData = Data(apiKey.utf8)
+    }
+
+    private func scheduleReadOverrideAfterWrite() {
+        if let readResultAfterNextWrite {
+            nextReadResult = readResultAfterNextWrite
+            self.readResultAfterNextWrite = nil
+        }
     }
 }
 

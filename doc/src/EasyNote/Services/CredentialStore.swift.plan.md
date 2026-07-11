@@ -9,6 +9,7 @@
 ## Boundaries
 
 - Do not grant or infer AI content consent.
+- Restore the prior Keychain item, or remove a newly created item, before reporting migration verification failure.
 - Do not expose stored credential text to views for display.
 - Do not include credentials in backups, SwiftData, logs, or provider prompt bodies.
 

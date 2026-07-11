@@ -31,6 +31,7 @@
 - Verify migration success, repeated no-op behavior, and preservation of the legacy value when write or read-back verification fails.
 - Verify consent defaults to denied and supports grant and revoke.
 - Verify unconsented and empty-key requests never reach the injected HTTP client.
+- Verify failed migration read-back restores the previous Keychain state while retaining the legacy default.
 - Run `git diff --check`, Markdown relative-link validation, current-tree and Git-history secret scans, `xcodebuild -list`, generic simulator `build-for-testing`, and Release generic-device build.
 - Run local simulator tests only when `xcodebuild -showdestinations` reports a concrete available simulator; otherwise record the toolchain/runtime blocker.
 

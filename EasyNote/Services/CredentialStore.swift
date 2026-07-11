@@ -148,12 +148,36 @@ final class KeychainCredentialStore: CredentialStoreProviding {
         }
 
         try saveAPIKey(migrationValue)
-        guard try readAPIKey() == migrationValue else {
+
+        let isVerified: Bool
+        do {
+            isVerified = try readAPIKey() == migrationValue
+        } catch {
+            try restoreAPIKeyAfterFailedMigration(existingAPIKey)
+            throw CredentialStoreError.verificationFailed
+        }
+
+        guard isVerified else {
+            try restoreAPIKeyAfterFailedMigration(existingAPIKey)
             throw CredentialStoreError.verificationFailed
         }
 
         userDefaults.removeObject(forKey: Self.legacyDefaultsKey)
         return .migrated
+    }
+
+    private func restoreAPIKeyAfterFailedMigration(_ previousAPIKey: String?) throws {
+        if let previousAPIKey {
+            try saveAPIKey(previousAPIKey)
+            guard try readAPIKey() == previousAPIKey else {
+                throw CredentialStoreError.verificationFailed
+            }
+        } else {
+            try deleteAPIKey()
+            guard try readAPIKey() == nil else {
+                throw CredentialStoreError.verificationFailed
+            }
+        }
     }
 
     private var baseQuery: [String: Any] {
