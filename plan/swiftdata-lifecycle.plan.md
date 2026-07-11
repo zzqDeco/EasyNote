@@ -12,6 +12,7 @@
 - Copy the store and existing WAL/SHM sidecars into `Documents/EasyNoteRecovery/<timestamp>` before any confirmed rebuild removes store files.
 - Add startup failure UI with retry and an explicitly confirmed recovery-copy-and-rebuild action.
 - Explicitly delete every `SessionMessage` before deleting its `ChatSession`, and roll back the context if save fails.
+- Reject backup payloads that assign one `SessionMessage` ID to multiple sessions before any SwiftData write.
 - Replace meaningless random-UUID integrity checks with tests for actual title, content, and timestamp constraints.
 - Keep CloudKit disabled at the app `ModelConfiguration` boundary and preserve the existing `EasyNote.store` location.
 - Do not add model fields, inverse relationships, automatic reset behavior, CloudKit enablement, or parallel release-readiness documentation.

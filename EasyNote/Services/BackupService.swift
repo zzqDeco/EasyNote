@@ -360,11 +360,16 @@ struct BackupService {
         }
 
         let messageIDs = Set(backup.sessionMessages.map(\.id))
+        var referencedMessageIDs = Set<UUID>()
         for session in backup.chatSessions {
             try ensureUnique(session.messageIds, name: "会话消息 ID")
 
             for messageID in session.messageIds where !messageIDs.contains(messageID) {
                 throw BackupServiceError.invalidBackup("会话引用了不存在的消息")
+            }
+
+            for messageID in session.messageIds where !referencedMessageIDs.insert(messageID).inserted {
+                throw BackupServiceError.invalidBackup("消息不能同时属于多个会话")
             }
         }
 

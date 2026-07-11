@@ -349,28 +349,6 @@ struct ChatResponseIntegrityTests {
         #expect(!(try context.fetch(FetchDescriptor<ChatSession>())).contains { $0.id == session.id })
     }
 
-    @Test func deletingSessionPreservesMessagesReferencedByAnotherSession() async throws {
-        let context = try makeModelContext()
-        let sharedMessage = SessionMessage(content: "共享消息", isUser: true)
-        let firstSession = ChatSession(title: "第一会话", messages: [sharedMessage])
-        let secondSession = ChatSession(title: "第二会话", messages: [sharedMessage])
-        context.insert(firstSession)
-        context.insert(secondSession)
-        context.insert(sharedMessage)
-        try context.save()
-
-        let viewModel = ChatSessionViewModel(modelContext: context)
-        let loadedFirstSession = try #require(viewModel.session(withID: firstSession.id))
-
-        #expect(viewModel.deleteSession(loadedFirstSession))
-
-        #expect(Set(try context.fetch(FetchDescriptor<SessionMessage>()).map(\.id)) == Set([sharedMessage.id]))
-        let remainingSession = try #require(
-            try context.fetch(FetchDescriptor<ChatSession>()).first { $0.id == secondSession.id }
-        )
-        #expect(Set(remainingSession.messages.map(\.id)) == Set([sharedMessage.id]))
-    }
-
     @Test func failedSessionDeletionRollsBackSessionAndMessages() async throws {
         let context = try makeModelContext()
         var shouldFailSave = false
