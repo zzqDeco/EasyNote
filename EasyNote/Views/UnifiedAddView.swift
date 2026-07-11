@@ -47,7 +47,9 @@ struct UnifiedAddView: View {
                     deadlineView
                     
                     // 循环设置
-                    recurringView
+                    if todoDraft.deadline != nil {
+                        recurringView
+                    }
                     
                     // 备注编辑区
                     notesInputView
@@ -160,7 +162,12 @@ struct UnifiedAddView: View {
                 
                 Toggle("", isOn: Binding(
                     get: { todoDraft.deadline != nil },
-                    set: { todoDraft.deadline = $0 ? Date() : nil }
+                    set: { isEnabled in
+                        todoDraft.deadline = isEnabled ? Date() : nil
+                        if !isEnabled {
+                            todoDraft.isRecurring = false
+                        }
+                    }
                 ))
                     .labelsHidden()
                     .tint(themeManager.accentColor)
