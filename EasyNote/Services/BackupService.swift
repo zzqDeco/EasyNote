@@ -444,6 +444,16 @@ struct BackupService {
                 continue
             }
 
+            let projectedAssetCount = min(
+                audioAssets.count + 1,
+                overflowProbeLimit(for: limits.maxAudioAssets)
+            )
+            try validateCount(
+                projectedAssetCount,
+                maximum: limits.maxAudioAssets,
+                limit: .audioAssets
+            )
+
             let fileSize = resourceValues.fileSize ?? 0
             try validateCount(fileSize, maximum: limits.maxSingleAudioBytes, limit: .singleAudioBytes)
             let projectedTotal = try addingWithoutOverflow(totalAudioBytes, fileSize)

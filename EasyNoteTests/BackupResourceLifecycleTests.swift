@@ -77,6 +77,27 @@ struct BackupResourceLifecycleTests {
         }
     }
 
+    @Test func exportStopsAudioProjectionAtLimitPlusOne() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for index in 0..<3 {
+            let audioURL = directory.appendingPathComponent("recording_\(index).caf")
+            try Data([UInt8(index)]).write(to: audioURL)
+            let diary = DiaryEntry(title: "audio-\(index)")
+            diary.audioURL = audioURL
+            context.insert(diary)
+        }
+        try context.save()
+
+        await expectLimit(.audioAssets, actual: 2) {
+            _ = try await BackupService(
+                documentsDirectory: directory,
+                limits: BackupLimits(maxAudioAssets: 1)
+            ).exportBackup(from: context)
+        }
+    }
+
     @Test func rawFileSizeAcceptsExactBoundaryAndRejectsBeforeDecode() async throws {
         let backup = makeBackup(diaryCount: 1)
         let data = try await BackupService().encodeBackup(backup)
