@@ -26,7 +26,7 @@
 - Decode and import normalize shared references in older V1 files before strict validation, preserving V1 restore compatibility without recreating unsupported shared SwiftData relationships.
 - Validation rejects any cross-session message reference that remains after compatibility normalization.
 - Existing deterministic targets are copied into rollback storage before overwrite. Targets referenced by backup-external diaries are not overwritten and instead select a stable collision-safe path. File-commit or SwiftData-save failure restores prior files by move or atomic replacement without a second full copy and rolls back the `ModelContext`.
-- Successful import cleans only direct, unreferenced Documents recordings with supported extensions and `recording_` or `restored_recording_` prefixes.
+- Successful import cleans only direct, unreferenced Documents recordings with supported extensions and the backup-owned `restored_recording_` prefix. Recorder-owned `recording_` files are preserved because they may be unsaved drafts.
 - Import preserves local records absent from the backup, including existing messages attached to an imported session, without moving that session behind newer preserved messages in the session list.
 
 ## Tests

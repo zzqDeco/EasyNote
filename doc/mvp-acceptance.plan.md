@@ -122,7 +122,7 @@ Before treating a branch as a usable app build, manually verify:
 - import a backup containing a voice diary twice and confirm the restored diary points to one deterministic local `restored_recording_<asset-id>.<ext>` file with no UUID-suffix copies
 - try importing a malformed, unsupported, oversized, over-count, or over-audio-limit backup file and confirm no local records or destination recording files are changed
 - force an import save failure over an existing restored recording and confirm both the prior SwiftData values and prior recording bytes remain intact
-- after a successful import, confirm unreferenced EasyNote `recording_`/`restored_recording_` files are removed while referenced recordings, arbitrary audio files, nested files, and non-audio files remain
+- after a successful import, confirm unreferenced backup-owned `restored_recording_` files are removed while recorder-owned `recording_` drafts, referenced recordings, arbitrary audio files, nested files, and non-audio files remain
 
 ## Known Local Limitation
 

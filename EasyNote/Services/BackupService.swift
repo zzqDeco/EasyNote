@@ -730,8 +730,7 @@ struct BackupService {
     private func isManagedRecording(_ url: URL) -> Bool {
         let filename = url.lastPathComponent
         let supportedExtension = Self.supportedAudioExtensions.contains(url.pathExtension.lowercased())
-        return supportedExtension
-            && (filename.hasPrefix("recording_") || filename.hasPrefix("restored_recording_"))
+        return supportedExtension && filename.hasPrefix("restored_recording_")
     }
 
     @MainActor

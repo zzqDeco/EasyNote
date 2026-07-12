@@ -29,6 +29,6 @@
 
 ## Assumptions
 
-- EasyNote-managed recording files are direct children of Documents with supported audio extensions and names beginning with `recording_` or `restored_recording_`.
+- Backup-managed recording files are direct children of Documents with supported audio extensions and names beginning with `restored_recording_`. Recorder-owned `recording_` files may represent unsaved drafts and are never removed by backup cleanup.
 - Local records absent from an import remain preserved; cleanup applies only to managed recording files no longer referenced by any `DiaryEntry` after a successful import.
 - Compatible simulator test execution may remain blocked by the local CoreSimulator/Xcode runtime mismatch; generic builds and hosted CI remain source-level authorities in that case.

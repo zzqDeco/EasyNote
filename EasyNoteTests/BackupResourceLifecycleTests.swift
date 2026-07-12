@@ -377,7 +377,7 @@ struct BackupResourceLifecycleTests {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let referencedURL = directory.appendingPathComponent("recording_1.caf")
-        let orphanURL = directory.appendingPathComponent("recording_2.caf")
+        let unsavedDraftURL = directory.appendingPathComponent("recording_2.caf")
         let restoredOrphanURL = directory.appendingPathComponent("restored_recording_00000000-0000-0000-0000-000000000401.m4a")
         let userAudioURL = directory.appendingPathComponent("voice-note.caf")
         let similarlyNamedTextURL = directory.appendingPathComponent("recording_notes.txt")
@@ -386,7 +386,7 @@ struct BackupResourceLifecycleTests {
         let similarlyNamedDirectory = directory.appendingPathComponent("recording_folder.caf", isDirectory: true)
         try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: similarlyNamedDirectory, withIntermediateDirectories: true)
-        for url in [referencedURL, orphanURL, restoredOrphanURL, userAudioURL, similarlyNamedTextURL, nestedRecordingURL] {
+        for url in [referencedURL, unsavedDraftURL, restoredOrphanURL, userAudioURL, similarlyNamedTextURL, nestedRecordingURL] {
             try Data([0x01]).write(to: url)
         }
         let diary = DiaryEntry(title: "keep referenced audio")
@@ -398,7 +398,7 @@ struct BackupResourceLifecycleTests {
             .importBackup(makeBackup(), into: context)
 
         #expect(FileManager.default.fileExists(atPath: referencedURL.path))
-        #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+        #expect(FileManager.default.fileExists(atPath: unsavedDraftURL.path))
         #expect(!FileManager.default.fileExists(atPath: restoredOrphanURL.path))
         #expect(FileManager.default.fileExists(atPath: userAudioURL.path))
         #expect(FileManager.default.fileExists(atPath: similarlyNamedTextURL.path))
