@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import SwiftData
+@preconcurrency import SwiftData
 import Combine
 import SwiftUI
 import OSLog
@@ -381,12 +381,25 @@ final class DiaryViewModel: ObservableObject {
             return loadedEntry
         }
 
-        let descriptor = FetchDescriptor<DiaryEntry>(
-            predicate: #Predicate<DiaryEntry> { entry in
-                entry.id == entryID
+        let batchSize = 128
+        var offset = 0
+
+        while true {
+            var descriptor = FetchDescriptor<DiaryEntry>()
+            descriptor.fetchLimit = batchSize
+            descriptor.fetchOffset = offset
+
+            guard let batch = try? modelContext.fetch(descriptor) else {
+                return nil
             }
-        )
-        return try? modelContext.fetch(descriptor).first
+            if let entry = batch.first(where: { $0.id == entryID }) {
+                return entry
+            }
+            guard batch.count == batchSize else {
+                return nil
+            }
+            offset += batch.count
+        }
     }
     
     // MARK: - AI功能

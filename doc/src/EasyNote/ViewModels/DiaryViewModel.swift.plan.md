@@ -13,6 +13,7 @@
 
 - Speech publishers feed main-actor-owned state, and permission completions update recording state only on that actor.
 - Fetch results are sorted on the actor without passing SwiftData key paths across concurrency boundaries.
+- Fallback lookup for an entry not already loaded scans SwiftData in fixed 128-entry batches, keeping memory bounded without sending predicate key paths across actors.
 - Categorized logs use static lifecycle/failure events only.
 
 ## Tests

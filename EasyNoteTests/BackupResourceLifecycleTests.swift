@@ -471,6 +471,7 @@ struct BackupResourceLifecycleTests {
         }
     }
 
+    @MainActor
     private func expectLimit(
         _ expectedLimit: BackupResourceLimit,
         actual expectedActual: Int? = nil,

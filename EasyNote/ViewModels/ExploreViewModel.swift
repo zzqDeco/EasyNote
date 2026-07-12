@@ -1,5 +1,5 @@
 import Foundation
-import SwiftData
+@preconcurrency import SwiftData
 import Combine
 import SwiftUI
 import OSLog
@@ -191,15 +191,25 @@ final class ExploreViewModel: ObservableObject {
             return []
         }
         
-        let fetchDescriptor = FetchDescriptor<DiaryEntry>(
-            predicate: #Predicate<DiaryEntry> { entry in
-                entry.creationDate >= fromDate
-            }
-        )
-        
         do {
-            return try modelContext.fetch(fetchDescriptor)
-                .sorted { $0.creationDate > $1.creationDate }
+            let batchSize = 256
+            var offset = 0
+            var recentEntries: [DiaryEntry] = []
+
+            while true {
+                var descriptor = FetchDescriptor<DiaryEntry>()
+                descriptor.fetchLimit = batchSize
+                descriptor.fetchOffset = offset
+                let batch = try modelContext.fetch(descriptor)
+                recentEntries.append(contentsOf: batch.filter { $0.creationDate >= fromDate })
+
+                guard batch.count == batchSize else {
+                    break
+                }
+                offset += batch.count
+            }
+
+            return recentEntries.sorted { $0.creationDate > $1.creationDate }
         } catch {
             Self.logger.error("Failed to fetch recent diary entries for recommendations")
             return []

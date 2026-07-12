@@ -244,7 +244,10 @@ struct ChatResponseIntegrityTests {
         )
         let provider = ImmediateChatProvider(result: .failure(OpenAIError.consentRequired))
 
-        let outcome = await ChatResponseGenerator.generate(context: context, provider: provider)
+        let outcome = await ChatResponseGenerator.generate(
+            context: context,
+            provider: ChatResponseProviderTransport(provider)
+        )
 
         #expect(outcome == .failure(AIContentConsentPolicy.requiredMessage))
         #expect(provider.callCount == 1)

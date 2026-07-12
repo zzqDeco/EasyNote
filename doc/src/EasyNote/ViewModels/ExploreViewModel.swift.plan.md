@@ -11,7 +11,7 @@
 
 ## Behavior Notes
 
-- Recent-entry filtering and sorting happens on main-actor-fetched values, avoiding non-sendable SwiftData key-path descriptors.
+- Recent-entry filtering and sorting happens on main-actor-fetched values in fixed 256-entry batches, avoiding non-sendable SwiftData key-path descriptors and unbounded fetch materialization.
 - Unified logs contain only static events and aggregate recommendation counts.
 
 ## Tests

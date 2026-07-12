@@ -8,20 +8,11 @@
 import XCTest
 
 final class EasyNoteUITests: XCTestCase {
-    private var app: XCUIApplication!
-
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-        app = XCUIApplication.easyNoteUITestApp()
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        app = nil
-    }
-
     @MainActor
     func testLaunches() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication.easyNoteUITestApp()
+        defer { app.terminate() }
         app.launch()
 
         XCTAssertEqual(app.state, .runningForeground)
@@ -29,6 +20,9 @@ final class EasyNoteUITests: XCTestCase {
 
     @MainActor
     func testPrimaryTabNavigationSmoke() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication.easyNoteUITestApp()
+        defer { app.terminate() }
         app.launch()
 
         tapTab(in: app, identifier: "tab.explore", label: "探索")

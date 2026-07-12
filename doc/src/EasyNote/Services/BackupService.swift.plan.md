@@ -20,6 +20,7 @@
 - `BackupLimits.default` caps raw files at 64 MiB, one audio asset at 16 MiB, aggregate audio at 47 MiB to leave base64 envelope headroom, diaries at 10,000, todos at 50,000, sessions at 5,000, messages at 100,000, and audio assets at 500.
 - Raw size is rejected before decode; decoded counts and audio limits are rejected before staging or SwiftData mutation.
 - SwiftData snapshots and writes stay on `MainActor`; JSON and audio I/O run through detached work.
+- Backup DTOs and the immutable service boundary are Sendable; detached operations accept only `@Sendable` closures and Sendable results.
 - Audio assets are encoded as base64 JSON data and staged before installation under deterministic Documents paths `restored_recording_<asset-id>.<ext>`.
 - Exported chat messages must be reachable from exported chat sessions; orphaned `SessionMessage` records are not user-visible and are not included.
 - Legacy messages referenced by multiple sessions are exported as independent backup message IDs with copied payloads, preserving every conversation while keeping the generated backup importable.
@@ -28,7 +29,7 @@
 - Existing deterministic targets are copied into rollback storage before overwrite. Targets referenced by backup-external diaries are not overwritten and instead select a stable collision-safe path. File-commit or SwiftData-save failure restores prior files by move or atomic replacement without a second full copy and rolls back the `ModelContext`.
 - Successful import cleans only direct, unreferenced Documents recordings with supported extensions and the backup-owned `restored_recording_` prefix. Recorder-owned `recording_` files are preserved because they may be unsaved drafts.
 - Import preserves local records absent from the backup, including existing messages attached to an imported session, without moving that session behind newer preserved messages in the session list.
-- Export preserves creation-date ordering by sorting fetched models in memory; custom date strategies use inline sendable closures without changing the V1 encoding format.
+- Export fetches at most each resource limit plus one, then preserves creation-date ordering by sorting those bounded models in memory; custom date strategies use inline sendable closures without changing the V1 encoding format.
 
 ## Tests
 

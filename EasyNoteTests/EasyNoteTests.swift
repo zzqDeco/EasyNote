@@ -2327,6 +2327,7 @@ struct EasyNoteTests {
         #expect(backup.diaryEntries.first?.audioAssetId == backup.audioAssets.first?.id)
     }
 
+    @MainActor
     @Test func backupExportExcludesOrphanedChatMessages() async throws {
         let context = try makeModelContext()
         let visibleMessage = SessionMessage(content: "可见消息", isUser: true)
@@ -2375,6 +2376,7 @@ struct EasyNoteTests {
         #expect(backup.audioAssets.isEmpty)
     }
 
+    @MainActor
     @Test func backupImportRejectsUnsupportedVersionWithoutWriting() async throws {
         let context = try makeModelContext()
         let existing = makeDiary(title: "本地日记")
@@ -2417,6 +2419,7 @@ struct EasyNoteTests {
         #expect(entries.map(\.title) == ["本地日记"])
     }
 
+    @MainActor
     @Test func backupImportDataRejectsInvalidBase64WithoutWriting() async throws {
         let context = try makeModelContext()
         let existing = makeTodo(title: "本地待办")
@@ -2455,6 +2458,7 @@ struct EasyNoteTests {
         #expect(todos.map(\.title) == ["本地待办"])
     }
 
+    @MainActor
     @Test func backupImportNormalizesLegacyMessagesSharedAcrossSessions() async throws {
         let context = try makeModelContext()
         let messageID = UUID()
@@ -2501,6 +2505,7 @@ struct EasyNoteTests {
         #expect(messages.allSatisfy { $0.content == "不能共享的消息" })
     }
 
+    @MainActor
     @Test func backupImportUpsertsSameIDAndPreservesUnmentionedLocalRecords() async throws {
         let context = try makeModelContext()
         let diaryID = UUID()
@@ -2558,6 +2563,7 @@ struct EasyNoteTests {
         #expect(Set(todos.map(\.title)) == Set(["保留的本地待办", "导入待办"]))
     }
 
+    @MainActor
     @Test func backupImportRestoresAudioAssetToLocalFile() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2661,6 +2667,7 @@ struct EasyNoteTests {
             .count == 1)
     }
 
+    @MainActor
     @Test func backupImportAllowsBlankSessionTitlesAlreadyCreatedByApp() async throws {
         let context = try makeModelContext()
         let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
@@ -2699,6 +2706,7 @@ struct EasyNoteTests {
         #expect(backup.diaryEntries.map(\.title) == ["   "])
     }
 
+    @MainActor
     @Test func backupImportPreservesLocalMessagesMissingFromOlderBackup() async throws {
         let context = try makeModelContext()
         let calendar = Calendar.current
