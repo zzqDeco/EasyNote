@@ -3,7 +3,7 @@
 ## Responsibility
 
 - Own Settings backup file exporter/importer presentation, preview state, confirmation, and user-visible result messages.
-- Pass the supplied `ModelContext` to `BackupServiceProviding` for export and confirmed import.
+- Await the supplied `BackupServiceProviding` for export, off-main file loading/validation, and confirmed import while passing `ModelContext` only to main-actor service operations.
 
 ## Boundaries
 
@@ -13,7 +13,8 @@
 ## Behavior Notes
 
 - Export filenames keep the `EasyNoteBackup-yyyyMMdd-HHmmss` pattern.
-- Import reads security-scoped file URLs, validates before confirmation, and shows entity/audio counts before writing.
+- Import keeps security-scoped file access active while the async service checks raw size, reads, decodes, and validates before confirmation.
+- Export and import buttons are disabled while one backup operation is active.
 - Successful import posts `easyNoteBackupDidImport` for active ViewModel reloads.
 - Accessibility identifiers remain `settings.exportBackupButton` and `settings.importBackupButton`.
 

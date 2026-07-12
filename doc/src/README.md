@@ -60,6 +60,7 @@ Source notes are required for public contracts, cross-module boundaries, persist
 
 - [AI Privacy Tests](EasyNoteTests/AIPrivacyTests.swift.plan.md)
 - [Unit Tests](EasyNoteTests/EasyNoteTests.swift.plan.md)
+- [Backup Resource Lifecycle Tests](EasyNoteTests/BackupResourceLifecycleTests.swift.plan.md)
 - [Chat Response Integrity Tests](EasyNoteTests/ChatResponseIntegrityTests.swift.plan.md)
 - [Persistence Bootstrap Tests](EasyNoteTests/PersistenceBootstrapTests.swift.plan.md)
 - [UI Tests](EasyNoteUITests/EasyNoteUITests.swift.plan.md)

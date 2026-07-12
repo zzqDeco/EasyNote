@@ -23,6 +23,7 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 | [diary-edit-transaction.plan.md](diary-edit-transaction.plan.md) | Make existing-diary editing an explicit atomic draft transaction | Active |
 | [chat-response-integrity.plan.md](chat-response-integrity.plan.md) | Bind exploration requests to one session and remove fabricated AI fallbacks | Active |
 | [agent-system-reminders.plan.md](agent-system-reminders.plan.md) | Add agent-selected Apple Reminders writes as a higher-level todo reminder mode | Active |
+| [backup-resource-lifecycle.plan.md](backup-resource-lifecycle.plan.md) | Bound backup resources and make audio restore transactional and repeatable | Active |
 
 ## Delivered Or Recent References
 

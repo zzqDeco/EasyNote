@@ -2123,7 +2123,8 @@ struct EasyNoteTests {
             ]
         )
 
-        let decoded = try service.decodeAndValidateBackup(from: service.encodeBackup(backup))
+        let data = try await service.encodeBackup(backup)
+        let decoded = try await service.decodeAndValidateBackup(from: data)
 
         #expect(decoded == backup)
     }
@@ -2175,7 +2176,8 @@ struct EasyNoteTests {
             audioAssets: []
         )
 
-        let decoded = try service.decodeAndValidateBackup(from: service.encodeBackup(backup))
+        let data = try await service.encodeBackup(backup)
+        let decoded = try await service.decodeAndValidateBackup(from: data)
 
         #expect(abs(decoded.exportedAt.timeIntervalSince1970 - date.timeIntervalSince1970) < 0.001)
         #expect(abs((decoded.diaryEntries.first?.creationDate.timeIntervalSince1970 ?? 0) - date.timeIntervalSince1970) < 0.001)
@@ -2204,7 +2206,7 @@ struct EasyNoteTests {
         context.insert(session)
         try context.save()
 
-        let backup = try BackupService(documentsDirectory: directory).exportBackup(from: context)
+        let backup = try await BackupService(documentsDirectory: directory).exportBackup(from: context)
 
         #expect(backup.diaryEntries.map(\.title) == ["语音日记"])
         #expect(backup.todoItems.map(\.title) == ["备份待办"])
@@ -2227,7 +2229,7 @@ struct EasyNoteTests {
         context.insert(session)
         try context.save()
 
-        let backup = try BackupService().exportBackup(from: context)
+        let backup = try await BackupService().exportBackup(from: context)
 
         #expect(backup.chatSessions.map(\.messageIds) == [[visibleMessage.id]])
         #expect(backup.sessionMessages.map(\.content) == ["可见消息"])
@@ -2256,7 +2258,7 @@ struct EasyNoteTests {
         context.insert(diary)
         try context.save()
 
-        let backup = try BackupService(documentsDirectory: directory).exportBackup(from: context)
+        let backup = try await BackupService(documentsDirectory: directory).exportBackup(from: context)
 
         #expect(backup.diaryEntries.map(\.title) == ["缺失录音"])
         #expect(backup.diaryEntries.first?.audioAssetId == nil)
@@ -2293,7 +2295,7 @@ struct EasyNoteTests {
         )
 
         do {
-            _ = try BackupService().importBackup(backup, into: context)
+            _ = try await BackupService().importBackup(backup, into: context)
             Issue.record("Expected unsupported backup version to fail")
         } catch BackupServiceError.unsupportedVersion(99) {
             #expect(true)
@@ -2333,7 +2335,7 @@ struct EasyNoteTests {
         """
 
         do {
-            _ = try BackupService().importBackupData(Data(invalidJSON.utf8), into: context)
+            _ = try await BackupService().importBackupData(Data(invalidJSON.utf8), into: context)
             Issue.record("Expected invalid base64 to fail")
         } catch {
             #expect(true)
@@ -2379,7 +2381,7 @@ struct EasyNoteTests {
             audioAssets: []
         )
 
-        _ = try BackupService().importBackup(backup, into: context)
+        _ = try await BackupService().importBackup(backup, into: context)
 
         let sessions = try context.fetch(FetchDescriptor<ChatSession>())
         let messages = try context.fetch(FetchDescriptor<SessionMessage>())
@@ -2435,7 +2437,7 @@ struct EasyNoteTests {
             audioAssets: []
         )
 
-        _ = try BackupService().importBackup(backup, into: context)
+        _ = try await BackupService().importBackup(backup, into: context)
 
         let diaries = try context.fetch(FetchDescriptor<DiaryEntry>())
         let todos = try context.fetch(FetchDescriptor<TodoItem>())
@@ -2485,7 +2487,7 @@ struct EasyNoteTests {
             ]
         )
 
-        _ = try BackupService(documentsDirectory: directory).importBackup(backup, into: context)
+        _ = try await BackupService(documentsDirectory: directory).importBackup(backup, into: context)
 
         let diary = try #require(try context.fetch(FetchDescriptor<DiaryEntry>()).first)
         let restoredURL = try #require(diary.audioURL)
@@ -2495,7 +2497,7 @@ struct EasyNoteTests {
         #expect(try Data(contentsOf: restoredURL) == Data([0x07, 0x08, 0x09]))
     }
 
-    @Test func backupImportDoesNotDeleteExistingRestoredAudioWhenReimporting() async throws {
+    @Test func backupImportOverwritesDeterministicRestoredAudioWhenReimporting() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -2536,15 +2538,16 @@ struct EasyNoteTests {
             ]
         )
 
-        _ = try BackupService(documentsDirectory: directory).importBackup(backup, into: context)
+        _ = try await BackupService(documentsDirectory: directory).importBackup(backup, into: context)
         let diary = try #require(try context.fetch(FetchDescriptor<DiaryEntry>()).first)
         let newURL = try #require(diary.audioURL)
 
-        #expect(FileManager.default.fileExists(atPath: existingURL.path))
-        #expect(try Data(contentsOf: existingURL) == Data([0x01]))
-        #expect(newURL != existingURL)
+        #expect(newURL == existingURL)
         #expect(FileManager.default.fileExists(atPath: newURL.path))
         #expect(try Data(contentsOf: newURL) == Data([0x02]))
+        #expect(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("restored_recording_\(audioID.uuidString)") }
+            .count == 1)
     }
 
     @Test func backupImportAllowsBlankSessionTitlesAlreadyCreatedByApp() async throws {
@@ -2568,7 +2571,7 @@ struct EasyNoteTests {
             audioAssets: []
         )
 
-        _ = try BackupService().importBackup(backup, into: context)
+        _ = try await BackupService().importBackup(backup, into: context)
 
         let session = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
         #expect(session.title == "   ")
@@ -2580,7 +2583,7 @@ struct EasyNoteTests {
         context.insert(diary)
         try context.save()
 
-        let backup = try BackupService().exportBackup(from: context)
+        let backup = try await BackupService().exportBackup(from: context)
 
         #expect(backup.diaryEntries.map(\.title) == ["   "])
     }
@@ -2626,7 +2629,7 @@ struct EasyNoteTests {
             audioAssets: []
         )
 
-        _ = try BackupService().importBackup(backup, into: context)
+        _ = try await BackupService().importBackup(backup, into: context)
 
         let importedSession = try #require(try context.fetch(FetchDescriptor<ChatSession>()).first)
         #expect(importedSession.messages.count == 2)

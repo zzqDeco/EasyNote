@@ -45,6 +45,8 @@ Current focused tests cover:
 - `TodoViewModel` routing to fake local notification schedulers or fake system reminder writers based on the active reminder mode
 - reminder-service timeout, cancellation, late EventKit callback, duplicate marker, missing-list, system-error, and local notification add-error behavior through injected adapters
 - successful Todo SwiftData persistence when a local notification or system Reminders side effect fails
+- backup raw-file, entity-count, single-audio, aggregate-audio, and audio-count exact boundaries plus one-over rejection
+- backup async/background work, frozen V1 JSON compatibility, deterministic repeated audio import, staged-file failure rollback, SwiftData-save filesystem rollback, and managed-orphan cleanup safety
 
 When diary, todo, chat, or AI parsing behavior changes, add focused tests before relying on manual verification.
 
@@ -117,8 +119,10 @@ Before treating a branch as a usable app build, manually verify:
 - replace diary content with transcription and confirm the replace is explicit
 - export a backup from Settings and confirm the preview count includes diary, todo, chat, message, and recording totals
 - import a backup after adding unrelated local data and confirm same-ID records update while unrelated local records remain
-- import a backup containing a voice diary and confirm the restored diary points to a local `restored_recording_<uuid>` audio file
-- try importing a malformed or unsupported backup file and confirm no local records are changed
+- import a backup containing a voice diary twice and confirm the restored diary points to one deterministic local `restored_recording_<asset-id>.<ext>` file with no UUID-suffix copies
+- try importing a malformed, unsupported, oversized, over-count, or over-audio-limit backup file and confirm no local records or destination recording files are changed
+- force an import save failure over an existing restored recording and confirm both the prior SwiftData values and prior recording bytes remain intact
+- after a successful import, confirm unreferenced backup-owned `restored_recording_` files are removed while recorder-owned `recording_` drafts, referenced recordings, arbitrary audio files, nested files, and non-audio files remain
 
 ## Known Local Limitation
 
