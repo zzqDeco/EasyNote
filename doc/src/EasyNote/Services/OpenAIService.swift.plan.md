@@ -25,6 +25,7 @@
 - The API key is used only in the Authorization header and is never added to prompt content.
 - The current endpoint is `https://api.deepseek.com/v1/chat/completions`.
 - Recommendation and analysis parsing supports JSON, fenced JSON, embedded JSON, and controlled fallbacks through `AIResponseParser`.
+- The service is an unchecked transport because URLSession/Combine callbacks are sendable closures; `UserDefaults` provides thread-safe credential storage and every `isProcessing` mutation is dispatched to the main queue.
 
 ## Tests
 

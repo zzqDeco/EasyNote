@@ -10,8 +10,10 @@ import AVFoundation
 import SwiftData
 import Combine
 import UIKit
+import OSLog
 
 struct NewDiaryView: View {
+    fileprivate static let logger = Logger(subsystem: "EasyNote", category: "NewDiaryView")
     @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel: DiaryViewModel
     @Environment(\.dismiss) private var dismiss
@@ -51,8 +53,7 @@ struct NewDiaryView: View {
                 let context = ModelContext(container)
                 self._viewModel = StateObject(wrappedValue: DiaryViewModel(modelContext: context))
             } catch {
-                // 发生错误时打印错误并使用一个简单的空ModelContext
-                print("创建ModelContainer失败: \(error.localizedDescription)")
+                Self.logger.error("Failed to create primary diary model container")
                 
                 // 使用内存中的配置创建一个临时容器
                 let config = ModelConfiguration(isStoredInMemoryOnly: true)
@@ -62,7 +63,7 @@ struct NewDiaryView: View {
                     self._viewModel = StateObject(wrappedValue: DiaryViewModel(modelContext: tempContext))
                 } catch {
                     // 如果还是失败，创建一个没有模型上下文的ViewModel
-                    print("创建临时ModelContainer也失败: \(error.localizedDescription)")
+                    Self.logger.fault("Failed to create fallback diary model container")
                     // ViewModel初始化方法已修改为支持nil的ModelContext
                     self._viewModel = StateObject(wrappedValue: DiaryViewModel(modelContext: nil))
                 }
@@ -522,7 +523,7 @@ struct NewDiaryView: View {
             return DiaryViewModel(modelContext: context)
         } catch {
             // 失败时使用nil modelContext，这应该不会引发致命错误
-            print("预览创建失败: \(error)")
+            NewDiaryView.logger.error("Failed to create diary preview container")
             return DiaryViewModel(modelContext: nil)
         }
     }()
@@ -535,6 +536,7 @@ struct NewDiaryView: View {
 }
 
 // MARK: - DiaryEntry扩展
+@MainActor
 extension DiaryEntry {
     // 临时存储AI建议的心情和标签
     var suggestedMoods: [String] {
@@ -557,6 +559,7 @@ extension DiaryEntry {
 }
 
 // 关联对象的键
+@MainActor
 private struct DiaryEntryKeys {
     static var suggestedMoods: UnsafeRawPointer = UnsafeRawPointer(bitPattern: "DiaryEntry.suggestedMoods".hashValue)!
     static var suggestedTags: UnsafeRawPointer = UnsafeRawPointer(bitPattern: "DiaryEntry.suggestedTags".hashValue)!

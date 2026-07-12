@@ -45,6 +45,15 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
 Current service interactions are routed through narrow protocols for AI, AI credentials, AI content consent, AI HTTP transport, speech recognition, CloudKit diary sync, backup import/export, local todo notification scheduling, and system Reminders writing so ViewModels and Settings sections can be tested with fakes without changing production defaults. `SettingsDependencies` groups the Settings protocols and stores but does not add service ownership or alter production implementations.
 
+## Concurrency And Diagnostics
+
+- UI-facing `ChatSessionViewModel`, `TodoViewModel`, `DiaryViewModel`, and `ExploreViewModel` state and SwiftData UI-context access are main-actor isolated.
+- `SpeechRecognitionService` owns published state and every `AVAudioEngine` install/start/stop/teardown transition on the main actor. Framework callbacks carry an opaque session token through a lock-protected gate; teardown invalidates that token before removing the tap or cancelling recognition so stale callbacks cannot publish into a later recording.
+- Audio input buffers remain on the framework tap callback. Each tap captures only its own request/file and checks the session gate before appending or writing.
+- Todo reminder scheduling copies saved todos into `Sendable` value snapshots before the async handoff. Because the existing scheduler protocol accepts `[TodoItem]`, one compatibility bridge rehydrates private detached models from those values; UI-context SwiftData instances never cross the task boundary.
+- `CloudKitService` and its preview publish observable state on the main actor. CloudKit and Combine callback closures return through explicit transport wrappers or main-actor tasks before touching that state.
+- All production diagnostics under `EasyNote/` use categorized unified logging. Diary/chat text, full filesystem paths, API keys, raw provider errors, and stable user identifiers must never be logged.
+
 ## Service Layer
 
 - `KeychainCredentialStore` owns the DeepSeek credential, Security.framework CRUD, and verified migration from the legacy `UserDefaults` key. Its generic-password item is device-only and available only while the device is unlocked.
@@ -53,7 +62,7 @@ Current service interactions are routed through narrow protocols for AI, AI cred
 - `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
 - `LocalTodoNotificationService` owns iOS local notification authorization state and async todo reminder scheduling/cancellation through an injectable UserNotifications adapter.
 - `SystemReminderService` owns EventKit Reminders authorization state and serialized async writes of EasyNote-marked reminders to the user's default Apple Reminders list. EventKit callbacks are bounded by a single-resume 10-second timeout bridge.
-- `SpeechRecognitionService` owns microphone/speech permissions, recording state, and transcription updates.
+- `SpeechRecognitionService` owns microphone/speech permissions, recording state, transcription updates, and serialized audio-engine lifecycle transitions.
 - `CloudKitService` owns CloudKit interactions, but Debug currently defaults to simulation mode.
 - `CloudKitSyncPreflight` owns the pure readiness checklist for future real CloudKit enablement without sending network requests or changing app storage.
 

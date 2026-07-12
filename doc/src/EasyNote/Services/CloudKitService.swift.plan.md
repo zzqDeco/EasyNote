@@ -15,6 +15,9 @@
 - Debug builds currently set `isSimulationMode = true`.
 - The current placeholder container ID is `iCloud.io.github.zzqDeco.EasyNote`, sourced from `CloudKitSyncPreflight.defaultContainerIdentifier`.
 - Sync status is published and mirrored through `NotificationCenter`.
+- Observable sync/account state is main-actor isolated; framework callbacks explicitly hop back before publishing changes.
+- CloudKit and preview diagnostics use categorized unified logging and never include account record names, filenames, full paths, diary content, or raw errors.
+- Combine `Future` promises cross CloudKit callback queues through a single unchecked transport wrapper; the wrapper contains only the one-shot resolver and no app state.
 - Real sync remains blocked while iCloud entitlements, schema deployment, record identity round-trip, and manual validation are incomplete.
 
 ## Tests

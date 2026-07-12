@@ -43,7 +43,7 @@ protocol CloudKitDiarySyncProviding: AnyObject {
     func fetchDiaryEntries() -> AnyPublisher<[DiaryEntry], Error>
 }
 
-protocol BackupServiceProviding {
+protocol BackupServiceProviding: Sendable {
     @MainActor
     func exportBackup(from modelContext: ModelContext, exportedAt: Date) async throws -> EasyNoteBackupV1
     func encodeBackup(_ backup: EasyNoteBackupV1) async throws -> Data

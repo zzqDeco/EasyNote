@@ -15,7 +15,7 @@
 
 - AI and speech state is exposed as erased `AnyPublisher` streams so ViewModels do not rely on concrete `@Published` storage.
 - Production initializers still default to concrete services; protocol injection exists for tests and future narrow refactors.
-- Backup export/import and JSON/file operations are async; the protocol-extension default for `exportedAt` preserves call-site ergonomics, and only methods receiving `ModelContext` are `MainActor` isolated.
+- Backup export/import and JSON/file operations are async; the service protocol is Sendable, the protocol-extension default for `exportedAt` preserves call-site ergonomics, and only methods receiving `ModelContext` are `MainActor` isolated.
 - Todo notification scheduling is exposed through async/throws synchronize/cancel/reconcile operations so `TodoViewModel` does not import `UserNotifications` and can surface scheduling errors after a successful save.
 - System Reminders writing is exposed through async/throws proposal apply, complete, remove, authorization refresh, and permission request operations so `TodoViewModel` and Settings do not import EventKit or own callback lifetimes.
 

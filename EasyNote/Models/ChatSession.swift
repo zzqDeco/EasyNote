@@ -1,9 +1,11 @@
 import Foundation
 import SwiftData
+import OSLog
 
 // 聊天会话模型 - 用于保存整个对话会话
 @Model
 final class ChatSession {
+    private static let logger = Logger(subsystem: "EasyNote", category: "ChatSession")
     var id: UUID
     var title: String
     var creationDate: Date
@@ -51,24 +53,24 @@ final class ChatSession {
     // 验证会话完整性
     func validateIntegrity() -> Bool {
         guard !title.isEmpty else {
-            print("无效会话：标题为空")
+            Self.logger.error("Chat session integrity validation failed: empty title")
             return false
         }
 
         guard creationDate <= Date() else {
-            print("无效会话：创建日期在未来")
+            Self.logger.error("Chat session integrity validation failed: future creation date")
             return false
         }
 
         guard lastModifiedDate <= Date() else {
-            print("无效会话：修改日期在未来")
+            Self.logger.error("Chat session integrity validation failed: future modification date")
             return false
         }
 
         // 检查所有消息
         for message in messages {
             guard !message.content.isEmpty else {
-                print("无效会话：包含空消息内容")
+                Self.logger.error("Chat session integrity validation failed: empty message")
                 return false
             }
         }

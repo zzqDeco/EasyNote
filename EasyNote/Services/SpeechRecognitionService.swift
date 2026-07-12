@@ -6,9 +6,10 @@
 //
 
 import Foundation
-import Speech
-import AVFoundation
+@preconcurrency import Speech
+@preconcurrency import AVFoundation
 import Combine
+import OSLog
 
 enum RecordingState {
     case idle
@@ -33,6 +34,13 @@ enum RecordingState {
         case .idle, .recording, .processing, .finished:
             return .finished
         }
+    }
+
+    var blocksNewRecordingStart: Bool {
+        if case .recording = self {
+            return true
+        }
+        return false
     }
 }
 
@@ -93,6 +101,20 @@ enum MicrophonePermissionStatus: Equatable {
         }
     }
 
+    @available(iOS 17.0, *)
+    static var current: MicrophonePermissionStatus {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            return .granted
+        case .denied:
+            return .denied
+        case .undetermined:
+            return .notDetermined
+        @unknown default:
+            return .denied
+        }
+    }
+
     var isAvailable: Bool {
         self == .granted
     }
@@ -109,11 +131,61 @@ enum MicrophonePermissionStatus: Equatable {
     }
 }
 
-class SpeechRecognitionService: NSObject, ObservableObject {
+final class SpeechRecognitionSessionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var activeSessionID: UUID?
+
+    func activate(_ sessionID: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard activeSessionID == nil else {
+            return false
+        }
+        activeSessionID = sessionID
+        return true
+    }
+
+    func isActive(_ sessionID: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeSessionID == sessionID
+    }
+
+    @discardableResult
+    func invalidate(_ sessionID: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard activeSessionID == sessionID else {
+            return false
+        }
+        activeSessionID = nil
+        return true
+    }
+}
+
+@MainActor
+private final class SpeechPermissionCompletion {
+    private let action: ((Bool) -> Void)?
+
+    init(_ action: ((Bool) -> Void)?) {
+        self.action = action
+    }
+
+    func callAsFunction(_ isGranted: Bool) {
+        action?(isGranted)
+    }
+}
+
+@MainActor
+final class SpeechRecognitionService: NSObject, ObservableObject {
+    private static let logger = Logger(subsystem: "EasyNote", category: "SpeechRecognition")
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
+    private let sessionGate = SpeechRecognitionSessionGate()
     
     private var recordingAudioFile: AVAudioFile?
     private var recordingURL: URL?
@@ -145,69 +217,53 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     
     func refreshPermissionStatus() {
         speechPermissionStatus = SpeechPermissionStatus(SFSpeechRecognizer.authorizationStatus())
-        microphonePermissionStatus = MicrophonePermissionStatus(AVAudioSession.sharedInstance().recordPermission)
+        microphonePermissionStatus = .current
     }
 
     func requestPermissions(completion: ((Bool) -> Void)? = nil) {
         refreshPermissionStatus()
+        let completion = SpeechPermissionCompletion(completion)
 
-        let group = DispatchGroup()
-        var latestSpeechStatus = speechPermissionStatus
-        var latestMicrophoneStatus = microphonePermissionStatus
-
-        group.enter()
         SFSpeechRecognizer.requestAuthorization { status in
             DispatchQueue.main.async {
-                latestSpeechStatus = SpeechPermissionStatus(status)
-                self.speechPermissionStatus = latestSpeechStatus
+                self.speechPermissionStatus = SpeechPermissionStatus(status)
                 switch status {
                 case .authorized:
-                    print("语音识别权限已授权")
+                    Self.logger.info("Speech recognition permission authorized")
                 default:
-                    print("语音识别权限未授权")
+                    Self.logger.notice("Speech recognition permission unavailable")
                 }
-                group.leave()
-            }
-        }
-        
-        // 请求麦克风权限 - 使用新的 API
-        group.enter()
-        if #available(iOS 17.0, *) {
-            AVAudioApplication.requestRecordPermission { granted in
-                DispatchQueue.main.async {
-                    latestMicrophoneStatus = granted ? .granted : .denied
-                    self.microphonePermissionStatus = latestMicrophoneStatus
-                    if granted {
-                        print("录音权限已授权")
-                    } else {
-                        print("录音权限未授权")
-                    }
-                    group.leave()
-                }
-            }
-        } else {
-            // 旧版本 iOS 继续使用旧 API
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                DispatchQueue.main.async {
-                    latestMicrophoneStatus = granted ? .granted : .denied
-                    self.microphonePermissionStatus = latestMicrophoneStatus
-                    if granted {
-                        print("录音权限已授权")
-                    } else {
-                        print("录音权限未授权")
-                    }
-                    group.leave()
-                }
-            }
-        }
 
-        group.notify(queue: .main) {
-            completion?(latestSpeechStatus.isAvailable && latestMicrophoneStatus.isAvailable)
+                AVAudioApplication.requestRecordPermission { granted in
+                    DispatchQueue.main.async {
+                        self.microphonePermissionStatus = granted ? .granted : .denied
+                        if granted {
+                            Self.logger.info("Microphone permission authorized")
+                        } else {
+                            Self.logger.notice("Microphone permission unavailable")
+                        }
+                        completion(
+                            self.speechPermissionStatus.isAvailable
+                                && self.microphonePermissionStatus.isAvailable
+                        )
+                    }
+                }
+            }
         }
     }
     
     func startRecording() throws {
-        // 重置状态
+        if activeRecognitionSessionID != nil, recordingState.blocksNewRecordingStart {
+            Self.logger.notice("Rejected overlapping speech recording start")
+            throw NSError(
+                domain: "SpeechRecognitionService",
+                code: 12,
+                userInfo: [NSLocalizedDescriptionKey: "已有录音正在进行，请先停止当前录音"]
+            )
+        }
+
+        // A stopped recording may still be waiting for Speech to deliver a final callback.
+        // Starting again explicitly cancels that processing session before creating a new one.
         transcribedText = ""
         tearDownRecordingPipeline(cancelRecognition: true)
         discardRecordingFile()
@@ -245,6 +301,14 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         
         // 创建识别请求
         let recognitionSessionID = UUID()
+        guard sessionGate.activate(recognitionSessionID) else {
+            Self.logger.notice("Speech session gate rejected a recording start")
+            throw NSError(
+                domain: "SpeechRecognitionService",
+                code: 12,
+                userInfo: [NSLocalizedDescriptionKey: "已有录音正在进行，请先停止当前录音"]
+            )
+        }
         activeRecognitionSessionID = recognitionSessionID
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         
@@ -262,22 +326,17 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         
         // 开始识别任务
         recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
-            guard let self = self else { return }
-            guard Self.isCurrentRecognitionSession(active: self.activeRecognitionSessionID, callback: recognitionSessionID) else {
-                return
-            }
-            
-            var isFinal = false
-            
-            if let result = result {
-                self.transcribedText = result.bestTranscription.formattedString
-                isFinal = result.isFinal
-            }
-            
-            if error != nil || isFinal {
-                self.tearDownRecordingPipeline(cancelRecognition: false)
-                self.recordingState = self.recordingState.afterRecognitionCompletion
-                self.isRecording = false
+            let transcription = result?.bestTranscription.formattedString
+            let isFinal = result?.isFinal == true
+            let didFail = error != nil
+
+            DispatchQueue.main.async {
+                self?.handleRecognitionCallback(
+                    sessionID: recognitionSessionID,
+                    transcription: transcription,
+                    isFinal: isFinal,
+                    didFail: didFail
+                )
             }
         }
         
@@ -295,20 +354,27 @@ class SpeechRecognitionService: NSObject, ObservableObject {
             recordingState = .error(error)
             throw error
         }
+
+        guard let recordingAudioFile else {
+            let error = NSError(domain: "SpeechRecognitionService", code: 3, userInfo: [NSLocalizedDescriptionKey: "无法创建本地录音文件"])
+            tearDownRecordingPipeline(cancelRecognition: true)
+            recordingState = .error(error)
+            throw error
+        }
         
         // 安装音频输入节点的tap
+        let sessionGate = sessionGate
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            guard let self else { return }
-            self.recognitionRequest?.append(buffer)
+            guard sessionGate.isActive(recognitionSessionID) else {
+                return
+            }
+            recognitionRequest.append(buffer)
 
             do {
-                try self.recordingAudioFile?.write(from: buffer)
+                try recordingAudioFile.write(from: buffer)
             } catch {
                 DispatchQueue.main.async {
-                    self.discardRecordingFile()
-                    self.tearDownRecordingPipeline(cancelRecognition: true)
-                    self.recordingState = .error(error)
-                    self.isRecording = false
+                    self?.handleAudioWriteFailure(error, sessionID: recognitionSessionID)
                 }
             }
         }
@@ -332,6 +398,15 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     }
     
     func stopRecording() throws {
+        guard let activeRecognitionSessionID,
+              sessionGate.isActive(activeRecognitionSessionID) else {
+            throw NSError(
+                domain: "SpeechRecognitionService",
+                code: 13,
+                userInfo: [NSLocalizedDescriptionKey: "当前没有正在进行的录音"]
+            )
+        }
+
         audioEngine.stop()
         recognitionRequest?.endAudio()
         if isInputTapInstalled {
@@ -356,7 +431,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         var validURL: URL? = recordingURL
         if let url = recordingURL {
             if !FileManager.default.fileExists(atPath: url.path) {
-                print("警告: 录音文件不存在: \(url.path)")
+                Self.logger.error("Recorded audio file is unavailable")
                 validURL = nil
             }
         }
@@ -374,6 +449,11 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     }
 
     private func tearDownRecordingPipeline(cancelRecognition: Bool) {
+        if let activeRecognitionSessionID {
+            sessionGate.invalidate(activeRecognitionSessionID)
+            self.activeRecognitionSessionID = nil
+        }
+
         audioEngine.stop()
 
         if isInputTapInstalled {
@@ -388,11 +468,42 @@ class SpeechRecognitionService: NSObject, ObservableObject {
         recognitionRequest = nil
         recognitionTask = nil
         recordingAudioFile = nil
-        activeRecognitionSessionID = nil
     }
 
-    static func isCurrentRecognitionSession(active: UUID?, callback: UUID) -> Bool {
-        active == callback
+    private func handleRecognitionCallback(
+        sessionID: UUID,
+        transcription: String?,
+        isFinal: Bool,
+        didFail: Bool
+    ) {
+        guard activeRecognitionSessionID == sessionID,
+              sessionGate.isActive(sessionID) else {
+            Self.logger.debug("Ignored callback from an inactive speech session")
+            return
+        }
+
+        if let transcription {
+            transcribedText = transcription
+        }
+
+        if didFail || isFinal {
+            tearDownRecordingPipeline(cancelRecognition: false)
+            recordingState = recordingState.afterRecognitionCompletion
+            isRecording = false
+        }
+    }
+
+    private func handleAudioWriteFailure(_ error: Error, sessionID: UUID) {
+        guard activeRecognitionSessionID == sessionID,
+              sessionGate.isActive(sessionID) else {
+            return
+        }
+
+        tearDownRecordingPipeline(cancelRecognition: true)
+        discardRecordingFile()
+        recordingState = .error(error)
+        isRecording = false
+        Self.logger.error("Audio buffer write failed; recording session invalidated")
     }
 
     private func discardRecordingFile() {
@@ -405,7 +516,7 @@ class SpeechRecognitionService: NSObject, ObservableObject {
     }
 }
 
-extension SpeechRecognitionService: SpeechRecognitionProviding {
+extension SpeechRecognitionService: @preconcurrency SpeechRecognitionProviding {
     var transcribedTextPublisher: AnyPublisher<String, Never> {
         $transcribedText.eraseToAnyPublisher()
     }

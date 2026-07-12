@@ -39,11 +39,16 @@ Source notes are required for public contracts, cross-module boundaries, persist
 ## ViewModels And Views
 
 - [ChatResponseGenerator](EasyNote/ViewModels/ChatResponseGenerator.swift.plan.md)
+- [ChatSessionViewModel](EasyNote/ViewModels/ChatSessionViewModel.swift.plan.md)
 - [DiaryDraftComposer](EasyNote/ViewModels/DiaryDraftComposer.swift.plan.md)
+- [DiaryViewModel](EasyNote/ViewModels/DiaryViewModel.swift.plan.md)
+- [ExploreViewModel](EasyNote/ViewModels/ExploreViewModel.swift.plan.md)
 - [TodoViewModel](EasyNote/ViewModels/TodoViewModel.swift.plan.md)
 - [ViewModels Overview](EasyNote/ViewModels/README.plan.md)
 - [Views Overview](EasyNote/Views/README.plan.md)
 - [DiaryEditView](EasyNote/Views/DiaryEditView.swift.plan.md)
+- [DiaryDetailView](EasyNote/Views/DiaryDetailView.swift.plan.md)
+- [DiaryListView](EasyNote/Views/DiaryListView.swift.plan.md)
 - [KeyboardObserver](EasyNote/Views/KeyboardObserver.swift.plan.md)
 - [ChatExploreView](EasyNote/Views/ChatExploreView.swift.plan.md)
 - [SettingsView](EasyNote/Views/SettingsView.swift.plan.md)

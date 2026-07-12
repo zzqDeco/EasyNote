@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// 预览辅助工具，提供统一的预览数据和ModelContainer
+@MainActor
 enum PreviewHelpers {
     /// 创建轻量级的预览容器
     static let previewContainer: ModelContainer = {
@@ -46,4 +47,4 @@ enum PreviewHelpers {
         mood: "平静",
         tags: ["预览"]
     )
-} 
+}

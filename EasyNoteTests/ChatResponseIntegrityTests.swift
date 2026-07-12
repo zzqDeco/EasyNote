@@ -22,7 +22,10 @@ struct ChatResponseIntegrityTests {
         )
         let provider = ImmediateChatProvider(result: .failure(ChatProviderTestError.failed))
 
-        let outcome = await ChatResponseGenerator.generate(context: context, provider: provider)
+        let outcome = await ChatResponseGenerator.generate(
+            context: context,
+            provider: ChatResponseProviderTransport(provider)
+        )
 
         guard case .local(let result) = outcome else {
             Issue.record("Expected a fact-based local fallback")
@@ -42,7 +45,10 @@ struct ChatResponseIntegrityTests {
         )
         let provider = ImmediateChatProvider(result: .failure(ChatProviderTestError.failed))
 
-        let outcome = await ChatResponseGenerator.generate(context: context, provider: provider)
+        let outcome = await ChatResponseGenerator.generate(
+            context: context,
+            provider: ChatResponseProviderTransport(provider)
+        )
 
         guard case .failure(let message) = outcome else {
             Issue.record("Expected a visible failure without fabricated content")
@@ -220,7 +226,7 @@ struct ChatResponseIntegrityTests {
         let provider = ImmediateChatProvider(apiKey: "", result: .success("不应调用"))
         let outcome = await ChatResponseGenerator.generate(
             context: makeRequestContext(query: "最近"),
-            provider: provider
+            provider: ChatResponseProviderTransport(provider)
         )
 
         guard case .failure(let message) = outcome else {
@@ -238,7 +244,10 @@ struct ChatResponseIntegrityTests {
         )
         let provider = ImmediateChatProvider(result: .failure(OpenAIError.consentRequired))
 
-        let outcome = await ChatResponseGenerator.generate(context: context, provider: provider)
+        let outcome = await ChatResponseGenerator.generate(
+            context: context,
+            provider: ChatResponseProviderTransport(provider)
+        )
 
         #expect(outcome == .failure(AIContentConsentPolicy.requiredMessage))
         #expect(provider.callCount == 1)

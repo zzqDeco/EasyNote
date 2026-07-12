@@ -16,6 +16,7 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 | Document | Purpose | Status |
 |---|---|---|
 | [ai-keychain-privacy.plan.md](ai-keychain-privacy.plan.md) | Store the DeepSeek key in Keychain and require revocable content-sharing consent | Active |
+| [concurrency-isolation.plan.md](concurrency-isolation.plan.md) | Isolate UI and speech state while adopting privacy-safe categorized logging | Active |
 | [settings-sections.plan.md](settings-sections.plan.md) | Decompose Settings into feature-owned sections behind one dependency bundle | Active |
 | [persistence-feedback-drafts.plan.md](persistence-feedback-drafts.plan.md) | Keep todo creation draft-only and retain persistence screens on failed saves or deletes | Active |
 | [swiftdata-lifecycle.plan.md](swiftdata-lifecycle.plan.md) | Add versioned schema, recoverable startup, and atomic chat-session deletion | Active |

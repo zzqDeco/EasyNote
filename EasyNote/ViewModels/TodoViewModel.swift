@@ -2,8 +2,63 @@ import Foundation
 import SwiftData
 import Combine
 import SwiftUI
+import OSLog
 
-class TodoViewModel: ObservableObject {
+struct TodoNotificationSnapshot: Sendable {
+    let id: UUID
+    let title: String
+    let isCompleted: Bool
+    let priority: TodoItem.PriorityLevel
+    let deadline: Date?
+    let notes: String?
+    let isRecurring: Bool
+    let recurringInterval: String?
+    let creationDate: Date
+
+    @MainActor
+    init(todo: TodoItem) {
+        id = todo.id
+        title = todo.title
+        isCompleted = todo.isCompleted
+        priority = todo.priority
+        deadline = todo.deadline
+        notes = todo.notes
+        isRecurring = todo.isRecurring
+        recurringInterval = todo.recurringInterval
+        creationDate = todo.creationDate
+    }
+
+    func makeDetachedTodo() -> TodoItem {
+        let todo = TodoItem(
+            id: id,
+            title: title,
+            isCompleted: isCompleted,
+            priority: priority,
+            deadline: deadline,
+            notes: notes,
+            isRecurring: isRecurring,
+            recurringInterval: recurringInterval
+        )
+        todo.creationDate = creationDate
+        return todo
+    }
+}
+
+enum TodoNotificationSchedulingBridge {
+    static func reconcile(
+        snapshots: [TodoNotificationSnapshot],
+        using scheduler: any TodoNotificationSchedulingProviding
+    ) async throws {
+        // The legacy scheduler protocol accepts SwiftData models. Rehydrate private, detached
+        // values here so no model-context object crosses the async scheduler boundary.
+        nonisolated(unsafe) let detachedTodos = snapshots.map { $0.makeDetachedTodo() }
+        try await scheduler.reconcileNotifications(for: detachedTodos)
+    }
+}
+
+@MainActor
+final class TodoViewModel: ObservableObject {
+    private static let logger = Logger(subsystem: "EasyNote", category: "TodoViewModel")
     // 数据状态
     @Published private(set) var todoItems: [TodoItem] = []
     @Published var errorMessage: String?
@@ -18,7 +73,6 @@ class TodoViewModel: ObservableObject {
     private let reminderModeStore: any TodoReminderModeProviding
     private let saveModelContext: (ModelContext) throws -> Void
     private var cancellables = Set<AnyCancellable>()
-    private let reminderOperationLock = NSLock()
     private var reminderOperationTask: Task<Void, Never>?
     
     // 初始化方法
@@ -53,28 +107,29 @@ class TodoViewModel: ObservableObject {
     }
 
     deinit {
-        currentReminderOperationTask()?.cancel()
+        reminderOperationTask?.cancel()
     }
 
     func waitForPendingReminderOperations() async {
-        await currentReminderOperationTask()?.value
+        await reminderOperationTask?.value
     }
     
     // MARK: - 数据管理方法
     
     /// 加载所有待办事项
     private func loadTodoItems(reconcileSystemReminders: Bool = false) {
-        let descriptor = FetchDescriptor<TodoItem>(sortBy: [SortDescriptor(\.creationDate, order: .forward)])
+        let descriptor = FetchDescriptor<TodoItem>()
         
         do {
             todoItems = try modelContext.fetch(descriptor)
+                .sorted { $0.creationDate < $1.creationDate }
             reconcileTodoNotificationsIfNeeded()
             if reconcileSystemReminders {
                 reconcileSystemRemindersIfNeeded()
             }
-            print("从数据库加载了 \(todoItems.count) 个待办事项")
+            Self.logger.debug("Loaded \(self.todoItems.count, privacy: .public) todo items")
         } catch {
-            print("加载待办事项失败: \(error)")
+            Self.logger.error("Failed to load todo items")
             todoItems = []
         }
     }
@@ -272,7 +327,7 @@ class TodoViewModel: ObservableObject {
         } catch {
             modelContext.rollback()
             errorMessage = "保存待办事项失败: \(error.localizedDescription)"
-            print("保存待办事项失败: \(error)")
+            Self.logger.error("Failed to save todo items")
             return false
         }
     }
@@ -285,10 +340,13 @@ class TodoViewModel: ObservableObject {
         case .off:
             return
         case .localNotification:
-            let todos = todoItems
+            let snapshots = reminderSchedulingSnapshots()
             enqueueReminderOperation { viewModel in
                 do {
-                    try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                    try await TodoNotificationSchedulingBridge.reconcile(
+                        snapshots: snapshots,
+                        using: viewModel.notificationScheduler
+                    )
                     viewModel.systemReminderErrorMessage = nil
                 } catch is CancellationError {
                     return
@@ -309,11 +367,14 @@ class TodoViewModel: ObservableObject {
         case .off:
             break
         case .localNotification:
-            let todos = todoItems
+            let snapshots = reminderSchedulingSnapshots()
             enqueueReminderOperation { viewModel in
                 await viewModel.notificationScheduler.cancelNotification(forTodoID: todoID)
                 do {
-                    try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                    try await TodoNotificationSchedulingBridge.reconcile(
+                        snapshots: snapshots,
+                        using: viewModel.notificationScheduler
+                    )
                     viewModel.systemReminderErrorMessage = nil
                 } catch is CancellationError {
                     return
@@ -333,10 +394,13 @@ class TodoViewModel: ObservableObject {
             return
         }
 
-        let todos = todoItems
+        let snapshots = reminderSchedulingSnapshots()
         enqueueReminderOperation { viewModel in
             do {
-                try await viewModel.notificationScheduler.reconcileNotifications(for: todos)
+                try await TodoNotificationSchedulingBridge.reconcile(
+                    snapshots: snapshots,
+                    using: viewModel.notificationScheduler
+                )
                 viewModel.systemReminderErrorMessage = nil
             } catch is CancellationError {
                 return
@@ -435,7 +499,6 @@ class TodoViewModel: ObservableObject {
         }
     }
 
-    @MainActor
     private func performSystemReminderOperation(
         _ operation: SystemReminderProposalOperation,
         proposal: SystemReminderProposal? = nil,
@@ -482,7 +545,6 @@ class TodoViewModel: ObservableObject {
     private func enqueueReminderOperation(
         _ operation: @escaping @MainActor (TodoViewModel) async -> Void
     ) {
-        reminderOperationLock.lock()
         let previousTask = reminderOperationTask
         let task = Task { @MainActor [weak self] in
             await previousTask?.value
@@ -492,13 +554,6 @@ class TodoViewModel: ObservableObject {
             await operation(self)
         }
         reminderOperationTask = task
-        reminderOperationLock.unlock()
-    }
-
-    private func currentReminderOperationTask() -> Task<Void, Never>? {
-        reminderOperationLock.lock()
-        defer { reminderOperationLock.unlock() }
-        return reminderOperationTask
     }
 
     private static func systemReminderMessage(
@@ -526,8 +581,12 @@ class TodoViewModel: ObservableObject {
             let container = try ModelContainer(for: TodoItem.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
             return ModelContext(container)
         } catch {
-            fatalError("无法创建待办事项ModelContext: \(error)")
+            fatalError("无法创建待办事项存储，应用程序无法继续")
         }
+    }
+
+    private func reminderSchedulingSnapshots() -> [TodoNotificationSnapshot] {
+        todoItems.map { TodoNotificationSnapshot(todo: $0) }
     }
     
     /// 添加测试数据（仅用于预览）

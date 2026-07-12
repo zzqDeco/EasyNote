@@ -217,11 +217,11 @@ struct ReminderServiceAsyncTests {
         )
 
         let olderTask = Task { try await service.synchronizeNotification(for: olderTodo) }
-        await waitUntil { adapter.pendingAddCount == 1 }
+        try await adapter.waitForPendingAddCount(1)
         let newerTask = Task { try await service.synchronizeNotification(for: newerTodo) }
 
         adapter.completeNextAdd()
-        await waitUntil { adapter.pendingAddCount == 1 }
+        try await adapter.waitForPendingAddCount(1)
         adapter.completeNextAdd()
 
         try await olderTask.value
@@ -278,7 +278,7 @@ struct ReminderServiceAsyncTests {
     }
 
     private func waitUntil(
-        attempts: Int = 100,
+        attempts: Int = 2_000,
         condition: () -> Bool
     ) async {
         for _ in 0..<attempts {
@@ -418,6 +418,7 @@ private final class FakeUserNotificationCenter: UserNotificationCenterProviding,
     private(set) var removedDeliveredIdentifiers: [[String]] = []
     private let addStateLock = NSLock()
     private var pendingAddContinuations: [CheckedContinuation<Void, Never>] = []
+    private var pendingAddCountWaiters: [(expected: Int, completion: @Sendable () -> Void)] = []
     private var activeRequests: [String: UNNotificationRequest] = [:]
 
     var pendingAddCount: Int {
@@ -474,8 +475,20 @@ private final class FakeUserNotificationCenter: UserNotificationCenterProviding,
     func completeNextAdd() {
         addStateLock.lock()
         let continuation = pendingAddContinuations.isEmpty ? nil : pendingAddContinuations.removeFirst()
+        let completions = takeSatisfiedPendingAddWaitersLocked()
         addStateLock.unlock()
         continuation?.resume()
+        completions.forEach { $0() }
+    }
+
+    func waitForPendingAddCount(_ expected: Int) async throws {
+        let _: Void = try await ReminderCallbackBridge.value(
+            timeoutNanoseconds: 10_000_000_000
+        ) { completion in
+            self.registerPendingAddCountWaiter(expected: expected) {
+                completion(.success(()))
+            }
+        }
     }
 
     func activeRequestTitle(forTodoID id: UUID) -> String? {
@@ -495,7 +508,35 @@ private final class FakeUserNotificationCenter: UserNotificationCenterProviding,
     private func enqueueAddContinuation(_ continuation: CheckedContinuation<Void, Never>) {
         addStateLock.lock()
         pendingAddContinuations.append(continuation)
+        let completions = takeSatisfiedPendingAddWaitersLocked()
         addStateLock.unlock()
+        completions.forEach { $0() }
+    }
+
+    private func registerPendingAddCountWaiter(
+        expected: Int,
+        completion: @escaping @Sendable () -> Void
+    ) {
+        addStateLock.lock()
+        if pendingAddContinuations.count == expected {
+            addStateLock.unlock()
+            completion()
+            return
+        }
+        pendingAddCountWaiters.append((expected, completion))
+        addStateLock.unlock()
+    }
+
+    private func takeSatisfiedPendingAddWaitersLocked() -> [@Sendable () -> Void] {
+        var completions: [@Sendable () -> Void] = []
+        pendingAddCountWaiters.removeAll { waiter in
+            guard waiter.expected == pendingAddContinuations.count else {
+                return false
+            }
+            completions.append(waiter.completion)
+            return true
+        }
+        return completions
     }
 
     private func finishAdd(_ request: UNNotificationRequest) -> Error? {

@@ -5,7 +5,7 @@ import SwiftUI
 
 @MainActor
 final class ChatSessionViewModel: ObservableObject {
-    typealias SessionDeletionAction = (ModelContainer, UUID) throws -> Void
+    typealias SessionDeletionAction = @MainActor (ModelContainer, UUID) throws -> Void
 
     // 模型上下文
     private var modelContext: ModelContext
@@ -42,7 +42,7 @@ final class ChatSessionViewModel: ObservableObject {
                 let container = try ModelContainer(for: schema, configurations: [config])
                 self.modelContext = ModelContext(container)
             } catch {
-                fatalError("无法创建ModelContext，应用程序无法继续: \(error)")
+                fatalError("无法创建聊天会话存储，应用程序无法继续")
             }
         }
         // 加载所有会话
@@ -76,8 +76,9 @@ final class ChatSessionViewModel: ObservableObject {
         isLoadingMessages = true
         
         do {
-            let descriptor = FetchDescriptor<ChatSession>(sortBy: [SortDescriptor(\.lastModifiedDate, order: .reverse)])
+            let descriptor = FetchDescriptor<ChatSession>()
             let fetchedSessions = try modelContext.fetch(descriptor)
+                .sorted { $0.lastModifiedDate > $1.lastModifiedDate }
             fetchedSessions.forEach(normalizeMessageOrder)
             
             sessions = fetchedSessions
@@ -290,9 +291,10 @@ final class ChatSessionViewModel: ObservableObject {
     ) {
         pendingChatSessionIDs.insert(context.sessionID)
         chatRequestSessions[context.requestID] = context.sessionID
+        let providerTransport = ChatResponseProviderTransport(provider)
 
         chatRequestTasks[context.requestID] = Task { [weak self] in
-            let outcome = await ChatResponseGenerator.generate(context: context, provider: provider)
+            let outcome = await ChatResponseGenerator.generate(context: context, provider: providerTransport)
             guard !Task.isCancelled else { return }
             self?.completeResponseRequest(context, outcome: outcome)
         }

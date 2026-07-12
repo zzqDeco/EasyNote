@@ -34,6 +34,7 @@ struct EasyNoteTests {
         #expect(TodoItem.RecurringInterval.parse("unknown") == nil)
     }
 
+    @MainActor
     @Test func cancelingTodoDraftCreatesNoData() async throws {
         let context = try makeModelContext()
         let viewModel = TodoViewModel(
@@ -51,6 +52,7 @@ struct EasyNoteTests {
         #expect(try context.fetch(FetchDescriptor<TodoItem>()).isEmpty)
     }
 
+    @MainActor
     @Test func creatingTodoDraftWithoutDeadlineClearsStaleRecurrence() async throws {
         let context = try makeModelContext()
         let viewModel = TodoViewModel(
@@ -260,8 +262,8 @@ struct EasyNoteTests {
         }
         let ineligibleTodos = [
             makeTodo(title: "无截止时间"),
-            makeTodo(title: "已完成", isCompleted: true, deadline: try #require(calendar.date(byAdding: .minute, value: 1, to: now))),
-            makeTodo(title: "已过期", deadline: try #require(calendar.date(byAdding: .minute, value: -1, to: now)))
+            makeTodo(title: "已完成", isCompleted: true, deadline: calendar.date(byAdding: .minute, value: 1, to: now)),
+            makeTodo(title: "已过期", deadline: calendar.date(byAdding: .minute, value: -1, to: now))
         ]
 
         let retained = TodoNotificationPlanner.retainedNotificationTodos(
@@ -493,6 +495,7 @@ struct EasyNoteTests {
         #expect(SystemReminderProposalReconciler.operation(for: disabledProposal) == .ignore)
     }
 
+    @MainActor
     @Test func todoViewModelSynchronizesNotificationAfterAddingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -513,6 +516,37 @@ struct EasyNoteTests {
         #expect(scheduler.canceledTodoIDs.isEmpty)
     }
 
+    @MainActor
+    @Test func todoNotificationSnapshotRehydratesAnIndependentValue() async throws {
+        let deadline = Date(timeIntervalSince1970: 1_800_000_000)
+        let creationDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let original = TodoItem(
+            title: "Original",
+            priority: .high,
+            deadline: deadline,
+            notes: "Private notes",
+            isRecurring: true,
+            recurringInterval: TodoItem.RecurringInterval.weekly.rawValue
+        )
+        original.creationDate = creationDate
+
+        let snapshot = TodoNotificationSnapshot(todo: original)
+        original.title = "Mutated after snapshot"
+        original.deadline = nil
+
+        let detached = snapshot.makeDetachedTodo()
+        #expect(detached !== original)
+        #expect(detached.id == original.id)
+        #expect(detached.title == "Original")
+        #expect(detached.priority == .high)
+        #expect(detached.deadline == deadline)
+        #expect(detached.notes == "Private notes")
+        #expect(detached.isRecurring)
+        #expect(detached.recurringInterval == TodoItem.RecurringInterval.weekly.rawValue)
+        #expect(detached.creationDate == creationDate)
+    }
+
+    @MainActor
     @Test func todoViewModelSynchronizesNotificationAfterEditingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -543,6 +577,7 @@ struct EasyNoteTests {
         #expect(viewModel.todoItems.first?.title == "改后的待办")
     }
 
+    @MainActor
     @Test func todoViewModelReconcilesNotificationsAfterCompletingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -565,6 +600,7 @@ struct EasyNoteTests {
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
 
+    @MainActor
     @Test func todoViewModelReconcilesOriginalAndNextRecurringTodo() async throws {
         let calendar = Calendar.current
         let context = try makeModelContext()
@@ -599,6 +635,7 @@ struct EasyNoteTests {
         #expect(nextTodo.deadline == TodoItem.RecurringInterval.daily.nextDate(from: deadline))
     }
 
+    @MainActor
     @Test func todoViewModelCancelsDeletedNotificationAndReconcilesRemainingTodos() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -623,6 +660,7 @@ struct EasyNoteTests {
         #expect(scheduler.reconciledTodoIDs == [viewModel.todoItems.map(\.id)])
     }
 
+    @MainActor
     @Test func todoViewModelAppliesSystemReminderAfterAddingTodo() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -643,6 +681,7 @@ struct EasyNoteTests {
         #expect(reminderModeStore.systemRemindersMayExist)
     }
 
+    @MainActor
     @Test func todoViewModelDoesNotApplySystemReminderInLocalOrOffMode() async throws {
         let localContext = try makeModelContext()
         let localWriter = FakeSystemReminderWriter()
@@ -671,6 +710,7 @@ struct EasyNoteTests {
         #expect(offWriter.appliedProposals.isEmpty)
     }
 
+    @MainActor
     @Test func todoViewModelAppliesUpdatedSystemReminderAfterEditingTodo() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -701,6 +741,7 @@ struct EasyNoteTests {
         #expect(writer.appliedProposals.first?.title == "更新后的会议")
     }
 
+    @MainActor
     @Test func todoViewModelRemovesSystemReminderWhenEditBecomesIneligible() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -729,6 +770,7 @@ struct EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelCompletesSystemReminderAfterCompletingTodo() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -750,6 +792,7 @@ struct EasyNoteTests {
         #expect(writer.appliedProposals.isEmpty)
     }
 
+    @MainActor
     @Test func todoViewModelCompletesOriginalAndAppliesNextRecurringSystemReminder() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -778,6 +821,7 @@ struct EasyNoteTests {
         #expect(writer.appliedProposals.map(\.todoID) == [nextTodo.id])
     }
 
+    @MainActor
     @Test func todoViewModelRemovesSystemReminderAfterDeletingTodo() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -798,6 +842,7 @@ struct EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelRemovesSystemReminderAfterDeletingTodoInLocalMode() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -822,6 +867,7 @@ struct EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelReconcilesSystemRemindersAfterBackupReload() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -845,6 +891,7 @@ struct EasyNoteTests {
         #expect(writer.removedTodoIDs == [todo.id])
     }
 
+    @MainActor
     @Test func todoViewModelDoesNotWriteSystemReminderWhenSwiftDataSaveFails() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -863,6 +910,7 @@ struct EasyNoteTests {
         #expect(writer.removedTodoIDs.isEmpty)
     }
 
+    @MainActor
     @Test func todoViewModelKeepsSavedTodoWhenSystemReminderWriterFails() async throws {
         let context = try makeModelContext()
         let writer = FakeSystemReminderWriter()
@@ -883,6 +931,7 @@ struct EasyNoteTests {
         #expect(!reminderModeStore.systemRemindersMayExist)
     }
 
+    @MainActor
     @Test func todoViewModelKeepsSavedTodoWhenLocalNotificationSchedulingFails() async throws {
         let context = try makeModelContext()
         let scheduler = FakeTodoNotificationScheduler()
@@ -1129,6 +1178,7 @@ struct EasyNoteTests {
         #expect(httpClient.requestCount == 0)
     }
 
+    @MainActor
     @Test func diaryViewModelUsesInjectedAIServiceForEmptyKeySummaryFailure() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "待总结", content: "今天完成了服务注入边界整理。")
@@ -1183,6 +1233,7 @@ struct EasyNoteTests {
         #expect(failure.failureMessage == "生成失败")
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesPendingSummaryOnlyAfterConfirmation() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "需要摘要", content: "今天完成了项目复盘。")
@@ -1207,6 +1258,7 @@ struct EasyNoteTests {
         #expect(viewModel.pendingAIResult == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesSummaryToSourceEntryAfterCurrentEntryChanges() async throws {
         let context = try makeModelContext()
         let sourceEntry = makeDiary(title: "源日记", content: "需要摘要的内容")
@@ -1234,6 +1286,7 @@ struct EasyNoteTests {
         #expect(otherEntry.aiSummary == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsStalePendingSummaryAfterContentChanges() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "源日记", content: "旧正文")
@@ -1258,6 +1311,7 @@ struct EasyNoteTests {
         #expect(viewModel.errorMessage == "日记内容已变化，请重新生成AI摘要")
     }
 
+    @MainActor
     @Test func diaryViewModelKeepsPendingAIResultsPerApplicationTarget() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let firstDiaryId = UUID()
@@ -1292,6 +1346,7 @@ struct EasyNoteTests {
         #expect(viewModel.pendingAIResult(for: .transcriptionText) == transcription)
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesPendingTranscriptionOnlyAfterConfirmation() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.transcribedText = "原始转写"
@@ -1311,6 +1366,7 @@ struct EasyNoteTests {
         #expect(viewModel.pendingAIResult == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelAnalyzesRefinedTranscriptionAfterApply() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         final class AnalysisProbe {
@@ -1335,6 +1391,7 @@ struct EasyNoteTests {
         #expect(probe.content == "润色后的转写")
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesEditorContentAIResultWhenEditorIsUnchanged() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         final class AnalysisProbe {
@@ -1361,6 +1418,7 @@ struct EasyNoteTests {
         #expect(probe.content == "润色正文")
     }
 
+    @MainActor
     @Test func diaryViewModelAppliesChainedResultAfterEditorContentResult() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.refinedContentAnalysisHandler = { _ in }
@@ -1388,6 +1446,7 @@ struct EasyNoteTests {
         #expect(viewModel.transcribedText == "扩写正文")
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsEditorContentAIResultAfterEditorChanges() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.setTranscriptionText("旧正文", inputSource: .editorContent)
@@ -1407,6 +1466,7 @@ struct EasyNoteTests {
         #expect(viewModel.errorMessage == "当前编辑内容已变化，请重新生成AI结果")
     }
 
+    @MainActor
     @Test func diaryViewModelClearsPendingTranscriptionResultsWhenBufferResets() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let result = AIActionResult.success(
@@ -1422,6 +1482,7 @@ struct EasyNoteTests {
         #expect(viewModel.pendingAIResult(for: .transcriptionText) == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelClearsPendingTranscriptionResultsForNewRecording() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.setTranscriptionText("编辑正文", inputSource: .editorContent)
@@ -1440,6 +1501,7 @@ struct EasyNoteTests {
         #expect(viewModel.transcriptionInputSource == .defaultText)
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsStalePendingTranscriptionAfterTextChanges() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         viewModel.transcribedText = "旧转写"
@@ -1459,6 +1521,7 @@ struct EasyNoteTests {
         #expect(viewModel.errorMessage == "转写内容已变化，请重新生成AI结果")
     }
 
+    @MainActor
     @Test func diaryViewModelDoesNotPromoteFailureResultToPending() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let result = AIActionResult.failure(
@@ -1474,6 +1537,7 @@ struct EasyNoteTests {
         #expect(viewModel.pendingAIResult == nil)
     }
 
+    @MainActor
     @Test func diaryViewModelClearsStalePendingResultAfterFailureForSameTarget() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let success = AIActionResult.success(
@@ -1496,6 +1560,7 @@ struct EasyNoteTests {
         #expect(viewModel.aiActionHistory.first == failure)
     }
 
+    @MainActor
     @Test func diaryViewModelDiscardsPendingAIResultFromHistory() async throws {
         let viewModel = DiaryViewModel(modelContext: try makeModelContext())
         let result = AIActionResult.success(
@@ -1553,6 +1618,7 @@ struct EasyNoteTests {
         #expect(MoodCatalog.canonicalStoredLabel("  ") == nil)
     }
 
+    @MainActor
     @Test func diaryEditTranscriptionDoesNotPersistBeforeCommit() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "语音草稿", content: "已有正文", tags: ["原标签"], mood: "平静")
@@ -1576,6 +1642,7 @@ struct EasyNoteTests {
         #expect(entry.content == "已有正文\n\n新增转写")
     }
 
+    @MainActor
     @Test func diaryViewModelCommitsEditDraftWithOneSaveAndThenRemovesReplacedAudio() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -1620,6 +1687,7 @@ struct EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: replacementAudioURL.path))
     }
 
+    @MainActor
     @Test func diaryEditDraftDiscardKeepsEntryAndOriginalAudioUnchanged() async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -1654,6 +1722,7 @@ struct EasyNoteTests {
         #expect(draft.pendingReplacementAudioURL == nil)
     }
 
+    @MainActor
     @Test func diaryEditDraftReplacementReturnsOnlySupersededPendingAudio() async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -1688,6 +1757,7 @@ struct EasyNoteTests {
         #expect(!FileManager.default.fileExists(atPath: secondPendingURL.path))
     }
 
+    @MainActor
     @Test func diaryViewModelFailedDraftSaveRollsBackAndPreservesBothRecordingsForRetry() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -1735,6 +1805,7 @@ struct EasyNoteTests {
         #expect(!FileManager.default.fileExists(atPath: replacementAudioURL.path))
     }
 
+    @MainActor
     @Test func diaryViewModelRejectsMissingReplacementRecordingBeforeMutatingEntry() async throws {
         let context = try makeModelContext()
         let entry = makeDiary(title: "缺失录音", content: "原正文", tags: ["原标签"], mood: "一般")
@@ -1785,15 +1856,50 @@ struct EasyNoteTests {
         }
     }
 
-    @Test func speechRecognitionSessionRejectsStaleCallbacks() async throws {
-        let activeSessionID = UUID()
-        let staleSessionID = UUID()
-
-        #expect(SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: activeSessionID))
-        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: activeSessionID, callback: staleSessionID))
-        #expect(!SpeechRecognitionService.isCurrentRecognitionSession(active: nil, callback: activeSessionID))
+    @Test func onlyActiveRecordingBlocksAReplacementSession() {
+        #expect(RecordingState.recording.blocksNewRecordingStart)
+        #expect(!RecordingState.processing.blocksNewRecordingStart)
+        #expect(!RecordingState.finished.blocksNewRecordingStart)
+        #expect(!RecordingState.idle.blocksNewRecordingStart)
     }
 
+    @Test func speechRecognitionSessionGateRejectsOverlapAndLateCallbacks() async throws {
+        let gate = SpeechRecognitionSessionGate()
+        let firstSessionID = UUID()
+        let nextSessionID = UUID()
+
+        #expect(gate.activate(firstSessionID))
+        #expect(!gate.activate(nextSessionID))
+        #expect(gate.isActive(firstSessionID))
+
+        #expect(gate.invalidate(firstSessionID))
+        #expect(!gate.isActive(firstSessionID))
+        #expect(gate.activate(nextSessionID))
+        #expect(!gate.isActive(firstSessionID))
+        #expect(gate.isActive(nextSessionID))
+    }
+
+    @MainActor
+    @Test func todoViewModelPublishesMutationsOnMainThread() async throws {
+        let viewModel = TodoViewModel(
+            modelContext: try makeModelContext(),
+            notificationScheduler: FakeTodoNotificationScheduler(),
+            systemReminderWriter: FakeSystemReminderWriter(),
+            reminderModeStore: FakeTodoReminderModeStore(mode: .off)
+        )
+        var mutationWasPublishedOnMainThread = false
+        let cancellable = viewModel.$todoItems
+            .dropFirst()
+            .sink { _ in
+                mutationWasPublishedOnMainThread = Thread.isMainThread
+            }
+
+        #expect(viewModel.addTodoItem(title: "Main actor publication"))
+        #expect(mutationWasPublishedOnMainThread)
+        withExtendedLifetime(cancellable) {}
+    }
+
+    @MainActor
     @Test func diaryViewModelCancellationClearsSpeechSessionState() async throws {
         let speechService = FakeSpeechRecognitionService()
         speechService.publishTranscription("未保存转写")
@@ -1809,6 +1915,7 @@ struct EasyNoteTests {
         #expect(viewModel.transcribedText.isEmpty)
     }
 
+    @MainActor
     @Test func diaryRecordingCleanupRemovesPreviousFileWithoutDeletingReplacement() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -1828,6 +1935,7 @@ struct EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: replacementURL.path))
     }
 
+    @MainActor
     @Test func diaryRecordingCleanupKeepsFileWhenReplacementMatchesPrevious() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -1844,6 +1952,7 @@ struct EasyNoteTests {
         #expect(FileManager.default.fileExists(atPath: recordingURL.path))
     }
 
+    @MainActor
     @Test func diaryRecordingCleanupRemovesLegacyM4AFile() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EasyNoteTests-\(UUID().uuidString)", isDirectory: true)
@@ -1860,6 +1969,7 @@ struct EasyNoteTests {
         #expect(!FileManager.default.fileExists(atPath: legacyRecordingURL.path))
     }
 
+    @MainActor
     @Test func diaryRecordingDraftCaptureIncludesActiveAndFinishedStates() async throws {
         let error = NSError(domain: "test", code: 1)
 
@@ -2217,6 +2327,7 @@ struct EasyNoteTests {
         #expect(backup.diaryEntries.first?.audioAssetId == backup.audioAssets.first?.id)
     }
 
+    @MainActor
     @Test func backupExportExcludesOrphanedChatMessages() async throws {
         let context = try makeModelContext()
         let visibleMessage = SessionMessage(content: "可见消息", isUser: true)
@@ -2265,6 +2376,7 @@ struct EasyNoteTests {
         #expect(backup.audioAssets.isEmpty)
     }
 
+    @MainActor
     @Test func backupImportRejectsUnsupportedVersionWithoutWriting() async throws {
         let context = try makeModelContext()
         let existing = makeDiary(title: "本地日记")
@@ -2307,6 +2419,7 @@ struct EasyNoteTests {
         #expect(entries.map(\.title) == ["本地日记"])
     }
 
+    @MainActor
     @Test func backupImportDataRejectsInvalidBase64WithoutWriting() async throws {
         let context = try makeModelContext()
         let existing = makeTodo(title: "本地待办")
@@ -2345,6 +2458,7 @@ struct EasyNoteTests {
         #expect(todos.map(\.title) == ["本地待办"])
     }
 
+    @MainActor
     @Test func backupImportNormalizesLegacyMessagesSharedAcrossSessions() async throws {
         let context = try makeModelContext()
         let messageID = UUID()
@@ -2391,6 +2505,7 @@ struct EasyNoteTests {
         #expect(messages.allSatisfy { $0.content == "不能共享的消息" })
     }
 
+    @MainActor
     @Test func backupImportUpsertsSameIDAndPreservesUnmentionedLocalRecords() async throws {
         let context = try makeModelContext()
         let diaryID = UUID()
@@ -2448,6 +2563,7 @@ struct EasyNoteTests {
         #expect(Set(todos.map(\.title)) == Set(["保留的本地待办", "导入待办"]))
     }
 
+    @MainActor
     @Test func backupImportRestoresAudioAssetToLocalFile() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2497,6 +2613,7 @@ struct EasyNoteTests {
         #expect(try Data(contentsOf: restoredURL) == Data([0x07, 0x08, 0x09]))
     }
 
+    @MainActor
     @Test func backupImportOverwritesDeterministicRestoredAudioWhenReimporting() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -2550,6 +2667,7 @@ struct EasyNoteTests {
             .count == 1)
     }
 
+    @MainActor
     @Test func backupImportAllowsBlankSessionTitlesAlreadyCreatedByApp() async throws {
         let context = try makeModelContext()
         let backupDate = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 10)))
@@ -2588,6 +2706,7 @@ struct EasyNoteTests {
         #expect(backup.diaryEntries.map(\.title) == ["   "])
     }
 
+    @MainActor
     @Test func backupImportPreservesLocalMessagesMissingFromOlderBackup() async throws {
         let context = try makeModelContext()
         let calendar = Calendar.current

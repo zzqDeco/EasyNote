@@ -35,7 +35,7 @@ final class TodoItem {
         self.creationDate = Date()
     }
 
-    enum PriorityLevel: String, Codable, Equatable {
+    enum PriorityLevel: String, Codable, Equatable, Sendable {
         case high, medium, low
 
         var color: Color {
@@ -48,7 +48,7 @@ final class TodoItem {
     }
 
     // 循环间隔枚举
-    enum RecurringInterval: String, Codable, Equatable {
+    enum RecurringInterval: String, Codable, Equatable, Sendable {
         case daily = "每天"
         case weekly = "每周"
         case biweekly = "两周"

@@ -17,6 +17,7 @@
 - Retry only reopens the same configuration.
 - Rebuild first copies every existing store/WAL/SHM component into a unique UTC timestamp directory under `Documents/EasyNoteRecovery`.
 - Copy failure leaves source files untouched. Rebuild failure keeps and reports the recovery directory.
+- The injected dependency bundle is unchecked Sendable only to satisfy its static production default; it is created and consumed exclusively inside the main-actor `PersistenceBootstrap` boundary.
 
 ## Tests
 

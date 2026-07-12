@@ -11,6 +11,8 @@
 
 ## Behavior Notes
 
+- `ChatResponseProviderTransport` is the single unchecked-sendable boundary used to move an injected provider into the request task without changing provider behavior or shared protocol ownership.
+
 - Missing keys fail before the provider call.
 - Provider failure uses `LocalDiaryQueryAnalyzer`; no factual match produces a retryable failure rather than a persisted assistant message.
 

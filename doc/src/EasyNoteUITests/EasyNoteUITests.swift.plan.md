@@ -16,6 +16,7 @@
 - `testLaunches` starts the app and asserts that it reaches the foreground.
 - `testPrimaryTabNavigationSmoke` switches across explore, todo, diary, and settings without creating, editing, deleting, recording audio, calling the network, or requiring a configured API key.
 - UI tests create apps through `XCUIApplication.easyNoteUITestApp()` so launch smoke, navigation smoke, screenshot launch tests, and launch performance all share `-easynote-ui-testing`, `-easynote-disable-animations`, and `EASYNOTE_UI_TESTING=1`.
+- Each main-actor UI test owns and terminates its own `XCUIApplication`; no actor-isolated application instance is retained through nonisolated XCTest setup or teardown overrides.
 - Launch performance remains template-level smoke coverage and should be tightened only after CI runtime is stable.
 
 ## Tests

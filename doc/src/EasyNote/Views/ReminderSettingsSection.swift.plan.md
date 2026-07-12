@@ -15,6 +15,7 @@
 - `todo_notifications_enabled` remains synchronized with `TodoReminderModeStore` for legacy compatibility.
 - Switching modes preserves the existing cancellation, reconciliation, immediate system sync, and stale-system-reminder cleanup ordering.
 - Authorization publisher updates and foreground refresh retain separate status and write tasks so refresh does not cancel an active write.
+- SwiftData fetches sort in main-actor memory, and local-notification reconciliation uses the shared `Sendable` todo snapshot bridge before awaiting the scheduler.
 - Permission/sync button identifiers and `settings.todoReminderModePicker` remain unchanged.
 
 ## Tests

@@ -1,11 +1,11 @@
 import Foundation
-import SwiftData
+@preconcurrency import SwiftData
 
 extension Notification.Name {
     static let easyNoteBackupDidImport = Notification.Name("EasyNoteBackupDidImport")
 }
 
-struct EasyNoteBackupV1: Codable, Equatable {
+struct EasyNoteBackupV1: Codable, Equatable, Sendable {
     var version: Int
     var exportedAt: Date
     var diaryEntries: [BackupDiaryEntry]
@@ -15,7 +15,7 @@ struct EasyNoteBackupV1: Codable, Equatable {
     var audioAssets: [BackupAudioAsset]
 }
 
-struct BackupDiaryEntry: Codable, Equatable, Identifiable {
+struct BackupDiaryEntry: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var title: String
     var content: String
@@ -28,7 +28,7 @@ struct BackupDiaryEntry: Codable, Equatable, Identifiable {
     var audioAssetId: UUID?
 }
 
-struct BackupTodoItem: Codable, Equatable, Identifiable {
+struct BackupTodoItem: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var title: String
     var isCompleted: Bool
@@ -40,7 +40,7 @@ struct BackupTodoItem: Codable, Equatable, Identifiable {
     var creationDate: Date
 }
 
-struct BackupChatSession: Codable, Equatable, Identifiable {
+struct BackupChatSession: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var title: String
     var creationDate: Date
@@ -48,7 +48,7 @@ struct BackupChatSession: Codable, Equatable, Identifiable {
     var messageIds: [UUID]
 }
 
-struct BackupSessionMessage: Codable, Equatable, Identifiable {
+struct BackupSessionMessage: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var content: String
     var isUser: Bool
@@ -56,7 +56,7 @@ struct BackupSessionMessage: Codable, Equatable, Identifiable {
     var relatedEntryIds: [String]
 }
 
-struct BackupAudioAsset: Codable, Equatable, Identifiable {
+struct BackupAudioAsset: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var originalFilename: String
     var pathExtension: String
@@ -64,7 +64,7 @@ struct BackupAudioAsset: Codable, Equatable, Identifiable {
     var data: Data
 }
 
-struct BackupSummary: Equatable {
+struct BackupSummary: Equatable, Sendable {
     var diaryCount: Int
     var todoCount: Int
     var chatSessionCount: Int
@@ -116,14 +116,14 @@ enum BackupResourceLimit: String, Equatable, Sendable {
     case audioAssets
 }
 
-enum BackupFileOperation: Equatable {
+enum BackupFileOperation: Equatable, Sendable {
     case stageWrite(UUID)
     case preserveExisting(URL)
     case installStaged(URL)
     case cleanupManaged(URL)
 }
 
-enum BackupServiceError: LocalizedError, Equatable {
+enum BackupServiceError: LocalizedError, Equatable, Sendable {
     case unsupportedVersion(Int)
     case invalidBackup(String)
     case resourceLimitExceeded(BackupResourceLimit, maximum: Int, actual: Int)
@@ -146,11 +146,11 @@ enum BackupServiceError: LocalizedError, Equatable {
     }
 }
 
-struct BackupImportResult: Equatable {
+struct BackupImportResult: Equatable, Sendable {
     var summary: BackupSummary
 }
 
-struct BackupService {
+struct BackupService: @unchecked Sendable {
     static let supportedVersion = 1
     static let fileExtension = "easynotebackup"
 
@@ -159,17 +159,17 @@ struct BackupService {
     private let fileManager: FileManager
     private let documentsDirectory: URL
     private let limits: BackupLimits
-    private let saveModelContext: @MainActor (ModelContext) throws -> Void
-    private let backgroundWorkObserver: (() -> Void)?
-    private let fileOperationHook: ((BackupFileOperation) throws -> Void)?
+    private let saveModelContext: @MainActor @Sendable (ModelContext) throws -> Void
+    private let backgroundWorkObserver: (@Sendable () -> Void)?
+    private let fileOperationHook: (@Sendable (BackupFileOperation) throws -> Void)?
 
     init(
         fileManager: FileManager = .default,
         documentsDirectory: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0],
         limits: BackupLimits = .default,
-        saveModelContext: @escaping @MainActor (ModelContext) throws -> Void = { try $0.save() },
-        backgroundWorkObserver: (() -> Void)? = nil,
-        fileOperationHook: ((BackupFileOperation) throws -> Void)? = nil
+        saveModelContext: @escaping @MainActor @Sendable (ModelContext) throws -> Void = { try $0.save() },
+        backgroundWorkObserver: (@Sendable () -> Void)? = nil,
+        fileOperationHook: (@Sendable (BackupFileOperation) throws -> Void)? = nil
     ) {
         self.fileManager = fileManager
         self.documentsDirectory = documentsDirectory
@@ -358,25 +358,22 @@ struct BackupService {
 
     @MainActor
     private func snapshot(from modelContext: ModelContext, exportedAt: Date) throws -> BackupSnapshot {
-        var diaryDescriptor = FetchDescriptor<DiaryEntry>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        )
+        var diaryDescriptor = FetchDescriptor<DiaryEntry>()
         diaryDescriptor.fetchLimit = overflowProbeLimit(for: limits.maxDiaryEntries)
         let diaryEntries = try modelContext.fetch(diaryDescriptor)
+            .sorted { $0.creationDate < $1.creationDate }
         try validateCount(diaryEntries.count, maximum: limits.maxDiaryEntries, limit: .diaryEntries)
 
-        var todoDescriptor = FetchDescriptor<TodoItem>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        )
+        var todoDescriptor = FetchDescriptor<TodoItem>()
         todoDescriptor.fetchLimit = overflowProbeLimit(for: limits.maxTodoItems)
         let todoItems = try modelContext.fetch(todoDescriptor)
+            .sorted { $0.creationDate < $1.creationDate }
         try validateCount(todoItems.count, maximum: limits.maxTodoItems, limit: .todoItems)
 
-        var chatDescriptor = FetchDescriptor<ChatSession>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        )
+        var chatDescriptor = FetchDescriptor<ChatSession>()
         chatDescriptor.fetchLimit = overflowProbeLimit(for: limits.maxChatSessions)
         let chatSessions = try modelContext.fetch(chatDescriptor)
+            .sorted { $0.creationDate < $1.creationDate }
         try validateCount(chatSessions.count, maximum: limits.maxChatSessions, limit: .chatSessions)
 
         let chatExport = try exportChatData(from: chatSessions)
@@ -794,7 +791,9 @@ struct BackupService {
         return value
     }
 
-    private func performBackground<T>(_ operation: @escaping () throws -> T) async throws -> T {
+    private func performBackground<T: Sendable>(
+        _ operation: @escaping @Sendable () throws -> T
+    ) async throws -> T {
         let observer = backgroundWorkObserver
         return try await Task.detached(priority: .userInitiated) {
             observer?()
@@ -802,17 +801,17 @@ struct BackupService {
         }.value
     }
 
-    private struct BackupAudioSource {
+    private struct BackupAudioSource: Sendable {
         var assetID: UUID
         var url: URL
     }
 
-    private struct BackupDiarySnapshot {
+    private struct BackupDiarySnapshot: Sendable {
         var entry: BackupDiaryEntry
         var audioSource: BackupAudioSource?
     }
 
-    private struct BackupSnapshot {
+    private struct BackupSnapshot: Sendable {
         var exportedAt: Date
         var diarySnapshots: [BackupDiarySnapshot]
         var todoItems: [BackupTodoItem]
@@ -820,13 +819,13 @@ struct BackupService {
         var sessionMessages: [BackupSessionMessage]
     }
 
-    private struct AudioFileTransaction {
+    private struct AudioFileTransaction: Sendable {
         var rootDirectory: URL
         var touchedTargets: [URL]
         var rollbackCopies: [URL: URL]
     }
 
-    private struct PreparedAudioImport {
+    private struct PreparedAudioImport: Sendable {
         var transaction: AudioFileTransaction?
         var restoredAudioByAssetID: [UUID: URL]
     }
