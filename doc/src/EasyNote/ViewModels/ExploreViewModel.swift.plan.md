@@ -11,7 +11,8 @@
 
 ## Behavior Notes
 
-- Recent-entry filtering and sorting happens on main-actor-fetched values in fixed 256-entry batches, avoiding non-sendable SwiftData key-path descriptors and unbounded fetch materialization.
+- Recent-entry filtering stays in the SwiftData fetch descriptor so only the requested seven-day window is materialized; the bounded result is sorted on the main actor.
+- A concrete `KeyPath<DiaryEntry, Date>` compatibility conformance covers the Xcode 26 Swift 5 strict-concurrency gap without making SwiftData model instances Sendable.
 - Unified logs contain only static events and aggregate recommendation counts.
 
 ## Tests
