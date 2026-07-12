@@ -4,11 +4,11 @@
 
 - Compose the Settings form, navigation title, app version row, and bottom layout spacer.
 - Read `ModelContext` and `ScenePhase` from SwiftUI and forward them to feature-owned sections.
-- Forward the shared `ThemeManager` and `SettingsDependencies` without implementing feature behavior.
+- Forward the shared `ThemeManager` and `SettingsDependencies`, including AI credential/consent stores, without implementing feature behavior.
 
 ## Boundaries
 
-- Do not own API-key, backup presenter, reminder authorization/task, appearance-control, or preflight-rendering state.
+- Do not own API-key, AI consent, backup presenter, reminder authorization/task, appearance-control, or preflight-rendering state.
 - Do not resolve concrete services in `body`; production defaults and test replacements belong in `SettingsDependencies`.
 - Do not move persistence, notification, EventKit, backup-format, or CloudKit rules into the composition shell.
 

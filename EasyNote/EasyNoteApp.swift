@@ -83,6 +83,7 @@ private enum EasyNoteLaunchOptions {
         let defaults = UserDefaults.standard
         [
             "openai_api_key",
+            AIContentConsentPolicy.defaultsKey,
             "cached_recommendations",
             "recommendations_last_updated",
             "darkModeEnabled",
@@ -91,5 +92,6 @@ private enum EasyNoteLaunchOptions {
             TodoReminderModeStore.systemRemindersMayExistDefaultsKey,
             LocalTodoNotificationService.enabledDefaultsKey
         ].forEach { defaults.removeObject(forKey: $0) }
+        _ = try? KeychainCredentialStore().deleteAPIKey()
     }
 }

@@ -43,11 +43,13 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - Existing-diary edits are staged in a pure `DiaryEditDraft`; `DiaryViewModel` applies content, mood, tags, and recording URL through one explicit save, while Cancel leaves the SwiftData model unchanged.
 
 Future refactors should separate pure business logic and service protocols from SwiftUI/SwiftData state, but behavior should remain observable through the existing ViewModels until a plan replaces that boundary.
-Current service interactions are routed through narrow protocols for AI, speech recognition, CloudKit diary sync, backup import/export, local todo notification scheduling, and system Reminders writing so ViewModels and Settings sections can be tested with fakes without changing production defaults. `SettingsDependencies` groups the existing Settings protocols and stores but does not add service ownership or alter production implementations.
+Current service interactions are routed through narrow protocols for AI, AI credentials, AI content consent, AI HTTP transport, speech recognition, CloudKit diary sync, backup import/export, local todo notification scheduling, and system Reminders writing so ViewModels and Settings sections can be tested with fakes without changing production defaults. `SettingsDependencies` groups the Settings protocols and stores but does not add service ownership or alter production implementations.
 
 ## Service Layer
 
-- `OpenAIService` is the DeepSeek-compatible chat-completions client. It must not contain default API keys.
+- `KeychainCredentialStore` owns the DeepSeek credential, Security.framework CRUD, and verified migration from the legacy `UserDefaults` key. Its generic-password item is device-only and available only while the device is unlocked.
+- `AIContentConsentStore` owns a separate default-denied, revocable permission to send selected diary or transcription text, plus recent diary fields used for recommendations, to DeepSeek. Credential presence or migration never grants consent.
+- `OpenAIService` is the DeepSeek-compatible chat-completions client. It reads credentials and consent through injected protocols and must reject missing-key or unconsented requests before delegating to its injected HTTP client.
 - `BackupService` owns local JSON backup export/import for SwiftData records and supported local voice recording files.
 - `LocalTodoNotificationService` owns iOS local notification authorization state and async todo reminder scheduling/cancellation through an injectable UserNotifications adapter.
 - `SystemReminderService` owns EventKit Reminders authorization state and serialized async writes of EasyNote-marked reminders to the user's default Apple Reminders list. EventKit callbacks are bounded by a single-resume 10-second timeout bridge.
@@ -64,7 +66,7 @@ SwiftUI views are grouped by feature:
 - Diary: list, create, edit, detail, mood/tag/editor helpers, markdown rendering.
 - Todo and recommendations: todo detail/edit, unified add flow, Explore screen.
 - AI exploration: chat screen and session list.
-- Settings: a composition shell plus feature-owned appearance, AI key, reminder, backup, and sync-preflight sections.
+- Settings: a composition shell plus feature-owned appearance, AI Keychain/consent, reminder, backup, and sync-preflight sections.
 
 Views should remain presentation-focused. Persistence, AI calls, and recurrence behavior belong in ViewModels or services.
 

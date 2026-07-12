@@ -20,7 +20,10 @@ struct SettingsView: View {
         NavigationView {
             Form {
                 AppearanceSettingsSection(themeManager: themeManager)
-                AISettingsSection()
+                AISettingsSection(
+                    credentialStore: dependencies.aiCredentialStore,
+                    consentStore: dependencies.aiContentConsentStore
+                )
                 ReminderSettingsSection(
                     modelContext: modelContext,
                     scenePhase: scenePhase,

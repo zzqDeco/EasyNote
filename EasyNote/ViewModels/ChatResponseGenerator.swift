@@ -25,6 +25,8 @@ enum ChatResponseGenerator {
             return .provider(message: response, relatedEntryIDs: context.relatedEntryIDs)
         } catch is CancellationError {
             return .cancelled
+        } catch OpenAIError.consentRequired {
+            return .failure(AIContentConsentPolicy.requiredMessage)
         } catch {
             return localFallback(for: context)
         }
