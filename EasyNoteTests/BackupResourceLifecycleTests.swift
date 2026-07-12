@@ -3,7 +3,6 @@ import SwiftData
 import Testing
 @testable import EasyNote
 
-@MainActor
 struct BackupResourceLifecycleTests {
     @Test func defaultLimitsMatchBackupResourceContract() {
         let limits = BackupLimits.default
@@ -30,6 +29,7 @@ struct BackupResourceLifecycleTests {
         #expect(limits.maxFileBytes - encodedAudioBytes > 1 * 1_024 * 1_024)
     }
 
+    @MainActor
     @Test func exportFetchesOnlyLimitPlusOneBeforeRejectingEntityCounts() async throws {
         let diaryContext = try makeModelContext()
         for index in 0..<3 {
@@ -62,6 +62,7 @@ struct BackupResourceLifecycleTests {
         }
     }
 
+    @MainActor
     @Test func exportStopsReachableMessageProjectionAtLimitPlusOne() async throws {
         let context = try makeModelContext()
         let session = ChatSession(title: "messages")
@@ -77,6 +78,7 @@ struct BackupResourceLifecycleTests {
         }
     }
 
+    @MainActor
     @Test func exportStopsAudioProjectionAtLimitPlusOne() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -165,6 +167,7 @@ struct BackupResourceLifecycleTests {
         )
     }
 
+    @MainActor
     @Test func limitFailureCreatesNoModelsOrFiles() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -183,6 +186,7 @@ struct BackupResourceLifecycleTests {
         #expect(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).isEmpty)
     }
 
+    @MainActor
     @Test func jsonAndAudioWorkRunOffMainWhileSwiftDataSaveRunsOnMain() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -217,6 +221,7 @@ struct BackupResourceLifecycleTests {
         #expect(saveWasOnMain)
     }
 
+    @MainActor
     @Test func repeatedImportUsesOneDeterministicAssetFilename() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -236,6 +241,7 @@ struct BackupResourceLifecycleTests {
         #expect(try managedImportFiles(in: directory, audioID: audioID) == [expectedURL])
     }
 
+    @MainActor
     @Test func importCollisionPreservesAudioReferencedByDiaryAbsentFromBackup() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -270,6 +276,7 @@ struct BackupResourceLifecycleTests {
         #expect(Set(try managedImportFiles(in: directory, audioID: audioID)) == [canonicalURL, expectedImportedURL])
     }
 
+    @MainActor
     @Test func stagedFileFailureRestoresPriorFilesAndWritesNoModels() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -308,6 +315,7 @@ struct BackupResourceLifecycleTests {
         #expect(try transactionDirectories(in: directory).isEmpty)
     }
 
+    @MainActor
     @Test func rollbackCopyFailureNeverRemovesTheUncopiedOriginal() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -338,6 +346,7 @@ struct BackupResourceLifecycleTests {
         #expect(try transactionDirectories(in: directory).isEmpty)
     }
 
+    @MainActor
     @Test func saveFailureRestoresOverwrittenAudioAndRollsBackModels() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
@@ -372,6 +381,7 @@ struct BackupResourceLifecycleTests {
         #expect(try transactionDirectories(in: directory).isEmpty)
     }
 
+    @MainActor
     @Test func successfulImportCleansOnlyUnreferencedManagedDocumentRecordings() async throws {
         let context = try makeModelContext()
         let directory = try makeTemporaryDirectory()
