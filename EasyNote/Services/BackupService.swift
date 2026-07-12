@@ -87,7 +87,7 @@ struct BackupLimits: Equatable, Sendable {
     init(
         maxFileBytes: Int = 64 * 1_024 * 1_024,
         maxSingleAudioBytes: Int = 16 * 1_024 * 1_024,
-        maxTotalAudioBytes: Int = 48 * 1_024 * 1_024,
+        maxTotalAudioBytes: Int = 47 * 1_024 * 1_024,
         maxDiaryEntries: Int = 10_000,
         maxTodoItems: Int = 50_000,
         maxChatSessions: Int = 5_000,
@@ -245,8 +245,16 @@ struct BackupService {
             return normalized
         }
 
+        let importedDiaryIDs = Set(normalizedBackup.diaryEntries.map(\.id))
+        let protectedAudioPaths = try referencedAudioPaths(
+            in: modelContext,
+            excludingDiaryIDs: importedDiaryIDs
+        )
         let preparedAudio = try await performBackground {
-            try prepareAudioImport(for: normalizedBackup.audioAssets)
+            try prepareAudioImport(
+                for: normalizedBackup.audioAssets,
+                protectedAudioPaths: protectedAudioPaths
+            )
         }
 
         do {
@@ -350,17 +358,28 @@ struct BackupService {
 
     @MainActor
     private func snapshot(from modelContext: ModelContext, exportedAt: Date) throws -> BackupSnapshot {
-        let diaryEntries = try modelContext.fetch(FetchDescriptor<DiaryEntry>(
+        var diaryDescriptor = FetchDescriptor<DiaryEntry>(
             sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        ))
-        let todoItems = try modelContext.fetch(FetchDescriptor<TodoItem>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        ))
-        let chatSessions = try modelContext.fetch(FetchDescriptor<ChatSession>(
-            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
-        ))
+        )
+        diaryDescriptor.fetchLimit = overflowProbeLimit(for: limits.maxDiaryEntries)
+        let diaryEntries = try modelContext.fetch(diaryDescriptor)
+        try validateCount(diaryEntries.count, maximum: limits.maxDiaryEntries, limit: .diaryEntries)
 
-        let chatExport = exportChatData(from: chatSessions)
+        var todoDescriptor = FetchDescriptor<TodoItem>(
+            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
+        )
+        todoDescriptor.fetchLimit = overflowProbeLimit(for: limits.maxTodoItems)
+        let todoItems = try modelContext.fetch(todoDescriptor)
+        try validateCount(todoItems.count, maximum: limits.maxTodoItems, limit: .todoItems)
+
+        var chatDescriptor = FetchDescriptor<ChatSession>(
+            sortBy: [SortDescriptor(\.creationDate, order: .forward)]
+        )
+        chatDescriptor.fetchLimit = overflowProbeLimit(for: limits.maxChatSessions)
+        let chatSessions = try modelContext.fetch(chatDescriptor)
+        try validateCount(chatSessions.count, maximum: limits.maxChatSessions, limit: .chatSessions)
+
+        let chatExport = try exportChatData(from: chatSessions)
         let diarySnapshots = diaryEntries.map { entry in
             let audioSource: BackupAudioSource?
             if let audioURL = entry.audioURL,
@@ -587,7 +606,10 @@ struct BackupService {
         }
     }
 
-    private func prepareAudioImport(for assets: [BackupAudioAsset]) throws -> PreparedAudioImport {
+    private func prepareAudioImport(
+        for assets: [BackupAudioAsset],
+        protectedAudioPaths: Set<String>
+    ) throws -> PreparedAudioImport {
         guard !assets.isEmpty else {
             return PreparedAudioImport(transaction: nil, restoredAudioByAssetID: [:])
         }
@@ -610,9 +632,9 @@ struct BackupService {
             try fileManager.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
 
             for asset in assets.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
-                let filename = restoredAudioFilename(for: asset)
+                let targetURL = restoredAudioURL(for: asset, protectedAudioPaths: protectedAudioPaths)
+                let filename = targetURL.lastPathComponent
                 let stagedURL = stagingDirectory.appendingPathComponent(filename)
-                let targetURL = documentsDirectory.appendingPathComponent(filename)
                 let rollbackURL = rollbackDirectory.appendingPathComponent(filename)
 
                 try fileOperationHook?(.stageWrite(asset.id))
@@ -653,12 +675,15 @@ struct BackupService {
         guard let transaction else { return }
 
         for targetURL in transaction.touchedTargets.reversed() {
-            if fileManager.fileExists(atPath: targetURL.path) {
-                try fileManager.removeItem(at: targetURL)
-            }
             if let rollbackURL = transaction.rollbackCopies[targetURL],
                fileManager.fileExists(atPath: rollbackURL.path) {
-                try fileManager.copyItem(at: rollbackURL, to: targetURL)
+                if fileManager.fileExists(atPath: targetURL.path) {
+                    _ = try fileManager.replaceItemAt(targetURL, withItemAt: rollbackURL)
+                } else {
+                    try fileManager.moveItem(at: rollbackURL, to: targetURL)
+                }
+            } else if fileManager.fileExists(atPath: targetURL.path) {
+                try fileManager.removeItem(at: targetURL)
             }
         }
 
@@ -700,13 +725,42 @@ struct BackupService {
     }
 
     @MainActor
-    private func referencedAudioPaths(in modelContext: ModelContext) throws -> Set<String> {
+    private func referencedAudioPaths(
+        in modelContext: ModelContext,
+        excludingDiaryIDs excludedDiaryIDs: Set<UUID> = []
+    ) throws -> Set<String> {
         let entries = try modelContext.fetch(FetchDescriptor<DiaryEntry>())
-        return Set(entries.compactMap { $0.audioURL?.standardizedFileURL.path })
+        return Set(entries.compactMap { entry in
+            guard !excludedDiaryIDs.contains(entry.id) else { return nil }
+            return entry.audioURL?.standardizedFileURL.path
+        })
     }
 
-    private func restoredAudioFilename(for asset: BackupAudioAsset) -> String {
-        "restored_recording_\(asset.id.uuidString).\(asset.pathExtension.lowercased())"
+    private func restoredAudioURL(
+        for asset: BackupAudioAsset,
+        protectedAudioPaths: Set<String>
+    ) -> URL {
+        let stem = "restored_recording_\(asset.id.uuidString)"
+        let pathExtension = asset.pathExtension.lowercased()
+        var collisionIndex = 0
+
+        while true {
+            let suffix: String
+            switch collisionIndex {
+            case 0:
+                suffix = ""
+            case 1:
+                suffix = "_imported"
+            default:
+                suffix = "_imported_\(collisionIndex)"
+            }
+            let candidate = documentsDirectory
+                .appendingPathComponent("\(stem)\(suffix).\(pathExtension)")
+            if !protectedAudioPaths.contains(candidate.standardizedFileURL.path) {
+                return candidate
+            }
+            collisionIndex += 1
+        }
     }
 
     private func validateRawFileSize(_ byteCount: Int) throws {
@@ -717,6 +771,10 @@ struct BackupService {
         guard actual <= maximum else {
             throw BackupServiceError.resourceLimitExceeded(limit, maximum: maximum, actual: actual)
         }
+    }
+
+    private func overflowProbeLimit(for maximum: Int) -> Int {
+        maximum == .max ? .max : maximum + 1
     }
 
     private func addingWithoutOverflow(_ lhs: Int, _ rhs: Int) throws -> Int {
@@ -766,7 +824,25 @@ struct BackupService {
 
     private func exportChatData(
         from sessions: [ChatSession]
-    ) -> (sessions: [BackupChatSession], messages: [BackupSessionMessage]) {
+    ) throws -> (sessions: [BackupChatSession], messages: [BackupSessionMessage]) {
+        var reachableMessageCount = 0
+        for session in sessions {
+            let (projectedCount, overflow) = reachableMessageCount.addingReportingOverflow(session.messages.count)
+            guard !overflow else {
+                throw BackupServiceError.resourceLimitExceeded(
+                    .sessionMessages,
+                    maximum: limits.maxSessionMessages,
+                    actual: .max
+                )
+            }
+            reachableMessageCount = min(projectedCount, overflowProbeLimit(for: limits.maxSessionMessages))
+            try validateCount(
+                reachableMessageCount,
+                maximum: limits.maxSessionMessages,
+                limit: .sessionMessages
+            )
+        }
+
         let normalizedMessageIDs = Self.normalizedMessageIDs(
             for: sessions.map { $0.messages.map(\.id) }
         )

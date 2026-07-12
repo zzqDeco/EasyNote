@@ -15,10 +15,10 @@
 
 ## Implementation
 
-- Introduce `BackupLimits.default` with a 64 MiB raw file limit, 16 MiB per audio asset, 48 MiB total audio, and count limits of 10,000 diaries, 50,000 todos, 5,000 sessions, 100,000 messages, and 500 audio assets.
+- Introduce `BackupLimits.default` with a 64 MiB raw file limit, 16 MiB per audio asset, 47 MiB total audio with base64 envelope headroom, and count limits of 10,000 diaries, 50,000 todos, 5,000 sessions, 100,000 messages, and 500 audio assets.
 - Reject oversized raw data before JSON decode, then validate entity counts, audio byte declarations, per-asset bytes, aggregate audio bytes, references, extensions, and identifiers before any SwiftData or destination-file mutation.
 - Snapshot model values and relationships on `MainActor`; perform audio reads and JSON encode/decode through detached work.
-- Restore each audio asset through a temporary staging directory to `restored_recording_<asset-id>.<ext>`. Move any prior destination into rollback storage before overwrite, restore it when staging/commit or SwiftData save fails, and remove transaction storage after completion.
+- Restore each audio asset through a temporary staging directory to `restored_recording_<asset-id>.<ext>`. When that path belongs to a backup-external diary, use a stable `_imported` collision suffix. Preserve prior destinations in rollback storage before overwrite, move or atomically replace them back when staging/commit or SwiftData save fails, and remove transaction storage after completion.
 - After a successful save, enumerate direct Documents children and remove only unreferenced `.caf`/`.m4a` files with EasyNote recording prefixes. Preserve arbitrary user files, directories, and referenced recordings.
 
 ## Test Plan

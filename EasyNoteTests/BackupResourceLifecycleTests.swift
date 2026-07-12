@@ -10,12 +10,71 @@ struct BackupResourceLifecycleTests {
 
         #expect(limits.maxFileBytes == 64 * 1_024 * 1_024)
         #expect(limits.maxSingleAudioBytes == 16 * 1_024 * 1_024)
-        #expect(limits.maxTotalAudioBytes == 48 * 1_024 * 1_024)
+        #expect(limits.maxTotalAudioBytes == 47 * 1_024 * 1_024)
         #expect(limits.maxDiaryEntries == 10_000)
         #expect(limits.maxTodoItems == 50_000)
         #expect(limits.maxChatSessions == 5_000)
         #expect(limits.maxSessionMessages == 100_000)
         #expect(limits.maxAudioAssets == 500)
+    }
+
+    @Test func defaultAudioLimitLeavesBase64EnvelopeHeadroom() {
+        let limits = BackupLimits.default
+        let rawAssetSizes = [16, 16, 15].map { $0 * 1_024 * 1_024 }
+        let encodedAudioBytes = rawAssetSizes.reduce(0) { total, byteCount in
+            total + 4 * ((byteCount + 2) / 3)
+        }
+
+        #expect(rawAssetSizes.reduce(0, +) == limits.maxTotalAudioBytes)
+        #expect(encodedAudioBytes < limits.maxFileBytes)
+        #expect(limits.maxFileBytes - encodedAudioBytes > 1 * 1_024 * 1_024)
+    }
+
+    @Test func exportFetchesOnlyLimitPlusOneBeforeRejectingEntityCounts() async throws {
+        let diaryContext = try makeModelContext()
+        for index in 0..<3 {
+            diaryContext.insert(DiaryEntry(title: "diary-\(index)"))
+        }
+        try diaryContext.save()
+        await expectLimit(.diaryEntries, actual: 2) {
+            _ = try await BackupService(limits: BackupLimits(maxDiaryEntries: 1))
+                .exportBackup(from: diaryContext)
+        }
+
+        let todoContext = try makeModelContext()
+        for index in 0..<3 {
+            todoContext.insert(TodoItem(title: "todo-\(index)"))
+        }
+        try todoContext.save()
+        await expectLimit(.todoItems, actual: 2) {
+            _ = try await BackupService(limits: BackupLimits(maxTodoItems: 1))
+                .exportBackup(from: todoContext)
+        }
+
+        let sessionContext = try makeModelContext()
+        for index in 0..<3 {
+            sessionContext.insert(ChatSession(title: "session-\(index)"))
+        }
+        try sessionContext.save()
+        await expectLimit(.chatSessions, actual: 2) {
+            _ = try await BackupService(limits: BackupLimits(maxChatSessions: 1))
+                .exportBackup(from: sessionContext)
+        }
+    }
+
+    @Test func exportStopsReachableMessageProjectionAtLimitPlusOne() async throws {
+        let context = try makeModelContext()
+        let session = ChatSession(title: "messages")
+        session.addMessage(SessionMessage(content: "one", isUser: true))
+        session.addMessage(SessionMessage(content: "two", isUser: false))
+        session.addMessage(SessionMessage(content: "three", isUser: true))
+        context.insert(session)
+        try context.save()
+
+        await expectLimit(.sessionMessages, actual: 2) {
+            _ = try await BackupService(limits: BackupLimits(maxSessionMessages: 1))
+                .exportBackup(from: context)
+        }
     }
 
     @Test func rawFileSizeAcceptsExactBoundaryAndRejectsBeforeDecode() async throws {
@@ -154,6 +213,40 @@ struct BackupResourceLifecycleTests {
         #expect(diary.audioURL == expectedURL)
         #expect(try Data(contentsOf: expectedURL) == Data([0x01, 0x02]))
         #expect(try managedImportFiles(in: directory, audioID: audioID) == [expectedURL])
+    }
+
+    @Test func importCollisionPreservesAudioReferencedByDiaryAbsentFromBackup() async throws {
+        let context = try makeModelContext()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let audioID = UUID(uuidString: "00000000-0000-0000-0000-000000000151")!
+        let localDiaryID = UUID(uuidString: "00000000-0000-0000-0000-000000000152")!
+        let importedDiaryID = UUID(uuidString: "00000000-0000-0000-0000-000000000153")!
+        let canonicalURL = directory.appendingPathComponent("restored_recording_\(audioID.uuidString).caf")
+        let oldData = Data([0xA1, 0xA2])
+        let newData = Data([0xB1, 0xB2])
+        try oldData.write(to: canonicalURL)
+        let localDiary = DiaryEntry(id: localDiaryID, title: "local")
+        localDiary.audioURL = canonicalURL
+        context.insert(localDiary)
+        try context.save()
+        let backup = makeAudioBackup(diaryID: importedDiaryID, audioID: audioID, data: newData)
+        let service = BackupService(documentsDirectory: directory)
+
+        _ = try await service.importBackup(backup, into: context)
+        _ = try await service.importBackup(backup, into: context)
+
+        let diaries = try context.fetch(FetchDescriptor<DiaryEntry>())
+        let preserved = try #require(diaries.first { $0.id == localDiaryID })
+        let imported = try #require(diaries.first { $0.id == importedDiaryID })
+        let expectedImportedURL = directory.appendingPathComponent(
+            "restored_recording_\(audioID.uuidString)_imported.caf"
+        )
+        #expect(preserved.audioURL == canonicalURL)
+        #expect(try Data(contentsOf: canonicalURL) == oldData)
+        #expect(imported.audioURL == expectedImportedURL)
+        #expect(try Data(contentsOf: expectedImportedURL) == newData)
+        #expect(Set(try managedImportFiles(in: directory, audioID: audioID)) == [canonicalURL, expectedImportedURL])
     }
 
     @Test func stagedFileFailureRestoresPriorFilesAndWritesNoModels() async throws {
@@ -349,13 +442,17 @@ struct BackupResourceLifecycleTests {
 
     private func expectLimit(
         _ expectedLimit: BackupResourceLimit,
+        actual expectedActual: Int? = nil,
         operation: () async throws -> Void
     ) async {
         do {
             try await operation()
             Issue.record("Expected \(expectedLimit.rawValue) resource limit")
-        } catch BackupServiceError.resourceLimitExceeded(let actualLimit, _, _) {
+        } catch BackupServiceError.resourceLimitExceeded(let actualLimit, _, let actual) {
             #expect(actualLimit == expectedLimit)
+            if let expectedActual {
+                #expect(actual == expectedActual)
+            }
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
