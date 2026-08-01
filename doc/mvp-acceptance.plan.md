@@ -37,6 +37,7 @@ Current focused tests cover:
 - frozen V1 entity-name compatibility and the full plain-schema legacy store -> V1 adoption -> migration-plan reopen sequence with retained data
 - persistence startup success/failure/retry, recovery copying of store/WAL/SHM, and visible rebuild failure through injected container/file seams
 - explicit chat-session/message deletion and rollback after an injected save failure
+- chat message, title, clear-session, and new-session save failures rebuild the UI context, preserve persisted state, and keep pending responses bound to their captured session
 - chat requests remain bound to their captured session across switching/deletion, and provider failure never produces fabricated diary claims
 - `AIActionResult` success/failure state and input preview generation
 - diary AI result application helpers that only mutate summary or transcription text after explicit confirmation
@@ -104,6 +105,7 @@ Before treating a branch as a usable app build, manually verify:
 - open Settings and confirm the iCloud sync preflight section shows the current local-first state as not ready for real sync
 - start AI actions with an empty key and confirm the failure is user-visible
 - send a note-exploration request, switch or delete the originating session before completion, and confirm no response appears in another session
+- simulate a chat save failure, confirm the provider is not started for an unsaved user message, retry successfully, and confirm no rolled-back session object is reused or crashes when messages are read
 - simulate an unavailable AI provider and confirm only factual local diary results are shown; unmatched queries show a retry action instead of an invented answer
 - generate a diary AI summary with a configured key and confirm the diary summary is unchanged until Apply is tapped
 - generate a transcription refine, expand, or summary result and confirm transcription text is unchanged until Apply is tapped

@@ -455,6 +455,7 @@ struct ChatResponseIntegrityTests {
     @Test func failedUserMessageSaveDoesNotStartProviderRequest() async throws {
         let context = try makeModelContext()
         let existingSession = ChatSession(title: "已有会话")
+        let sessionID = existingSession.id
         context.insert(existingSession)
         try context.save()
         var shouldFailSave = true
@@ -463,19 +464,130 @@ struct ChatResponseIntegrityTests {
             try modelContext.save()
         })
         let provider = ImmediateChatProvider(result: .success("不应生成"))
-        let request = makeRequestContext(sessionID: existingSession.id, query: "保存失败")
+        let request = makeRequestContext(sessionID: sessionID, query: "保存失败")
 
         #expect(!viewModel.submitChatRequest(request, provider: provider))
         #expect(provider.callCount == 0)
-        #expect(viewModel.chatRequestFailure(forSessionID: existingSession.id)?.message.contains("保存会话失败") == true)
-        #expect(existingSession.messages.isEmpty)
+        #expect(viewModel.chatRequestFailure(forSessionID: sessionID)?.message.contains("保存会话失败") == true)
+        let recoveredAfterFailure = try #require(viewModel.session(withID: sessionID))
+        #expect(recoveredAfterFailure.messages.isEmpty)
+        #expect(recoveredAfterFailure !== existingSession)
 
         shouldFailSave = false
-        #expect(viewModel.retryFailedChatRequest(forSessionID: existingSession.id, provider: provider))
+        #expect(viewModel.retryFailedChatRequest(forSessionID: sessionID, provider: provider))
         await viewModel.waitForPendingChatRequests()
 
         #expect(provider.callCount == 1)
-        #expect(existingSession.messages.map(\.content) == ["保存失败", "不应生成"])
+        let recoveredAfterRetry = try #require(viewModel.session(withID: sessionID))
+        #expect(recoveredAfterRetry.messages.map(\.content) == ["保存失败", "不应生成"])
+    }
+
+    @Test func failedTitleSaveRebuildsContextAndRestoresPersistedSession() async throws {
+        let context = try makeModelContext()
+        let existingSession = ChatSession(title: "原始标题")
+        let sessionID = existingSession.id
+        context.insert(existingSession)
+        try context.save()
+        let viewModel = ChatSessionViewModel(
+            modelContext: context,
+            saveAction: { _ in throw ChatProviderTestError.failed }
+        )
+        let loadedSession = try #require(viewModel.session(withID: sessionID))
+
+        #expect(!viewModel.updateSessionTitle(loadedSession, newTitle: "未保存标题"))
+
+        let recoveredSession = try #require(viewModel.session(withID: sessionID))
+        #expect(recoveredSession !== loadedSession)
+        #expect(recoveredSession.title == "原始标题")
+        #expect(viewModel.currentSession?.id == sessionID)
+        let verificationContext = ModelContext(context.container)
+        #expect(try verificationContext.fetch(FetchDescriptor<ChatSession>()).first?.title == "原始标题")
+    }
+
+    @Test func failedClearRebuildsContextAndKeepsPersistedMessages() async throws {
+        let context = try makeModelContext()
+        let existingSession = ChatSession(title: "保留会话")
+        let sessionID = existingSession.id
+        let firstMessage = SessionMessage(content: "保留一", isUser: true)
+        let secondMessage = SessionMessage(content: "保留二", isUser: false)
+        context.insert(existingSession)
+        context.insert(firstMessage)
+        context.insert(secondMessage)
+        existingSession.messages = [firstMessage, secondMessage]
+        try context.save()
+        let viewModel = ChatSessionViewModel(
+            modelContext: context,
+            saveAction: { _ in throw ChatProviderTestError.failed }
+        )
+        let loadedSession = try #require(viewModel.session(withID: sessionID))
+
+        #expect(!viewModel.clearCurrentSession())
+
+        let recoveredSession = try #require(viewModel.session(withID: sessionID))
+        #expect(recoveredSession !== loadedSession)
+        #expect(recoveredSession.title == "保留会话")
+        #expect(recoveredSession.messages.map(\.content) == ["保留一", "保留二"])
+        let verificationContext = ModelContext(context.container)
+        #expect(Set(try verificationContext.fetch(FetchDescriptor<SessionMessage>()).map(\.content)) == Set(["保留一", "保留二"]))
+    }
+
+    @Test func failedNewSessionSaveRestoresPreviousSelectionWithoutRetrying() async throws {
+        let context = try makeModelContext()
+        let existingSession = ChatSession(title: "已有会话")
+        let sessionID = existingSession.id
+        context.insert(existingSession)
+        try context.save()
+        var saveAttempts = 0
+        let viewModel = ChatSessionViewModel(modelContext: context, saveAction: { _ in
+            saveAttempts += 1
+            throw ChatProviderTestError.failed
+        })
+
+        #expect(viewModel.createNewSession(title: "不应保存") == nil)
+
+        #expect(saveAttempts == 1)
+        #expect(viewModel.sessions.map(\.id) == [sessionID])
+        #expect(viewModel.currentSession?.id == sessionID)
+        let verificationContext = ModelContext(context.container)
+        #expect(try verificationContext.fetch(FetchDescriptor<ChatSession>()).map(\.id) == [sessionID])
+    }
+
+    @Test func contextRecoveryKeepsPendingResponseBoundToOriginalSession() async throws {
+        let context = try makeModelContext()
+        var shouldFailNextSave = false
+        let viewModel = ChatSessionViewModel(modelContext: context, saveAction: { modelContext in
+            if shouldFailNextSave {
+                shouldFailNextSave = false
+                throw ChatProviderTestError.failed
+            }
+            try modelContext.save()
+        })
+        let firstSession = try #require(viewModel.currentSession)
+        let secondSession = try #require(viewModel.createNewSession(title: "第二会话"))
+        let firstSessionID = firstSession.id
+        let secondSessionID = secondSession.id
+        let provider = ControllableChatProvider()
+
+        #expect(viewModel.submitChatRequest(
+            makeRequestContext(sessionID: firstSessionID, query: "继续请求"),
+            provider: provider
+        ))
+        await provider.waitUntilRequestStarted()
+        shouldFailNextSave = true
+        #expect(viewModel.addMessage(
+            toSessionID: secondSessionID,
+            content: "不应保存",
+            isUser: true
+        ) == nil)
+
+        provider.resumeNext(with: .success("正确回复"))
+        await viewModel.waitForPendingChatRequests()
+
+        let recoveredFirst = try #require(viewModel.session(withID: firstSessionID))
+        let recoveredSecond = try #require(viewModel.session(withID: secondSessionID))
+        #expect(recoveredFirst.messages.map(\.content) == ["继续请求", "正确回复"])
+        #expect(recoveredSecond.messages.isEmpty)
+        #expect(viewModel.currentSession?.id == secondSessionID)
     }
 
     @Test func loadedSessionMessagesAreNormalizedChronologically() async throws {
