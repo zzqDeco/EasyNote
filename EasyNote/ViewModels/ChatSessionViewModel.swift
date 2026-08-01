@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 final class ChatSessionViewModel: ObservableObject {
     typealias SessionDeletionAction = @MainActor (ModelContainer, UUID) throws -> Void
+    typealias SessionFetchAction = @MainActor (ModelContext) throws -> [ChatSession]
 
     // 模型上下文
     private var modelContext: ModelContext
@@ -21,6 +22,7 @@ final class ChatSessionViewModel: ObservableObject {
     private var chatRequestTasks: [UUID: Task<Void, Never>] = [:]
     private var chatRequestSessions: [UUID: UUID] = [:]
     private let sessionDeletionAction: SessionDeletionAction
+    private let sessionFetchAction: SessionFetchAction
     private let saveAction: (ModelContext) throws -> Void
     
     // MARK: - 初始化方法
@@ -28,9 +30,13 @@ final class ChatSessionViewModel: ObservableObject {
     init(
         modelContext: ModelContext?,
         sessionDeletionAction: @escaping SessionDeletionAction = ChatSessionViewModel.deleteSessionPersistently,
+        sessionFetchAction: @escaping SessionFetchAction = {
+            try $0.fetch(FetchDescriptor<ChatSession>())
+        },
         saveAction: @escaping (ModelContext) throws -> Void = { try $0.save() }
     ) {
         self.sessionDeletionAction = sessionDeletionAction
+        self.sessionFetchAction = sessionFetchAction
         self.saveAction = saveAction
         if let context = modelContext {
             self.modelContext = context
@@ -73,35 +79,46 @@ final class ChatSessionViewModel: ObservableObject {
     
     // 加载所有会话
     func loadSessions() {
+        let preferredSessionID = currentSession?.id
+        reloadSessions(preferredSessionID: preferredSessionID, createDefaultIfEmpty: true)
+    }
+
+    private func reloadSessions(
+        preferredSessionID: UUID?,
+        createDefaultIfEmpty: Bool
+    ) {
         isLoadingMessages = true
         
         do {
-            let descriptor = FetchDescriptor<ChatSession>()
-            let fetchedSessions = try modelContext.fetch(descriptor)
+            let fetchedSessions = try sessionFetchAction(modelContext)
                 .sorted { $0.lastModifiedDate > $1.lastModifiedDate }
             fetchedSessions.forEach(normalizeMessageOrder)
             
             sessions = fetchedSessions
 
-            if sessions.isEmpty {
-                _ = createNewSession()
-            } else if currentSession == nil {
+            if let preferredSessionID,
+               let preferredSession = sessions.first(where: { $0.id == preferredSessionID }) {
+                currentSession = preferredSession
+            } else if sessions.isEmpty {
+                currentSession = nil
+            } else {
                 currentSession = sessions.first
+            }
+
+            if sessions.isEmpty && createDefaultIfEmpty {
+                _ = createNewSession()
             }
             isLoadingMessages = false
         } catch {
             errorMessage = "加载会话失败: \(error.localizedDescription)"
             isLoadingMessages = false
-
-            if sessions.isEmpty {
-                _ = createNewSession()
-            }
         }
     }
     
     // 创建新会话
     @discardableResult
     func createNewSession(title: String = "新会话") -> ChatSession? {
+        let previousCurrentSessionID = currentSession?.id
         let newSession = ChatSession(title: title)
         
         // 确保添加前没有相同ID的会话
@@ -113,7 +130,7 @@ final class ChatSessionViewModel: ObservableObject {
         modelContext.insert(newSession)
         
         // 立即保存更改
-        guard saveContext() else {
+        guard saveContext(preferredSessionIDAfterFailure: previousCurrentSessionID) else {
             return nil
         }
         
@@ -157,9 +174,7 @@ final class ChatSessionViewModel: ObservableObject {
             isUser: isUser,
             relatedEntryIds: relatedEntryIDs.map(\.uuidString)
         )
-        let previousMessages = session.messages
-        let previousTitle = session.title
-        let previousModifiedDate = session.lastModifiedDate
+        let preferredCurrentSessionID = currentSession?.id
         modelContext.insert(message)
         session.addMessage(message)
 
@@ -167,11 +182,7 @@ final class ChatSessionViewModel: ObservableObject {
             session.title = session.generateSummary()
         }
 
-        guard saveContext(onFailure: {
-            session.messages = previousMessages
-            session.title = previousTitle
-            session.lastModifiedDate = previousModifiedDate
-        }) else { return nil }
+        guard saveContext(preferredSessionIDAfterFailure: preferredCurrentSessionID) else { return nil }
         sessions.forEach(normalizeMessageOrder)
         return message
     }
@@ -355,16 +366,15 @@ final class ChatSessionViewModel: ObservableObject {
     
     // 更新会话标题
     @discardableResult
-    func updateSessionTitle(_ session: ChatSession, newTitle: String) -> Bool {
-        let oldTitle = session.title
-        let oldModifiedDate = session.lastModifiedDate
-        session.title = newTitle
-        session.updateLastModified()
-        guard saveContext() else {
-            session.title = oldTitle
-            session.lastModifiedDate = oldModifiedDate
+    func updateSessionTitle(sessionID: UUID, newTitle: String) -> Bool {
+        let preferredCurrentSessionID = currentSession?.id
+        guard let session = session(withID: sessionID) else {
+            errorMessage = "目标会话不存在"
             return false
         }
+        session.title = newTitle
+        session.updateLastModified()
+        guard saveContext(preferredSessionIDAfterFailure: preferredCurrentSessionID) else { return false }
         
         return true
     }
@@ -407,9 +417,6 @@ final class ChatSessionViewModel: ObservableObject {
         guard let session = currentSession else { return false }
         
         let sessionID = session.id
-        let previousMessages = session.messages
-        let previousTitle = session.title
-        let previousModifiedDate = session.lastModifiedDate
         
         // 删除所有消息
         for message in session.messages {
@@ -420,11 +427,7 @@ final class ChatSessionViewModel: ObservableObject {
         session.messages.removeAll()
         session.title = "新会话"
         session.updateLastModified()
-        guard saveContext(onFailure: {
-            session.messages = previousMessages
-            session.title = previousTitle
-            session.lastModifiedDate = previousModifiedDate
-        }) else {
+        guard saveContext(preferredSessionIDAfterFailure: sessionID) else {
             return false
         }
         cancelChatRequests(forSessionID: sessionID)
@@ -435,17 +438,38 @@ final class ChatSessionViewModel: ObservableObject {
     
     // 保存上下文
     @discardableResult
-    private func saveContext(onFailure: (() -> Void)? = nil) -> Bool {
+    private func saveContext(preferredSessionIDAfterFailure: UUID? = nil) -> Bool {
         do {
             try saveAction(modelContext)
             errorMessage = nil
             return true
         } catch {
-            onFailure?()
-            modelContext.rollback()
-            errorMessage = "保存会话失败: \(error.localizedDescription)"
+            recoverContextAfterSaveFailure(
+                preferredSessionID: preferredSessionIDAfterFailure,
+                error: error
+            )
             return false
         }
+    }
+
+    private func recoverContextAfterSaveFailure(
+        preferredSessionID: UUID?,
+        error: Error
+    ) {
+        let container = modelContext.container
+        let autosaveEnabled = modelContext.autosaveEnabled
+        modelContext.rollback()
+
+        let replacementContext = ModelContext(container)
+        replacementContext.autosaveEnabled = autosaveEnabled
+        modelContext = replacementContext
+        sessions = []
+        currentSession = nil
+        reloadSessions(
+            preferredSessionID: preferredSessionID,
+            createDefaultIfEmpty: false
+        )
+        errorMessage = "保存会话失败: \(error.localizedDescription)"
     }
 
     private static func deleteSessionPersistently(

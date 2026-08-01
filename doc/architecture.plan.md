@@ -34,6 +34,7 @@ ViewModels coordinate UI state, SwiftData reads/writes, and service calls:
 - `ExploreViewModel` owns recommendation generation and recommendation cache state; it does not own todo CRUD.
 - `ChatSessionViewModel` owns persisted chat sessions, session-bound request tasks, message history, and per-session request failures. Provider prompts and deterministic local fallbacks consume immutable diary/conversation snapshots rather than execution-time selection state.
 - Chat-session deletion explicitly stages deletion of every related `SessionMessage` and the `ChatSession` in one context save; save failure rolls back the complete deletion.
+- Chat save failures never publish or restore relationship objects from a rolled-back context. The ViewModel replaces that context from the same container, refetches sessions, and restores selection by UUID while request routing continues to use captured value identifiers.
 - `ContentView` passes the shared SwiftData `ModelContext` into stable app-level ViewModels through its root view instead of relying on production nil-context fallback stores.
 - Recurring todo completion is planned through a shared helper so todo entry points do not duplicate next-occurrence creation rules.
 - Todo local reminder eligibility is derived through a pure planner; `TodoViewModel` only asks the injected notification scheduler to synchronize or cancel after successful SwiftData saves.

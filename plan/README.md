@@ -15,6 +15,7 @@ Use [the implementation plan template](templates/implementation-plan.template.md
 
 | Document | Purpose | Status |
 |---|---|---|
+| [chat-swiftdata-rollback-recovery.plan.md](chat-swiftdata-rollback-recovery.plan.md) | Rebuild the chat context after failed saves instead of reusing rolled-back relationship objects | Active |
 | [ai-keychain-privacy.plan.md](ai-keychain-privacy.plan.md) | Store the DeepSeek key in Keychain and require revocable content-sharing consent | Active |
 | [concurrency-isolation.plan.md](concurrency-isolation.plan.md) | Isolate UI and speech state while adopting privacy-safe categorized logging | Active |
 | [settings-sections.plan.md](settings-sections.plan.md) | Decompose Settings into feature-owned sections behind one dependency bundle | Active |
