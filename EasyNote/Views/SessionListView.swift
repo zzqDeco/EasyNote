@@ -6,7 +6,7 @@ struct SessionListView: View {
     @Binding var isPresented: Bool
     var themeManager: ThemeManager
     
-    @State private var editingSession: ChatSession? = nil
+    @State private var editingSessionID: UUID?
     @State private var newTitle: String = ""
     @State private var showingRenameAlert = false
     @State private var showingDeleteAlert = false
@@ -59,7 +59,7 @@ struct SessionListView: View {
                                 },
                                 onRename: {
                                     // 重命名会话
-                                    editingSession = session
+                                    editingSessionID = session.id
                                     newTitle = session.title
                                     showingRenameAlert = true
                                 },
@@ -102,8 +102,8 @@ struct SessionListView: View {
                 Button("取消", role: .cancel) { }
                 
                 Button("保存") {
-                    if let session = editingSession {
-                        sessionViewModel.updateSessionTitle(session, newTitle: newTitle)
+                    if let sessionID = editingSessionID {
+                        sessionViewModel.updateSessionTitle(sessionID: sessionID, newTitle: newTitle)
                     }
                 }
             } message: {

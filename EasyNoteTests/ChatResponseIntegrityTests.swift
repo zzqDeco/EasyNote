@@ -494,7 +494,7 @@ struct ChatResponseIntegrityTests {
         )
         let loadedSession = try #require(viewModel.session(withID: sessionID))
 
-        #expect(!viewModel.updateSessionTitle(loadedSession, newTitle: "未保存标题"))
+        #expect(!viewModel.updateSessionTitle(sessionID: sessionID, newTitle: "未保存标题"))
 
         let recoveredSession = try #require(viewModel.session(withID: sessionID))
         #expect(recoveredSession !== loadedSession)
@@ -502,6 +502,55 @@ struct ChatResponseIntegrityTests {
         #expect(viewModel.currentSession?.id == sessionID)
         let verificationContext = ModelContext(context.container)
         #expect(try verificationContext.fetch(FetchDescriptor<ChatSession>()).first?.title == "原始标题")
+    }
+
+    @Test func titleRetryResolvesSessionFromReplacementContext() async throws {
+        let context = try makeModelContext()
+        let existingSession = ChatSession(title: "原始标题")
+        let sessionID = existingSession.id
+        context.insert(existingSession)
+        try context.save()
+        var shouldFailSave = true
+        let viewModel = ChatSessionViewModel(modelContext: context, saveAction: { modelContext in
+            if shouldFailSave { throw ChatProviderTestError.failed }
+            try modelContext.save()
+        })
+
+        #expect(!viewModel.updateSessionTitle(sessionID: sessionID, newTitle: "首次失败"))
+        shouldFailSave = false
+        #expect(viewModel.updateSessionTitle(sessionID: sessionID, newTitle: "重试成功"))
+
+        let verificationContext = ModelContext(context.container)
+        let persistedSession = try #require(
+            verificationContext.fetch(FetchDescriptor<ChatSession>()).first { $0.id == sessionID }
+        )
+        #expect(persistedSession.title == "重试成功")
+    }
+
+    @Test func failedNormalRefreshKeepsPublishedSessionsAndDoesNotCreateDefault() async throws {
+        let context = try makeModelContext()
+        let existingSession = ChatSession(title: "保留会话")
+        let sessionID = existingSession.id
+        context.insert(existingSession)
+        try context.save()
+        var shouldFailFetch = false
+        let viewModel = ChatSessionViewModel(
+            modelContext: context,
+            sessionFetchAction: { modelContext in
+                if shouldFailFetch { throw ChatProviderTestError.failed }
+                return try modelContext.fetch(FetchDescriptor<ChatSession>())
+            }
+        )
+        let publishedSession = try #require(viewModel.session(withID: sessionID))
+        shouldFailFetch = true
+
+        viewModel.loadSessions()
+
+        #expect(viewModel.sessions.count == 1)
+        #expect(viewModel.sessions.first === publishedSession)
+        #expect(viewModel.currentSession === publishedSession)
+        let verificationContext = ModelContext(context.container)
+        #expect(try verificationContext.fetch(FetchDescriptor<ChatSession>()).map(\.id) == [sessionID])
     }
 
     @Test func failedClearRebuildsContextAndKeepsPersistedMessages() async throws {

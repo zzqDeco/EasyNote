@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 final class ChatSessionViewModel: ObservableObject {
     typealias SessionDeletionAction = @MainActor (ModelContainer, UUID) throws -> Void
+    typealias SessionFetchAction = @MainActor (ModelContext) throws -> [ChatSession]
 
     // 模型上下文
     private var modelContext: ModelContext
@@ -21,6 +22,7 @@ final class ChatSessionViewModel: ObservableObject {
     private var chatRequestTasks: [UUID: Task<Void, Never>] = [:]
     private var chatRequestSessions: [UUID: UUID] = [:]
     private let sessionDeletionAction: SessionDeletionAction
+    private let sessionFetchAction: SessionFetchAction
     private let saveAction: (ModelContext) throws -> Void
     
     // MARK: - 初始化方法
@@ -28,9 +30,13 @@ final class ChatSessionViewModel: ObservableObject {
     init(
         modelContext: ModelContext?,
         sessionDeletionAction: @escaping SessionDeletionAction = ChatSessionViewModel.deleteSessionPersistently,
+        sessionFetchAction: @escaping SessionFetchAction = {
+            try $0.fetch(FetchDescriptor<ChatSession>())
+        },
         saveAction: @escaping (ModelContext) throws -> Void = { try $0.save() }
     ) {
         self.sessionDeletionAction = sessionDeletionAction
+        self.sessionFetchAction = sessionFetchAction
         self.saveAction = saveAction
         if let context = modelContext {
             self.modelContext = context
@@ -84,8 +90,7 @@ final class ChatSessionViewModel: ObservableObject {
         isLoadingMessages = true
         
         do {
-            let descriptor = FetchDescriptor<ChatSession>()
-            let fetchedSessions = try modelContext.fetch(descriptor)
+            let fetchedSessions = try sessionFetchAction(modelContext)
                 .sorted { $0.lastModifiedDate > $1.lastModifiedDate }
             fetchedSessions.forEach(normalizeMessageOrder)
             
@@ -107,12 +112,6 @@ final class ChatSessionViewModel: ObservableObject {
         } catch {
             errorMessage = "加载会话失败: \(error.localizedDescription)"
             isLoadingMessages = false
-
-            sessions = []
-            currentSession = nil
-            if createDefaultIfEmpty {
-                _ = createNewSession()
-            }
         }
     }
     
@@ -367,8 +366,12 @@ final class ChatSessionViewModel: ObservableObject {
     
     // 更新会话标题
     @discardableResult
-    func updateSessionTitle(_ session: ChatSession, newTitle: String) -> Bool {
+    func updateSessionTitle(sessionID: UUID, newTitle: String) -> Bool {
         let preferredCurrentSessionID = currentSession?.id
+        guard let session = session(withID: sessionID) else {
+            errorMessage = "目标会话不存在"
+            return false
+        }
         session.title = newTitle
         session.updateLastModified()
         guard saveContext(preferredSessionIDAfterFailure: preferredCurrentSessionID) else { return false }
